@@ -32,7 +32,15 @@ export class RepoStore extends Events {
     return this._status.filter(f => f.indexStatus === "U" || f.workingStatus === "U");
   }
 
+  private statusFingerprint = "";
+  private branchFingerprint = "";
+
+  private computeStatusFingerprint(status: FileStatus[]): string {
+    return status.map(f => `${f.path}:${f.indexStatus}:${f.workingStatus}:${f.staged}`).join("|");
+  }
+
   async refresh(): Promise<void> {
+    if (this._loading) return;
     this._loading = true;
     this.trigger("loading", true);
     try {
@@ -41,13 +49,23 @@ export class RepoStore extends Events {
         this.git.currentBranch(),
         this.git.getAheadBehind(),
       ]);
+
+      const newStatusFp = this.computeStatusFingerprint(status);
+      const newBranchFp = `${branch}:${ab.ahead}:${ab.behind}`;
+
+      const statusChanged = newStatusFp !== this.statusFingerprint;
+      const branchChanged = newBranchFp !== this.branchFingerprint;
+
       this._status = status;
       this._branch = branch;
       this._ahead = ab.ahead;
       this._behind = ab.behind;
       this._merging = status.some(f => f.indexStatus === "U" || f.workingStatus === "U");
-      this.trigger("status-changed", this._status);
-      this.trigger("branch-changed", this._branch);
+      this.statusFingerprint = newStatusFp;
+      this.branchFingerprint = newBranchFp;
+
+      if (statusChanged) this.trigger("status-changed", this._status);
+      if (branchChanged) this.trigger("branch-changed", this._branch);
     } catch (e) {
       this.trigger("error", e);
     } finally {
