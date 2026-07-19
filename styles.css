@@ -339,7 +339,7 @@
 }
 
 /* ================================================================
-   SOURCE CONTROL VIEW – GitLens sidebar
+   SOURCE CONTROL VIEW – VS Code style sidebar
    ================================================================ */
 
 .gs-sc-view {
@@ -390,122 +390,115 @@
 .gs-icon-btn-sm { padding: 2px; }
 .gs-icon-btn-sm svg { width: 12px; height: 12px; }
 
-/* Branch bar */
-.gs-sc-branch-bar {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  padding: 4px 8px;
-  border-bottom: 1px solid var(--gs-border);
-  flex-shrink: 0;
-}
-
-.gs-branch-picker {
-  display: flex;
-  align-items: center;
-  gap: 4px;
-  cursor: pointer;
-  padding: 2px 6px;
-  border-radius: 4px;
-  font-size: 13px;
-  font-weight: 500;
-  color: var(--gs-text);
-}
-
-.gs-branch-picker:hover { background: var(--gs-bg-hover); }
-
-.gs-branch-icon { display: flex; }
-.gs-branch-icon svg { width: 14px; height: 14px; }
-.gs-branch-chevron { display: flex; color: var(--gs-text-faint); }
-.gs-branch-chevron svg { width: 12px; height: 12px; }
-
-.gs-sc-associate {
-  font-size: 11px;
-  color: var(--gs-text-faint);
-  cursor: pointer;
-}
-
-.gs-sc-associate:hover { color: var(--gs-accent); }
-
-/* Summary */
-.gs-sc-summary {
-  padding: 4px 8px;
-  flex-shrink: 0;
-}
-
-.gs-summary-badge {
-  font-size: 10px;
-  font-weight: 700;
-  letter-spacing: 0.03em;
-  color: var(--gs-accent);
-  background: rgba(var(--interactive-accent-rgb, 66, 135, 245), 0.12);
-  padding: 2px 8px;
-  border-radius: 3px;
-}
-
-/* Filter bar */
-.gs-sc-filterbar {
-  padding: 4px 8px;
-  flex-shrink: 0;
-}
-
-.gs-filter-input {
-  width: 100%;
-  padding: 4px 8px;
-  border: 1px solid var(--gs-border);
-  border-radius: 4px;
-  background: var(--gs-bg);
-  color: var(--gs-text);
-  font-size: 12px;
-  outline: none;
-  box-sizing: border-box;
-}
-
-.gs-filter-input:focus { border-color: var(--gs-accent); }
-.gs-filter-input::placeholder { color: var(--gs-text-faint); }
-
 /* File list */
 .gs-sc-filelist {
   flex: 1;
   overflow-y: auto;
 }
 
+/* Section headers – VS Code style */
 .gs-sc-section-header {
   display: flex;
-  justify-content: space-between;
   align-items: center;
   padding: 4px 8px;
-  font-size: 10px;
-  font-weight: 700;
-  color: var(--gs-text-faint);
-  text-transform: uppercase;
-  letter-spacing: 0.04em;
+  cursor: pointer;
+  user-select: none;
   background: var(--gs-bg2);
 }
 
-.gs-section-actions { display: flex; gap: 1px; }
+.gs-sc-section-header:hover { background: var(--gs-bg-hover); }
 
-.gs-section-title { user-select: none; }
+.gs-section-left {
+  display: flex;
+  align-items: center;
+  gap: 2px;
+  flex: 1;
+  min-width: 0;
+}
 
-/* Tree view */
+.gs-section-chevron { display: flex; color: var(--gs-text-muted); }
+.gs-section-chevron svg { width: 14px; height: 14px; }
+
+.gs-section-title {
+  font-size: 11px;
+  font-weight: 700;
+  color: var(--gs-text);
+  text-transform: uppercase;
+  letter-spacing: 0.03em;
+}
+
+.gs-section-count {
+  font-size: 10px;
+  font-weight: 700;
+  min-width: 18px;
+  height: 18px;
+  line-height: 18px;
+  text-align: center;
+  border-radius: 10px;
+  color: #fff;
+  background: var(--gs-text-faint);
+  margin-left: 4px;
+  flex-shrink: 0;
+}
+
+.gs-count-staged { background: var(--gs-green); }
+.gs-count-changed { background: var(--gs-blue); }
+.gs-count-untracked { background: var(--gs-green); }
+.gs-count-conflict { background: var(--gs-red); }
+
+.gs-section-actions {
+  display: flex;
+  gap: 1px;
+  flex-shrink: 0;
+  opacity: 0;
+  transition: opacity 0.1s;
+}
+
+.gs-sc-section-header:hover .gs-section-actions { opacity: 1; }
+
+/* Tree view – VS Code style */
 .gs-tree-dir {
   display: flex;
   align-items: center;
   gap: 4px;
-  padding: 3px 8px;
+  padding: 2px 8px;
   cursor: pointer;
   font-size: 13px;
   color: var(--gs-text);
   user-select: none;
+  height: 22px;
 }
 
 .gs-tree-dir:hover { background: var(--gs-bg-hover); }
 
-.gs-tree-chevron { display: flex; color: var(--gs-text-faint); }
+.gs-tree-chevron { display: flex; color: var(--gs-text-faint); flex-shrink: 0; }
 .gs-tree-chevron svg { width: 12px; height: 12px; }
-.gs-tree-folder-icon { display: flex; color: var(--gs-text-muted); }
-.gs-tree-folder-icon svg { width: 14px; height: 14px; }
-.gs-tree-dirname { font-weight: 500; }
+.gs-tree-folder-icon { display: flex; color: var(--gs-text-muted); flex-shrink: 0; }
+.gs-tree-folder-icon svg { width: 16px; height: 16px; }
+.gs-tree-dirname {
+  font-weight: 400;
+  flex: 1;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.gs-tree-dir-right {
+  display: flex;
+  align-items: center;
+  flex-shrink: 0;
+  margin-left: auto;
+  padding-right: 4px;
+}
+
+.gs-tree-dir-dot {
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  background: var(--gs-text-faint);
+  opacity: 0.5;
+}
 
 .gs-tree-file {
   display: flex;
@@ -515,52 +508,40 @@
   cursor: pointer;
   font-size: 13px;
   color: var(--gs-text);
+  height: 22px;
 }
 
 .gs-tree-file:hover { background: var(--gs-bg-hover); }
 .gs-tree-file:hover .gs-tree-file-actions { opacity: 1; }
 
-.gs-file-check {
-  width: 14px;
-  height: 14px;
-  flex-shrink: 0;
-  cursor: pointer;
-  accent-color: var(--gs-accent);
-}
-
 .gs-tree-file-icon { display: flex; color: var(--gs-text-muted); flex-shrink: 0; }
-.gs-tree-file-icon svg { width: 14px; height: 14px; }
+.gs-tree-file-icon svg { width: 16px; height: 16px; }
 
 .gs-tree-filename {
   flex: 1;
   min-width: 0;
   overflow: hidden;
   text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.gs-tree-file-right {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  flex-shrink: 0;
+  margin-left: auto;
 }
 
 .gs-tree-file-stats {
   font-size: 11px;
   font-family: var(--gs-mono);
   flex-shrink: 0;
+  white-space: nowrap;
 }
 
 .gs-stat-add { color: var(--gs-green); }
 .gs-stat-del { color: var(--gs-red); }
-
-.gs-tree-badge {
-  font-size: 10px;
-  font-weight: 700;
-  font-family: var(--gs-mono);
-  width: 14px;
-  text-align: center;
-  flex-shrink: 0;
-}
-
-.gs-badge-M { color: var(--gs-blue); }
-.gs-badge-A, .gs-badge-U { color: var(--gs-green); }
-.gs-badge-D { color: var(--gs-red); }
-.gs-badge-R { color: var(--gs-purple); }
-.gs-badge-C { color: var(--gs-yellow); }
 
 .gs-tree-file-actions {
   display: flex;
@@ -570,6 +551,22 @@
   flex-shrink: 0;
 }
 
+.gs-tree-badge {
+  font-size: 11px;
+  font-weight: 700;
+  font-family: var(--gs-mono);
+  width: 14px;
+  text-align: center;
+  flex-shrink: 0;
+}
+
+.gs-badge-M { color: var(--gs-yellow); }
+.gs-badge-A { color: var(--gs-green); }
+.gs-badge-U { color: var(--gs-green); }
+.gs-badge-D { color: var(--gs-red); }
+.gs-badge-R { color: var(--gs-purple); }
+.gs-badge-C { color: var(--gs-yellow); }
+
 .gs-sc-empty {
   text-align: center;
   color: var(--gs-text-faint);
@@ -577,61 +574,28 @@
   font-size: 13px;
 }
 
-/* Commit area */
+/* Commit area – VS Code style (input + button at top) */
 .gs-sc-commit-area {
-  border-top: 1px solid var(--gs-border);
   padding: 8px;
   flex-shrink: 0;
+  border-bottom: 1px solid var(--gs-border);
 }
 
-.gs-commit-top-row {
-  display: flex;
-  justify-content: space-between;
-  align-items: center;
+.gs-commit-input-wrap {
   margin-bottom: 6px;
 }
 
-.gs-amend-label {
-  font-size: 11px;
-  color: var(--gs-text-muted);
-  display: flex;
-  align-items: center;
-  gap: 4px;
-  cursor: pointer;
-}
-
-.gs-amend-checkbox {
-  width: 13px;
-  height: 13px;
-  accent-color: var(--gs-accent);
-}
-
-.gs-compose-btn {
-  font-size: 11px;
-  padding: 2px 8px;
-  border-radius: 4px;
-  border: 1px solid var(--gs-border);
-  background: var(--gs-bg);
-  color: var(--gs-text-muted);
-  cursor: pointer;
-}
-
-.gs-compose-btn:hover { background: var(--gs-bg-hover); }
-
 .gs-commit-input {
   width: 100%;
-  min-height: 40px;
-  padding: 6px 8px;
+  padding: 5px 8px;
   border: 1px solid var(--gs-border);
   border-radius: 4px;
   background: var(--gs-bg);
   color: var(--gs-text);
   font-size: 12px;
   font-family: var(--font-interface);
-  resize: vertical;
   box-sizing: border-box;
   outline: none;
-  margin-bottom: 6px;
 }
 
 .gs-commit-input:focus { border-color: var(--gs-accent); }
@@ -639,13 +603,12 @@
 
 .gs-commit-btn-row {
   display: flex;
-  gap: 4px;
 }
 
 .gs-commit-main-btn {
   flex: 1;
-  padding: 6px 12px;
-  border-radius: 4px;
+  padding: 5px 12px;
+  border-radius: 4px 0 0 4px;
   border: none;
   background: var(--gs-green);
   color: #fff;
@@ -653,27 +616,31 @@
   font-size: 12px;
   font-weight: 600;
   text-align: center;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 4px;
 }
 
 .gs-commit-main-btn:hover { opacity: 0.9; }
 
-.gs-commit-branch-ref {
-  font-weight: 400;
-  opacity: 0.9;
-}
+.gs-commit-check-icon { display: flex; }
+.gs-commit-check-icon svg { width: 14px; height: 14px; }
 
-.gs-commit-push-btn {
-  padding: 6px 10px;
-  border-radius: 4px;
-  border: 1px solid var(--gs-border);
-  background: var(--gs-bg2);
-  color: var(--gs-text);
+.gs-commit-dropdown-btn {
+  padding: 5px 6px;
+  border-radius: 0 4px 4px 0;
+  border: none;
+  border-left: 1px solid rgba(255,255,255,0.2);
+  background: var(--gs-green);
+  color: #fff;
   cursor: pointer;
-  font-size: 12px;
-  font-weight: 500;
+  display: flex;
+  align-items: center;
 }
 
-.gs-commit-push-btn:hover { background: var(--gs-bg-hover); }
+.gs-commit-dropdown-btn svg { width: 14px; height: 14px; }
+.gs-commit-dropdown-btn:hover { opacity: 0.9; }
 
 /* --- Tab bar (Changes / Graph toggle) --- */
 .gs-sc-tabbar {

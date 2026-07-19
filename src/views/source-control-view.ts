@@ -1,5 +1,5 @@
 import { ItemView, WorkspaceLeaf, setIcon, Menu, Notice } from "obsidian";
-import { SOURCE_CONTROL_VIEW_TYPE, FileStatus, CommitInfo, GraphNode, GraphEdge } from "../types";
+import { SOURCE_CONTROL_VIEW_TYPE, FileStatus, GraphNode } from "../types";
 import { RepoStore } from "../store/repo-store";
 import { GitService } from "../git/git-service";
 import { computeGraphLayout, formatRelativeDate } from "../utils/graph-layout";
@@ -20,10 +20,8 @@ export class SourceControlView extends ItemView {
   private plugin: GitStudioPlugin;
   private store: RepoStore;
   private git: GitService;
-  private commitInput: HTMLTextAreaElement | null = null;
+  private commitInput: HTMLInputElement | null = null;
   private fileListEl: HTMLElement | null = null;
-  private branchEl: HTMLElement | null = null;
-  private summaryEl: HTMLElement | null = null;
   private expandedDirs = new Set<string>();
   private activeTab: SidebarTab = "changes";
   private changesPanel: HTMLElement | null = null;
@@ -31,8 +29,6 @@ export class SourceControlView extends ItemView {
   private tabBtns: Record<string, HTMLElement> = {};
 
   private graphNodes: GraphNode[] = [];
-  private graphEdges: GraphEdge[] = [];
-  private graphMaxCols = 0;
   private graphListEl: HTMLElement | null = null;
   private graphSelectedHash: string | null = null;
 
@@ -59,11 +55,8 @@ export class SourceControlView extends ItemView {
     this.graphPanel = contentEl.createDiv("gs-sc-graph-panel");
     this.graphPanel.style.display = "none";
 
-    this.buildBranchBar(this.changesPanel);
-    this.buildSummary(this.changesPanel);
-    this.buildFilterBar(this.changesPanel);
-    this.fileListEl = this.changesPanel.createDiv("gs-sc-filelist");
     this.buildCommitArea(this.changesPanel);
+    this.fileListEl = this.changesPanel.createDiv("gs-sc-filelist");
 
     this.buildSidebarGraph(this.graphPanel);
 
@@ -141,46 +134,14 @@ export class SourceControlView extends ItemView {
     }
   }
 
-  private buildBranchBar(el: HTMLElement): void {
-    const bar = el.createDiv("gs-sc-branch-bar");
-    this.branchEl = bar.createDiv("gs-branch-picker");
-    const branchIcon = this.branchEl.createSpan("gs-branch-icon");
-    setIcon(branchIcon, "git-branch");
-    this.branchEl.createSpan("gs-branch-name").setText(this.store.branch || "...");
-    const chevron = this.branchEl.createSpan("gs-branch-chevron");
-    setIcon(chevron, "chevron-down");
-    this.branchEl.addEventListener("click", (e) => this.showBranchMenu(e));
-
-    bar.createSpan("gs-sc-associate").setText("Associate Issue...");
-  }
-
-  private buildSummary(el: HTMLElement): void {
-    this.summaryEl = el.createDiv("gs-sc-summary");
-  }
-
-  private buildFilterBar(el: HTMLElement): void {
-    const bar = el.createDiv("gs-sc-filterbar");
-    const input = bar.createEl("input", {
-      cls: "gs-filter-input",
-      attr: { type: "text", placeholder: "Filter files..." },
-    });
-    input.addEventListener("input", () => {
-      // file filter (future)
-    });
-  }
 
   private buildCommitArea(el: HTMLElement): void {
     const area = el.createDiv("gs-sc-commit-area");
 
-    const topRow = area.createDiv("gs-commit-top-row");
-    const amendLabel = topRow.createEl("label", { cls: "gs-amend-label" });
-    amendLabel.createEl("input", { attr: { type: "checkbox" }, cls: "gs-amend-checkbox" });
-    amendLabel.createSpan().setText(" Amend Previous Commit");
-    topRow.createEl("button", { cls: "gs-compose-btn", text: "Compose" });
-
-    this.commitInput = area.createEl("textarea", {
+    const inputWrap = area.createDiv("gs-commit-input-wrap");
+    this.commitInput = inputWrap.createEl("input", {
       cls: "gs-commit-input",
-      attr: { placeholder: "Commit message (⌘Enter to commit)" },
+      attr: { type: "text", placeholder: `Message (⌘Enter to commit on "${this.store.branch || "main"}")` },
     });
 
     this.commitInput.addEventListener("keydown", (e: KeyboardEvent) => {
@@ -193,11 +154,36 @@ export class SourceControlView extends ItemView {
     const btnRow = area.createDiv("gs-commit-btn-row");
 
     const commitBtn = btnRow.createEl("button", { cls: "gs-commit-main-btn" });
-    commitBtn.innerHTML = `Commit to <span class="gs-commit-branch-ref">⇨ ${this.escapeHtml(this.store.branch || "main")}</span>`;
+    const checkIcon = commitBtn.createSpan("gs-commit-check-icon");
+    setIcon(checkIcon, "check");
+    commitBtn.appendText(" Commit");
     commitBtn.addEventListener("click", () => this.doCommit());
 
-    const pushBtn = btnRow.createEl("button", { cls: "gs-commit-push-btn", text: "Commit & Push" });
-    pushBtn.addEventListener("click", () => this.doCommit(true));
+    const dropdownBtn = btnRow.createEl("button", { cls: "gs-commit-dropdown-btn" });
+    const chevron = dropdownBtn.createSpan();
+    setIcon(chevron, "chevron-down");
+    dropdownBtn.addEventListener("click", (e) => {
+      const menu = new Menu();
+      menu.addItem(i => i.setTitle("Commit").setIcon("check").onClick(() => this.doCommit()));
+      menu.addItem(i => i.setTitle("Commit & Push").setIcon("upload").onClick(() => this.doCommit(true)));
+      menu.addSeparator();
+      menu.addItem(i => {
+        const isAmend = this.contentEl.querySelector(".gs-commit-input") as HTMLInputElement;
+        i.setTitle("Amend Previous Commit").setIcon("edit");
+        i.onClick(async () => {
+          try {
+            const msg = isAmend?.value?.trim() || "";
+            await this.git.commit(msg || "amend", { amend: true });
+            if (isAmend) isAmend.value = "";
+            await this.store.refresh();
+            new Notice("Amended");
+          } catch (err: unknown) {
+            new Notice(`Amend failed: ${err instanceof Error ? err.message : String(err)}`);
+          }
+        });
+      });
+      menu.showAtMouseEvent(e);
+    });
   }
 
   private showMoreMenu(event: MouseEvent): void {
@@ -207,6 +193,9 @@ export class SourceControlView extends ItemView {
       catch (e: unknown) { new Notice(`${e instanceof Error ? e.message : String(e)}`); }
     }));
     menu.addSeparator();
+    menu.addItem(i => i.setTitle("Switch Branch...").setIcon("git-branch").onClick(async (e) => {
+      await this.showBranchMenu(event);
+    }));
     menu.addItem(i => i.setTitle("Open Git Graph").setIcon("git-branch").onClick(() => this.plugin.openGraphView()));
     menu.addItem(i => i.setTitle("Open History").setIcon("history").onClick(() => this.plugin.openHistoryView()));
     menu.showAtMouseEvent(event);
@@ -249,21 +238,17 @@ export class SourceControlView extends ItemView {
   }
 
   private updateBranch(): void {
-    if (this.branchEl) {
-      const nameEl = this.branchEl.querySelector(".gs-branch-name");
-      if (nameEl) nameEl.textContent = this.store.branch || "...";
+    if (this.commitInput) {
+      this.commitInput.setAttribute("placeholder", `Message (⌘Enter to commit on "${this.store.branch || "main"}")`);
     }
-    const btnRef = this.contentEl.querySelector(".gs-commit-branch-ref");
-    if (btnRef) btnRef.textContent = `⇨ ${this.store.branch || "main"}`;
   }
 
   private async doCommit(andPush = false): Promise<void> {
     const msg = this.commitInput?.value?.trim();
     if (!msg) { new Notice("Please enter a commit message"); return; }
 
-    const amend = (this.contentEl.querySelector(".gs-amend-checkbox") as HTMLInputElement)?.checked;
     const staged = this.store.stagedFiles;
-    if (staged.length === 0 && !amend) {
+    if (staged.length === 0) {
       if (this.store.changedFiles.length > 0 || this.store.untrackedFiles.length > 0) {
         await this.git.stageAll();
       } else {
@@ -273,7 +258,7 @@ export class SourceControlView extends ItemView {
     }
 
     try {
-      await this.git.commit(msg, { amend });
+      await this.git.commit(msg);
       if (this.commitInput) this.commitInput.value = "";
       new Notice("Committed");
       if (andPush) {
@@ -295,30 +280,13 @@ export class SourceControlView extends ItemView {
     const untracked = this.store.untrackedFiles;
     const conflicts = this.store.mergeConflicts;
 
-    this.updateSummary(staged, changed, untracked, conflicts);
-
-    if (conflicts.length > 0) this.renderSection("MERGE CONFLICTS", conflicts, "conflict");
-    if (staged.length > 0) this.renderSection("STAGED", staged, "staged");
-    if (changed.length > 0) this.renderSection("CHANGES", changed, "changed");
-    if (untracked.length > 0) this.renderSection("UNTRACKED", untracked, "untracked");
+    if (conflicts.length > 0) this.renderSection("Merge Conflicts", conflicts, "conflict");
+    if (staged.length > 0) this.renderSection("Staged Changes", staged, "staged");
+    if (changed.length > 0) this.renderSection("Changes", changed, "changed");
+    if (untracked.length > 0) this.renderSection("Untracked", untracked, "untracked");
 
     if (staged.length + changed.length + untracked.length + conflicts.length === 0) {
       this.fileListEl.createDiv("gs-sc-empty").setText("No changes");
-    }
-  }
-
-  private updateSummary(staged: FileStatus[], changed: FileStatus[], untracked: FileStatus[], conflicts: FileStatus[]): void {
-    if (!this.summaryEl) return;
-    this.summaryEl.empty();
-
-    const parts: string[] = [];
-    if (staged.length > 0) parts.push(`${staged.length} STAGED`);
-    if (changed.length + untracked.length > 0) parts.push(`${changed.length + untracked.length} CHANGED`);
-    if (conflicts.length > 0) parts.push(`${conflicts.length} CONFLICT`);
-
-    if (parts.length > 0) {
-      const badge = this.summaryEl.createSpan("gs-summary-badge");
-      badge.setText(parts.join(" • "));
     }
   }
 
@@ -327,29 +295,48 @@ export class SourceControlView extends ItemView {
 
     const section = this.fileListEl.createDiv("gs-sc-section");
     const header = section.createDiv("gs-sc-section-header");
-    header.createSpan("gs-section-title").setText(`${title} (${files.length})`);
+
+    const headerLeft = header.createDiv("gs-section-left");
+    const chevron = headerLeft.createSpan("gs-section-chevron");
+    setIcon(chevron, "chevron-down");
+    headerLeft.createSpan("gs-section-title").setText(title);
+
+    const countBadge = header.createSpan("gs-section-count");
+    countBadge.setText(String(files.length));
+    if (group === "staged") countBadge.addClass("gs-count-staged");
+    else if (group === "changed") countBadge.addClass("gs-count-changed");
+    else if (group === "untracked") countBadge.addClass("gs-count-untracked");
+    else if (group === "conflict") countBadge.addClass("gs-count-conflict");
 
     const headerActions = header.createDiv("gs-section-actions");
     if (group === "staged") {
-      const btn = headerActions.createEl("button", { cls: "gs-icon-btn" });
+      const btn = headerActions.createEl("button", { cls: "gs-icon-btn gs-icon-btn-sm" });
       setIcon(btn, "minus");
       btn.setAttribute("aria-label", "Unstage All");
-      btn.addEventListener("click", async () => { await this.git.unstageAll(); await this.store.refresh(); });
+      btn.addEventListener("click", async (e) => { e.stopPropagation(); await this.git.unstageAll(); await this.store.refresh(); });
     } else if (group !== "conflict") {
-      const btn = headerActions.createEl("button", { cls: "gs-icon-btn" });
+      const btn = headerActions.createEl("button", { cls: "gs-icon-btn gs-icon-btn-sm" });
       setIcon(btn, "plus");
       btn.setAttribute("aria-label", "Stage All");
-      btn.addEventListener("click", async () => { await this.git.stage(files.map(f => f.path)); await this.store.refresh(); });
+      btn.addEventListener("click", async (e) => { e.stopPropagation(); await this.git.stage(files.map(f => f.path)); await this.store.refresh(); });
     }
     if (group === "changed") {
-      const btn = headerActions.createEl("button", { cls: "gs-icon-btn" });
+      const btn = headerActions.createEl("button", { cls: "gs-icon-btn gs-icon-btn-sm" });
       setIcon(btn, "rotate-ccw");
       btn.setAttribute("aria-label", "Discard All");
-      btn.addEventListener("click", async () => { await this.git.discard(files.map(f => f.path)); await this.store.refresh(); });
+      btn.addEventListener("click", async (e) => { e.stopPropagation(); await this.git.discard(files.map(f => f.path)); await this.store.refresh(); });
     }
 
-    const tree = this.buildFileTree(files, group);
     const treeEl = section.createDiv("gs-sc-tree");
+    let collapsed = false;
+
+    header.addEventListener("click", () => {
+      collapsed = !collapsed;
+      treeEl.style.display = collapsed ? "none" : "";
+      setIcon(chevron, collapsed ? "chevron-right" : "chevron-down");
+    });
+
+    const tree = this.buildFileTree(files, group);
     this.renderTree(treeEl, tree, group, 0);
   }
 
@@ -396,7 +383,7 @@ export class SourceControlView extends ItemView {
     for (const node of nodes) {
       if (node.isDir) {
         const dirRow = parent.createDiv("gs-tree-dir");
-        dirRow.style.paddingLeft = (depth * 16 + 4) + "px";
+        dirRow.style.paddingLeft = (depth * 16 + 8) + "px";
 
         const chevron = dirRow.createSpan("gs-tree-chevron");
         setIcon(chevron, node.expanded ? "chevron-down" : "chevron-right");
@@ -405,6 +392,9 @@ export class SourceControlView extends ItemView {
         setIcon(folderIcon, node.expanded ? "folder-open" : "folder");
 
         dirRow.createSpan("gs-tree-dirname").setText(node.name);
+
+        const dirRight = dirRow.createDiv("gs-tree-dir-right");
+        dirRight.createSpan("gs-tree-dir-dot");
 
         dirRow.addEventListener("click", () => {
           node.expanded = !node.expanded;
@@ -424,38 +414,25 @@ export class SourceControlView extends ItemView {
 
   private renderFileRow(parent: HTMLElement, file: FileStatus, group: string, depth: number): void {
     const row = parent.createDiv("gs-tree-file");
-    row.style.paddingLeft = (depth * 16 + 4) + "px";
-
-    const check = row.createEl("input", { cls: "gs-file-check", attr: { type: "checkbox" } });
-    if (group === "staged") (check as HTMLInputElement).checked = true;
-    check.addEventListener("change", async () => {
-      if ((check as HTMLInputElement).checked) {
-        await this.git.stage([file.path]);
-      } else {
-        await this.git.unstage([file.path]);
-      }
-      await this.store.refresh();
-    });
+    row.style.paddingLeft = (depth * 16 + 8) + "px";
 
     const fileIcon = row.createSpan("gs-tree-file-icon");
     const ext = file.path.split(".").pop() || "";
-    if (ext === "md") setIcon(fileIcon, "file-text");
-    else if (ext === "json") setIcon(fileIcon, "braces");
-    else if (ext === "css") setIcon(fileIcon, "paintbrush");
-    else setIcon(fileIcon, "file");
+    const iconMap: Record<string, string> = {
+      md: "file-text", json: "braces", css: "paintbrush", js: "file-code",
+      ts: "file-code", html: "code", yml: "file-cog", yaml: "file-cog",
+      png: "image", jpg: "image", svg: "image", gif: "image",
+    };
+    setIcon(fileIcon, iconMap[ext] || "file");
 
     const nameEl = row.createSpan("gs-tree-filename");
     nameEl.setText(file.path.split("/").pop() || file.path);
 
-    const statsEl = row.createSpan("gs-tree-file-stats");
+    const rightSide = row.createDiv("gs-tree-file-right");
 
-    const badge = row.createSpan("gs-tree-badge");
-    const statusChar = group === "staged" ? file.indexStatus : file.workingStatus;
-    const displayChar = statusChar === "?" ? "U" : statusChar;
-    badge.setText(displayChar);
-    badge.addClass(`gs-badge-${displayChar}`);
+    const statsEl = rightSide.createSpan("gs-tree-file-stats");
 
-    const actions = row.createDiv("gs-tree-file-actions");
+    const actions = rightSide.createDiv("gs-tree-file-actions");
     if (group !== "staged" && group !== "conflict") {
       const stageBtn = actions.createEl("button", { cls: "gs-icon-btn gs-icon-btn-sm" });
       setIcon(stageBtn, "plus");
@@ -487,13 +464,11 @@ export class SourceControlView extends ItemView {
       });
     }
 
-    const diffBtn = actions.createEl("button", { cls: "gs-icon-btn gs-icon-btn-sm" });
-    setIcon(diffBtn, "file-diff");
-    diffBtn.setAttribute("aria-label", "Diff");
-    diffBtn.addEventListener("click", (e) => {
-      e.stopPropagation();
-      this.plugin.openDiff(file.path);
-    });
+    const badge = rightSide.createSpan("gs-tree-badge");
+    const statusChar = group === "staged" ? file.indexStatus : file.workingStatus;
+    const displayChar = statusChar === "?" ? "U" : statusChar;
+    badge.setText(displayChar);
+    badge.addClass(`gs-badge-${displayChar}`);
 
     row.addEventListener("click", () => this.plugin.openDiff(file.path));
     row.addEventListener("contextmenu", (e) => {
@@ -567,8 +542,6 @@ export class SourceControlView extends ItemView {
   private rebuildSidebarGraph(): void {
     const result = computeGraphLayout(this.store.commits);
     this.graphNodes = result.nodes;
-    this.graphEdges = result.edges;
-    this.graphMaxCols = result.maxColumns;
     this.renderSidebarGraphList();
   }
 
