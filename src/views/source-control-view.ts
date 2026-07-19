@@ -321,7 +321,7 @@ export class SourceControlView extends ItemView {
       const btn = headerActions.createEl("button", { cls: "gs-icon-btn gs-icon-btn-sm" });
       setIcon(btn, "plus");
       btn.setAttribute("aria-label", "Stage All");
-      btn.addEventListener("click", async (e) => { e.stopPropagation(); await this.git.stage(files.map(f => f.path)); await this.store.refresh(); });
+      btn.addEventListener("click", async (e) => { e.stopPropagation(); await this.git.stageAll(); await this.store.refresh(); });
     }
     if (group === "changed") {
       const btn = headerActions.createEl("button", { cls: "gs-icon-btn gs-icon-btn-sm" });
