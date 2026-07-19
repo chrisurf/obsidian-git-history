@@ -375,7 +375,9 @@
 
 .gs-icon-btn {
   background: none;
-  border: none;
+  border: none !important;
+  box-shadow: none !important;
+  outline: none !important;
   color: var(--gs-text-muted);
   cursor: pointer;
   padding: 3px;
@@ -385,7 +387,15 @@
 }
 
 .gs-icon-btn svg { width: 14px; height: 14px; }
-.gs-icon-btn:hover { background: var(--gs-bg-hover); color: var(--gs-text); }
+.gs-icon-btn:hover,
+.gs-icon-btn:focus,
+.gs-icon-btn:active {
+  background: var(--gs-bg-hover);
+  color: var(--gs-text);
+  border: none !important;
+  box-shadow: none !important;
+  outline: none !important;
+}
 
 .gs-icon-btn-sm { padding: 2px; }
 .gs-icon-btn-sm svg { width: 12px; height: 12px; }
@@ -460,7 +470,9 @@
 
 .gs-section-actions .gs-icon-btn-sm {
   background: none;
-  border: none;
+  border: none !important;
+  box-shadow: none !important;
+  outline: none !important;
   color: var(--gs-text-muted);
   cursor: pointer;
   padding: 2px;
@@ -471,8 +483,13 @@
   height: 20px;
 }
 
-.gs-section-actions .gs-icon-btn-sm:hover {
+.gs-section-actions .gs-icon-btn-sm:hover,
+.gs-section-actions .gs-icon-btn-sm:focus,
+.gs-section-actions .gs-icon-btn-sm:active {
   background: rgba(255, 255, 255, 0.1);
+  border: none !important;
+  box-shadow: none !important;
+  outline: none !important;
   color: var(--gs-text);
 }
 
@@ -573,7 +590,9 @@
 
 .gs-action-btn {
   background: none;
-  border: none;
+  border: none !important;
+  box-shadow: none !important;
+  outline: none !important;
   color: var(--gs-text-muted);
   cursor: pointer;
   padding: 2px;
@@ -589,7 +608,16 @@
 
 .gs-action-btn:hover {
   background: rgba(255, 255, 255, 0.1);
+  border: none !important;
+  box-shadow: none !important;
   color: var(--gs-text);
+}
+
+.gs-action-btn:focus,
+.gs-action-btn:active {
+  border: none !important;
+  box-shadow: none !important;
+  outline: none !important;
 }
 
 .gs-tree-badge {
