@@ -371,6 +371,18 @@ export class SourceControlView extends ItemView {
     return paths;
   }
 
+  private collectFilePaths(node: FileTreeNode): string[] {
+    const paths: string[] = [];
+    for (const child of node.children) {
+      if (child.isDir) {
+        paths.push(...this.collectFilePaths(child));
+      } else if (child.file) {
+        paths.push(child.file.path);
+      }
+    }
+    return paths;
+  }
+
   private buildFileTree(files: FileStatus[], group: string): FileTreeNode[] {
     const root: FileTreeNode[] = [];
     const dirMap = new Map<string, FileTreeNode>();
@@ -425,6 +437,40 @@ export class SourceControlView extends ItemView {
         dirRow.createSpan("gs-tree-dirname").setText(node.name);
 
         const dirRight = dirRow.createDiv("gs-tree-dir-right");
+        const dirActions = dirRight.createDiv("gs-tree-dir-actions");
+
+        if (group === "changed" || group === "untracked") {
+          if (group === "changed") {
+            const discardBtn = dirActions.createEl("button", { cls: "gs-action-btn" });
+            setIcon(discardBtn, "undo");
+            discardBtn.setAttribute("aria-label", "Discard All in Folder");
+            discardBtn.addEventListener("click", async (e) => {
+              e.stopPropagation();
+              await this.git.discard(this.collectFilePaths(node));
+              await this.store.refresh();
+            });
+          }
+          const stageBtn = dirActions.createEl("button", { cls: "gs-action-btn" });
+          setIcon(stageBtn, "plus");
+          stageBtn.setAttribute("aria-label", "Stage All in Folder");
+          stageBtn.addEventListener("click", async (e) => {
+            e.stopPropagation();
+            await this.git.stage(this.collectFilePaths(node));
+            await this.store.refresh();
+          });
+        }
+
+        if (group === "staged") {
+          const unstageBtn = dirActions.createEl("button", { cls: "gs-action-btn" });
+          setIcon(unstageBtn, "minus");
+          unstageBtn.setAttribute("aria-label", "Unstage All in Folder");
+          unstageBtn.addEventListener("click", async (e) => {
+            e.stopPropagation();
+            await this.git.unstage(this.collectFilePaths(node));
+            await this.store.refresh();
+          });
+        }
+
         dirRight.createSpan("gs-tree-dir-dot");
 
         dirRow.addEventListener("click", () => {

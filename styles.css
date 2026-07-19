@@ -518,6 +518,8 @@
 }
 
 .gs-tree-dir:hover { background: var(--gs-bg-hover); }
+.gs-tree-dir:hover .gs-tree-dir-actions { opacity: 1; }
+.gs-tree-dir:hover .gs-tree-dir-dot { display: none; }
 
 .gs-tree-chevron { display: flex; color: var(--gs-text-faint); flex-shrink: 0; }
 .gs-tree-chevron svg { width: 12px; height: 12px; }
@@ -533,9 +535,18 @@
 .gs-tree-dir-right {
   display: flex;
   align-items: center;
+  gap: 2px;
   flex-shrink: 0;
   margin-left: auto;
   padding-right: 4px;
+}
+
+.gs-tree-dir-actions {
+  display: flex;
+  align-items: center;
+  gap: 2px;
+  opacity: 0;
+  transition: opacity 0.1s;
 }
 
 .gs-tree-dir-dot {
