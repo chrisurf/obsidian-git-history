@@ -387,11 +387,12 @@
 }
 
 .gs-icon-btn svg { width: 14px; height: 14px; }
-.gs-icon-btn:hover,
+.gs-icon-btn:hover {
+  background: rgba(255, 255, 255, 0.08);
+  color: var(--gs-text);
+}
 .gs-icon-btn:focus,
 .gs-icon-btn:active {
-  background: var(--gs-bg-hover);
-  color: var(--gs-text);
   border: none !important;
   box-shadow: none !important;
   outline: none !important;
@@ -483,14 +484,15 @@
   height: 20px;
 }
 
-.gs-section-actions .gs-icon-btn-sm:hover,
+.gs-section-actions .gs-icon-btn-sm:hover {
+  background: rgba(255, 255, 255, 0.08);
+  color: var(--gs-text);
+}
 .gs-section-actions .gs-icon-btn-sm:focus,
 .gs-section-actions .gs-icon-btn-sm:active {
-  background: rgba(255, 255, 255, 0.1);
   border: none !important;
   box-shadow: none !important;
   outline: none !important;
-  color: var(--gs-text);
 }
 
 /* Tree view – VS Code style */
@@ -607,9 +609,7 @@
 .gs-action-btn svg { width: 14px; height: 14px; }
 
 .gs-action-btn:hover {
-  background: rgba(255, 255, 255, 0.1);
-  border: none !important;
-  box-shadow: none !important;
+  background: rgba(255, 255, 255, 0.08);
   color: var(--gs-text);
 }
 
@@ -755,7 +755,10 @@
   transition: color 0.15s, border-color 0.15s;
 }
 
-.gs-sc-tab:hover { color: var(--gs-text); }
+.gs-sc-tab:hover {
+  color: var(--gs-text);
+  background: rgba(255, 255, 255, 0.08);
+}
 .gs-sc-tab:focus { outline: none !important; box-shadow: none !important; }
 
 .gs-sc-tab-active {
