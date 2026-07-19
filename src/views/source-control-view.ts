@@ -327,6 +327,25 @@ export class SourceControlView extends ItemView {
       btn.addEventListener("click", async (e) => { e.stopPropagation(); await this.git.discard(files.map(f => f.path)); await this.store.refresh(); });
     }
 
+    const tree = this.buildFileTree(files, group);
+    const allDirPaths = this.collectDirPaths(tree);
+
+    let allExpanded = allDirPaths.every(p => this.expandedDirs.has(p));
+    const toggleBtn = headerActions.createEl("button", { cls: "gs-icon-btn gs-icon-btn-sm" });
+    setIcon(toggleBtn, allExpanded ? "fold-vertical" : "unfold-vertical");
+    toggleBtn.setAttribute("aria-label", allExpanded ? "Collapse All" : "Expand All");
+    toggleBtn.addEventListener("click", (e) => {
+      e.stopPropagation();
+      allExpanded = !allExpanded;
+      for (const p of allDirPaths) {
+        if (allExpanded) this.expandedDirs.add(p);
+        else this.expandedDirs.delete(p);
+      }
+      setIcon(toggleBtn, allExpanded ? "fold-vertical" : "unfold-vertical");
+      toggleBtn.setAttribute("aria-label", allExpanded ? "Collapse All" : "Expand All");
+      this.renderFiles();
+    });
+
     const treeEl = section.createDiv("gs-sc-tree");
     let collapsed = false;
 
@@ -336,8 +355,18 @@ export class SourceControlView extends ItemView {
       setIcon(chevron, collapsed ? "chevron-right" : "chevron-down");
     });
 
-    const tree = this.buildFileTree(files, group);
     this.renderTree(treeEl, tree, group, 0);
+  }
+
+  private collectDirPaths(nodes: FileTreeNode[]): string[] {
+    const paths: string[] = [];
+    for (const n of nodes) {
+      if (n.isDir) {
+        paths.push(n.path);
+        paths.push(...this.collectDirPaths(n.children));
+      }
+    }
+    return paths;
   }
 
   private buildFileTree(files: FileStatus[], group: string): FileTreeNode[] {
