@@ -280,16 +280,14 @@ export class SourceControlView extends ItemView {
     this.fileListEl.empty();
 
     const staged = this.store.stagedFiles;
-    const changed = this.store.changedFiles;
-    const untracked = this.store.untrackedFiles;
+    const changed = [...this.store.changedFiles, ...this.store.untrackedFiles];
     const conflicts = this.store.mergeConflicts;
 
     if (conflicts.length > 0) this.renderSection("Merge Conflicts", conflicts, "conflict");
     if (staged.length > 0) this.renderSection("Staged Changes", staged, "staged");
     if (changed.length > 0) this.renderSection("Changes", changed, "changed");
-    if (untracked.length > 0) this.renderSection("Untracked", untracked, "untracked");
 
-    if (staged.length + changed.length + untracked.length + conflicts.length === 0) {
+    if (staged.length + changed.length + conflicts.length === 0) {
       this.fileListEl.createDiv("gs-sc-empty").setText("No changes");
     }
   }
@@ -313,7 +311,6 @@ export class SourceControlView extends ItemView {
     countBadge.setText(String(files.length));
     if (group === "staged") countBadge.addClass("gs-count-staged");
     else if (group === "changed") countBadge.addClass("gs-count-changed");
-    else if (group === "untracked") countBadge.addClass("gs-count-untracked");
     else if (group === "conflict") countBadge.addClass("gs-count-conflict");
     if (group === "staged") {
       const btn = headerActions.createEl("button", { cls: "gs-icon-btn gs-icon-btn-sm" });
@@ -443,8 +440,8 @@ export class SourceControlView extends ItemView {
         const dirRight = dirRow.createDiv("gs-tree-dir-right");
         const dirActions = dirRight.createDiv("gs-tree-dir-actions");
 
-        if (group === "changed" || group === "untracked") {
-          if (group === "changed") {
+        if (group === "changed") {
+          {
             const discardBtn = dirActions.createEl("button", { cls: "gs-action-btn" });
             setIcon(discardBtn, "undo");
             discardBtn.setAttribute("aria-label", "Discard All in Folder");
@@ -516,7 +513,7 @@ export class SourceControlView extends ItemView {
 
     const actions = rightSide.createDiv("gs-tree-file-actions");
 
-    if (group === "changed" || group === "untracked") {
+    if (group === "changed") {
       const openBtn = actions.createEl("button", { cls: "gs-action-btn" });
       setIcon(openBtn, "file-diff");
       openBtn.setAttribute("aria-label", "Open Changes");
@@ -526,7 +523,7 @@ export class SourceControlView extends ItemView {
       });
     }
 
-    if (group === "changed") {
+    if (group === "changed" && file.workingStatus !== "?") {
       const discardBtn = actions.createEl("button", { cls: "gs-action-btn" });
       setIcon(discardBtn, "undo");
       discardBtn.setAttribute("aria-label", "Discard Changes");
