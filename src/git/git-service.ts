@@ -155,6 +155,13 @@ export class GitService {
     );
   }
 
+  async discardAll(): Promise<void> {
+    await this.enqueue(async () => {
+      await this.exec(["checkout", "--", "."]);
+      await this.exec(["clean", "-fd"]);
+    });
+  }
+
   async commit(
     message: string,
     opts?: { amend?: boolean; allowEmpty?: boolean }
