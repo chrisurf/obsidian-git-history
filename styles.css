@@ -521,8 +521,6 @@
 
 .gs-tree-chevron { display: flex; color: var(--gs-text-faint); flex-shrink: 0; }
 .gs-tree-chevron svg { width: 12px; height: 12px; }
-.gs-tree-folder-icon { display: flex; color: var(--gs-text-muted); flex-shrink: 0; }
-.gs-tree-folder-icon svg { width: 16px; height: 16px; }
 .gs-tree-dirname {
   font-weight: 400;
   flex: 1;
@@ -562,8 +560,50 @@
 .gs-tree-file:hover { background: var(--gs-bg-hover); }
 .gs-tree-file:hover .gs-tree-file-actions { opacity: 1; }
 
-.gs-tree-file-icon { display: flex; color: var(--gs-text-muted); flex-shrink: 0; }
+.gs-tree-file-icon { display: flex; flex-shrink: 0; }
 .gs-tree-file-icon svg { width: 16px; height: 16px; }
+
+/* Folder icon color */
+.gs-tree-folder-icon { display: flex; color: #e8ab53; flex-shrink: 0; }
+.gs-tree-folder-icon svg { width: 16px; height: 16px; }
+
+/* File icon colors by extension */
+.gs-ext-md { color: #519aba; }
+.gs-ext-txt { color: #519aba; }
+.gs-ext-json { color: #cbcb41; }
+.gs-ext-js { color: #cbcb41; }
+.gs-ext-mjs { color: #cbcb41; }
+.gs-ext-ts { color: #519aba; }
+.gs-ext-tsx { color: #519aba; }
+.gs-ext-jsx { color: #519aba; }
+.gs-ext-css { color: #56b6c2; }
+.gs-ext-scss { color: #f55385; }
+.gs-ext-less { color: #56b6c2; }
+.gs-ext-html { color: #e37933; }
+.gs-ext-htm { color: #e37933; }
+.gs-ext-xml { color: #e37933; }
+.gs-ext-svg { color: #f55385; }
+.gs-ext-png { color: #a074c4; }
+.gs-ext-jpg { color: #a074c4; }
+.gs-ext-jpeg { color: #a074c4; }
+.gs-ext-gif { color: #a074c4; }
+.gs-ext-webp { color: #a074c4; }
+.gs-ext-yml { color: #a074c4; }
+.gs-ext-yaml { color: #a074c4; }
+.gs-ext-toml { color: #a074c4; }
+.gs-ext-py { color: #519aba; }
+.gs-ext-rb { color: #cc3e44; }
+.gs-ext-rs { color: #dea584; }
+.gs-ext-go { color: #519aba; }
+.gs-ext-java { color: #cc3e44; }
+.gs-ext-sh { color: #89e051; }
+.gs-ext-bash { color: #89e051; }
+.gs-ext-zsh { color: #89e051; }
+.gs-ext-env { color: #89e051; }
+.gs-ext-gitignore { color: #41535b; }
+.gs-ext-lock { color: #41535b; }
+.gs-ext-log { color: #41535b; }
+.gs-ext-default { color: var(--gs-text-muted); }
 
 .gs-tree-filename {
   flex: 1;

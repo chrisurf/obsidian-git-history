@@ -448,13 +448,14 @@ export class SourceControlView extends ItemView {
     row.style.paddingLeft = (depth * 16 + 8) + "px";
 
     const fileIcon = row.createSpan("gs-tree-file-icon");
-    const ext = file.path.split(".").pop() || "";
+    const ext = file.path.split(".").pop()?.toLowerCase() || "";
     const iconMap: Record<string, string> = {
       md: "file-text", json: "braces", css: "paintbrush", js: "file-code",
       ts: "file-code", html: "code", yml: "file-cog", yaml: "file-cog",
       png: "image", jpg: "image", svg: "image", gif: "image",
     };
     setIcon(fileIcon, iconMap[ext] || "file");
+    fileIcon.addClass(`gs-ext-${ext || "default"}`);
 
     const nameEl = row.createSpan("gs-tree-filename");
     nameEl.setText(file.path.split("/").pop() || file.path);
