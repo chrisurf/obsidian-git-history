@@ -356,7 +356,7 @@
   display: flex;
   justify-content: space-between;
   align-items: center;
-  padding: 6px 8px;
+  padding: 6px 12px;
   flex-shrink: 0;
 }
 
@@ -370,7 +370,7 @@
 
 .gs-sc-header-actions {
   display: flex;
-  gap: 1px;
+  gap: 4px;
 }
 
 .gs-icon-btn {
@@ -645,7 +645,7 @@
 
 /* Commit area – VS Code style (input + button at top) */
 .gs-sc-commit-area {
-  padding: 8px;
+  padding: 8px 12px;
   flex-shrink: 0;
   border-bottom: 1px solid var(--gs-border);
 }
@@ -678,7 +678,9 @@
   flex: 1;
   padding: 5px 12px;
   border-radius: 4px 0 0 4px;
-  border: none;
+  border: none !important;
+  box-shadow: none !important;
+  outline: none !important;
   background: var(--gs-green);
   color: #fff;
   cursor: pointer;
@@ -691,7 +693,14 @@
   gap: 4px;
 }
 
-.gs-commit-main-btn:hover { opacity: 0.9; }
+.gs-commit-main-btn:hover,
+.gs-commit-main-btn:focus,
+.gs-commit-main-btn:active {
+  opacity: 0.9;
+  border: none !important;
+  box-shadow: none !important;
+  outline: none !important;
+}
 
 .gs-commit-check-icon { display: flex; }
 .gs-commit-check-icon svg { width: 14px; height: 14px; }
@@ -699,8 +708,10 @@
 .gs-commit-dropdown-btn {
   padding: 5px 6px;
   border-radius: 0 4px 4px 0;
-  border: none;
-  border-left: 1px solid rgba(255,255,255,0.2);
+  border: none !important;
+  border-left: 1px solid rgba(255,255,255,0.2) !important;
+  box-shadow: none !important;
+  outline: none !important;
   background: var(--gs-green);
   color: #fff;
   cursor: pointer;
@@ -709,13 +720,22 @@
 }
 
 .gs-commit-dropdown-btn svg { width: 14px; height: 14px; }
-.gs-commit-dropdown-btn:hover { opacity: 0.9; }
+.gs-commit-dropdown-btn:hover,
+.gs-commit-dropdown-btn:focus,
+.gs-commit-dropdown-btn:active {
+  opacity: 0.9;
+  border: none !important;
+  border-left: 1px solid rgba(255,255,255,0.2) !important;
+  box-shadow: none !important;
+  outline: none !important;
+}
 
 /* --- Tab bar (Changes / Graph toggle) --- */
 .gs-sc-tabbar {
   display: flex;
   border-bottom: 1px solid var(--gs-border);
   flex-shrink: 0;
+  padding: 0 12px;
 }
 
 .gs-sc-tab {
@@ -726,18 +746,21 @@
   text-transform: uppercase;
   letter-spacing: 0.04em;
   background: none;
-  border: none;
-  border-bottom: 2px solid transparent;
+  border: none !important;
+  border-bottom: 2px solid transparent !important;
+  box-shadow: none !important;
+  outline: none !important;
   color: var(--gs-text-muted);
   cursor: pointer;
   transition: color 0.15s, border-color 0.15s;
 }
 
 .gs-sc-tab:hover { color: var(--gs-text); }
+.gs-sc-tab:focus { outline: none !important; box-shadow: none !important; }
 
 .gs-sc-tab-active {
   color: var(--gs-accent);
-  border-bottom-color: var(--gs-accent);
+  border-bottom-color: var(--gs-accent) !important;
 }
 
 .gs-sc-changes-panel,
