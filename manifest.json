@@ -1,0 +1,9 @@
+{
+  "id": "git-history",
+  "name": "Git Studio",
+  "version": "0.1.0",
+  "minAppVersion": "1.5.0",
+  "description": "Full Git management with GitKraken-style commit graph, source control panel, and diff viewer.",
+  "author": "chrisurf",
+  "isDesktopOnly": true
+}
