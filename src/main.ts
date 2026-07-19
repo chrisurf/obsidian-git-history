@@ -1,3 +1,4 @@
+import * as fs from "fs";
 import {
   Plugin,
   WorkspaceLeaf,
@@ -30,6 +31,8 @@ export default class GitStudioPlugin extends Plugin {
   private statusBar: StatusBarController | null = null;
   private refreshTimer: ReturnType<typeof setInterval> | null = null;
   private debounceTimer: ReturnType<typeof setTimeout> | null = null;
+  private fsDebounceTimer: ReturnType<typeof setTimeout> | null = null;
+  private fsWatcher: fs.FSWatcher | null = null;
 
   async onload(): Promise<void> {
     await this.loadSettings();
@@ -266,6 +269,20 @@ export default class GitStudioPlugin extends Plugin {
     this.registerEvent(
       this.app.vault.on("rename", () => this.debouncedRefresh())
     );
+
+    const adapter = this.app.vault.adapter as { basePath?: string; getBasePath?: () => string };
+    const basePath = adapter.getBasePath?.() ?? adapter.basePath ?? "";
+    if (basePath) {
+      try {
+        this.fsWatcher = fs.watch(basePath, { recursive: true }, (_event, filename) => {
+          if (typeof filename === "string" && filename.startsWith(".git")) return;
+          if (this.fsDebounceTimer) clearTimeout(this.fsDebounceTimer);
+          this.fsDebounceTimer = setTimeout(() => this.store.refresh(), 2000);
+        });
+      } catch {
+        // fs.watch may not support recursive on all platforms
+      }
+    }
   }
 
   private debouncedRefresh(): void {
@@ -286,6 +303,8 @@ export default class GitStudioPlugin extends Plugin {
   onunload(): void {
     if (this.refreshTimer) clearInterval(this.refreshTimer);
     if (this.debounceTimer) clearTimeout(this.debounceTimer);
+    if (this.fsDebounceTimer) clearTimeout(this.fsDebounceTimer);
+    if (this.fsWatcher) { this.fsWatcher.close(); this.fsWatcher = null; }
     this.statusBar?.destroy();
   }
 }

@@ -106,7 +106,7 @@ export class GitService {
           staged: xy[0] !== "." && xy[0] !== "?" && xy[0] !== " ",
         });
       } else if (line.startsWith("? ")) {
-        const path = line.substring(2);
+        const path = line.substring(2).replace(/\/+$/, "");
         entries.push({
           path,
           indexStatus: " ",

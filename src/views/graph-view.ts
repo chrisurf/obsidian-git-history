@@ -5,44 +5,45 @@ import { GitService } from "../git/git-service";
 import { computeGraphLayout, formatRelativeDate } from "../utils/graph-layout";
 import type GitStudioPlugin from "../main";
 
-const ROW_HEIGHT = 36;
-const COL_WIDTH = 16;
-const GRAPH_PADDING = 24;
-const NODE_RADIUS = 5;
-const OVERSCAN = 10;
+const ROW_HEIGHT = 32;
+const COL_WIDTH = 14;
+const GRAPH_COL_MIN_WIDTH = 60;
+const NODE_RADIUS = 4;
+const OVERSCAN = 15;
 
 const COLORS = [
-  "var(--graph-color-0, #f97583)",
-  "var(--graph-color-1, #79b8ff)",
-  "var(--graph-color-2, #85e89d)",
-  "var(--graph-color-3, #ffab70)",
-  "var(--graph-color-4, #b392f0)",
-  "var(--graph-color-5, #f692ce)",
-  "var(--graph-color-6, #73e3ff)",
-  "var(--graph-color-7, #ffd33d)",
-  "var(--graph-color-8, #ff7b72)",
-  "var(--graph-color-9, #7ee787)",
-  "var(--graph-color-10, #a5d6ff)",
-  "var(--graph-color-11, #d2a8ff)",
+  "#0ea5e9",
+  "#22c55e",
+  "#f59e0b",
+  "#ef4444",
+  "#a855f7",
+  "#ec4899",
+  "#14b8a6",
+  "#f97316",
+  "#6366f1",
+  "#84cc16",
+  "#06b6d4",
+  "#e879f9",
 ];
 
 export class GraphView extends ItemView {
   private plugin: GitStudioPlugin;
   private store: RepoStore;
   private git: GitService;
-  private containerEl_: HTMLElement | null = null;
+
   private scrollEl: HTMLElement | null = null;
-  private svgEl: SVGSVGElement | null = null;
-  private rowsEl: HTMLElement | null = null;
+  private tableBody: HTMLElement | null = null;
+  private svgLayer: SVGSVGElement | null = null;
   private spacerEl: HTMLElement | null = null;
-  private searchInput: HTMLInputElement | null = null;
+  private popupEl: HTMLElement | null = null;
+
   private nodes: GraphNode[] = [];
   private edges: GraphEdge[] = [];
   private maxColumns = 0;
-  private selectedCommit: string | null = null;
-  private detailEl: HTMLElement | null = null;
+  private selectedHash: string | null = null;
   private filterText = "";
   private filteredIndices: number[] | null = null;
+  private hasWorkingChanges = false;
 
   constructor(leaf: WorkspaceLeaf, plugin: GitStudioPlugin) {
     super(leaf);
@@ -58,59 +59,102 @@ export class GraphView extends ItemView {
   async onOpen(): Promise<void> {
     const { contentEl } = this;
     contentEl.empty();
-    contentEl.addClass("git-studio-graph-view");
+    contentEl.addClass("gs-graph-view");
 
-    const toolbar = contentEl.createDiv("git-graph-toolbar");
-    this.buildToolbar(toolbar);
+    this.buildToolbar(contentEl);
+    this.buildColumnHeaders(contentEl);
 
-    const main = contentEl.createDiv("git-graph-main");
-
-    const graphPane = main.createDiv("git-graph-pane");
-    this.scrollEl = graphPane.createDiv("git-graph-scroll");
+    const scrollWrap = contentEl.createDiv("gs-graph-scroll-wrap");
+    this.scrollEl = scrollWrap;
     this.scrollEl.addEventListener("scroll", () => this.renderVisible());
 
-    const inner = this.scrollEl.createDiv("git-graph-inner");
-    this.svgEl = document.createElementNS("http://www.w3.org/2000/svg", "svg");
-    this.svgEl.addClass("git-graph-svg");
-    inner.appendChild(this.svgEl);
+    const inner = this.scrollEl.createDiv("gs-graph-inner");
 
-    this.rowsEl = inner.createDiv("git-graph-rows");
-    this.spacerEl = inner.createDiv("git-graph-spacer");
+    this.svgLayer = document.createElementNS("http://www.w3.org/2000/svg", "svg");
+    this.svgLayer.addClass("gs-graph-svg");
+    inner.appendChild(this.svgLayer);
 
-    this.detailEl = main.createDiv("git-graph-detail");
-    this.detailEl.createDiv("git-graph-detail-placeholder").setText("Select a commit to view details");
+    this.tableBody = inner.createDiv("gs-graph-tbody");
+    this.spacerEl = inner.createDiv("gs-graph-spacer");
+
+    this.popupEl = contentEl.createDiv("gs-commit-popup");
+    this.popupEl.style.display = "none";
 
     this.registerEvent(this.store.on("log-changed", () => this.rebuildGraph()));
+    this.registerEvent(this.store.on("status-changed", () => {
+      this.hasWorkingChanges = this.store.status.length > 0;
+      this.rebuildGraph();
+    }));
 
-    await this.store.refreshLog({ all: true, maxCount: 500 });
+    await Promise.all([
+      this.store.refreshLog({ all: true, maxCount: 500 }),
+      this.store.refresh(),
+    ]);
   }
 
   private buildToolbar(el: HTMLElement): void {
-    const left = el.createDiv("git-graph-toolbar-left");
+    const bar = el.createDiv("gs-graph-toolbar");
 
-    const refreshBtn = left.createEl("button", { cls: "git-graph-btn" });
-    setIcon(refreshBtn, "refresh-cw");
-    refreshBtn.setAttribute("aria-label", "Refresh");
-    refreshBtn.addEventListener("click", () => this.store.refreshLog({ all: true, maxCount: 500 }));
-
-    const allBtn = left.createEl("button", { cls: "git-graph-btn git-graph-btn-active", text: "All branches" });
-    let showAll = true;
-    allBtn.addEventListener("click", () => {
-      showAll = !showAll;
-      allBtn.toggleClass("git-graph-btn-active", showAll);
-      allBtn.textContent = showAll ? "All branches" : "Current branch";
-      this.store.refreshLog({ all: showAll, maxCount: 500 });
+    const left = bar.createDiv("gs-toolbar-left");
+    const searchWrap = left.createDiv("gs-search-wrap");
+    const searchIcon = searchWrap.createSpan("gs-search-icon");
+    setIcon(searchIcon, "search");
+    const searchInput = searchWrap.createEl("input", {
+      cls: "gs-search-input",
+      attr: { type: "text", placeholder: "Search commits (press Enter, ↑↓ for history)" },
     });
-
-    const right = el.createDiv("git-graph-toolbar-right");
-    this.searchInput = right.createEl("input", {
-      cls: "git-graph-search",
-      attr: { type: "text", placeholder: "Search commits..." },
-    });
-    this.searchInput.addEventListener("input", () => {
-      this.filterText = this.searchInput?.value.toLowerCase() || "";
+    searchInput.addEventListener("input", () => {
+      this.filterText = searchInput.value.toLowerCase();
       this.applyFilter();
     });
+
+    const right = bar.createDiv("gs-toolbar-right");
+
+    const allBtn = right.createEl("button", { cls: "gs-tbtn" });
+    setIcon(allBtn, "list");
+    allBtn.setAttribute("aria-label", "All");
+    allBtn.addClass("gs-tbtn-active");
+
+    const branchFilterBtn = right.createEl("button", { cls: "gs-tbtn" });
+    setIcon(branchFilterBtn, "filter");
+    branchFilterBtn.setAttribute("aria-label", "Filter branches");
+
+    let showAll = true;
+    branchFilterBtn.addEventListener("click", () => {
+      showAll = !showAll;
+      branchFilterBtn.toggleClass("gs-tbtn-active", !showAll);
+      allBtn.toggleClass("gs-tbtn-active", showAll);
+      this.store.refreshLog({ all: showAll, maxCount: 500 });
+    });
+    allBtn.addEventListener("click", () => {
+      showAll = true;
+      allBtn.addClass("gs-tbtn-active");
+      branchFilterBtn.removeClass("gs-tbtn-active");
+      this.store.refreshLog({ all: true, maxCount: 500 });
+    });
+
+    const refreshBtn = right.createEl("button", { cls: "gs-tbtn" });
+    setIcon(refreshBtn, "refresh-cw");
+    refreshBtn.setAttribute("aria-label", "Refresh");
+    refreshBtn.addEventListener("click", () => {
+      this.store.refreshLog({ all: showAll, maxCount: 500 });
+      this.store.refresh();
+    });
+  }
+
+  private buildColumnHeaders(el: HTMLElement): void {
+    const header = el.createDiv("gs-graph-header");
+    header.createDiv("gs-col gs-col-ref").setText("BRANCH / TAG");
+    header.createDiv("gs-col gs-col-graph").setText("GRAPH");
+    header.createDiv("gs-col gs-col-msg").setText("COMMIT MESSAGE");
+    header.createDiv("gs-col gs-col-author").setText("AUTHOR");
+    header.createDiv("gs-col gs-col-files"); // icon column
+    const filesIcon = header.querySelector(".gs-col-files") as HTMLElement;
+    setIcon(filesIcon, "files");
+    header.createDiv("gs-col gs-col-date"); // icon column
+    const dateIcon = header.querySelector(".gs-col-date") as HTMLElement;
+    setIcon(dateIcon, "calendar");
+    header.createDiv("gs-col gs-col-hash").setText("SHA");
   }
 
   private applyFilter(): void {
@@ -139,8 +183,6 @@ export class GraphView extends ItemView {
     this.edges = result.edges;
     this.maxColumns = result.maxColumns;
     this.filteredIndices = null;
-    this.filterText = "";
-    if (this.searchInput) this.searchInput.value = "";
     this.updateLayout();
     this.renderVisible();
   }
@@ -149,51 +191,53 @@ export class GraphView extends ItemView {
     return this.filteredIndices ?? this.nodes.map((_, i) => i);
   }
 
+  private getRowOffset(): number {
+    return this.hasWorkingChanges ? 1 : 0;
+  }
+
   private updateLayout(): void {
     const rows = this.getVisibleRows();
-    const totalHeight = rows.length * ROW_HEIGHT;
+    const totalRows = rows.length + this.getRowOffset();
+    const totalHeight = totalRows * ROW_HEIGHT;
     if (this.spacerEl) this.spacerEl.style.height = totalHeight + "px";
 
-    const graphWidth = (this.maxColumns + 1) * COL_WIDTH + GRAPH_PADDING;
-    if (this.svgEl) {
-      this.svgEl.style.width = graphWidth + "px";
-      this.svgEl.style.height = totalHeight + "px";
+    const graphWidth = Math.max(GRAPH_COL_MIN_WIDTH, (this.maxColumns + 1) * COL_WIDTH + 20);
+    if (this.svgLayer) {
+      this.svgLayer.style.height = totalHeight + "px";
+      this.svgLayer.setAttribute("height", String(totalHeight));
     }
+    this.contentEl.style.setProperty("--gs-graph-col-width", graphWidth + "px");
   }
 
   private renderVisible(): void {
-    if (!this.scrollEl || !this.svgEl || !this.rowsEl) return;
+    if (!this.scrollEl || !this.svgLayer || !this.tableBody) return;
 
     const visibleRows = this.getVisibleRows();
+    const offset = this.getRowOffset();
     const scrollTop = this.scrollEl.scrollTop;
     const viewHeight = this.scrollEl.clientHeight;
-    const startRow = Math.max(0, Math.floor(scrollTop / ROW_HEIGHT) - OVERSCAN);
-    const endRow = Math.min(
-      visibleRows.length - 1,
+
+    const startVisRow = Math.max(0, Math.floor(scrollTop / ROW_HEIGHT) - OVERSCAN);
+    const endVisRow = Math.min(
+      visibleRows.length + offset - 1,
       Math.ceil((scrollTop + viewHeight) / ROW_HEIGHT) + OVERSCAN
     );
 
-    this.renderSvg(visibleRows, startRow, endRow);
-    this.renderRows(visibleRows, startRow, endRow);
+    this.renderSvg(visibleRows, startVisRow, endVisRow, offset);
+    this.renderRows(visibleRows, startVisRow, endVisRow, offset);
   }
 
-  private renderSvg(visibleRows: number[], startRow: number, endRow: number): void {
-    if (!this.svgEl) return;
-    while (this.svgEl.firstChild) this.svgEl.removeChild(this.svgEl.firstChild);
+  private renderSvg(visibleRows: number[], startVis: number, endVis: number, offset: number): void {
+    if (!this.svgLayer) return;
+    while (this.svgLayer.firstChild) this.svgLayer.removeChild(this.svgLayer.firstChild);
 
-    const graphWidth = (this.maxColumns + 1) * COL_WIDTH + GRAPH_PADDING;
-    const totalHeight = visibleRows.length * ROW_HEIGHT;
-    this.svgEl.setAttribute("viewBox", `0 0 ${graphWidth} ${totalHeight}`);
-    this.svgEl.setAttribute("width", String(graphWidth));
-    this.svgEl.setAttribute("height", String(totalHeight));
+    const graphWidth = Math.max(GRAPH_COL_MIN_WIDTH, (this.maxColumns + 1) * COL_WIDTH + 20);
+    const totalHeight = (visibleRows.length + offset) * ROW_HEIGHT;
+    this.svgLayer.setAttribute("viewBox", `0 0 ${graphWidth} ${totalHeight}`);
+    this.svgLayer.setAttribute("width", String(graphWidth));
 
     const visRowMap = new Map<number, number>();
-    visibleRows.forEach((origIdx, visIdx) => visRowMap.set(origIdx, visIdx));
-
-    const visibleOrigSet = new Set<number>();
-    for (let i = startRow; i <= endRow; i++) {
-      visibleOrigSet.add(visibleRows[i]);
-    }
+    visibleRows.forEach((origIdx, visIdx) => visRowMap.set(origIdx, visIdx + offset));
 
     for (const edge of this.edges) {
       const fromVis = visRowMap.get(edge.fromRow);
@@ -202,11 +246,11 @@ export class GraphView extends ItemView {
 
       const minVis = Math.min(fromVis, toVis);
       const maxVis = Math.max(fromVis, toVis);
-      if (maxVis < startRow - 5 || minVis > endRow + 5) continue;
+      if (maxVis < startVis - 5 || minVis > endVis + 5) continue;
 
-      const x1 = edge.fromCol * COL_WIDTH + GRAPH_PADDING / 2;
+      const x1 = edge.fromCol * COL_WIDTH + 10;
       const y1 = fromVis * ROW_HEIGHT + ROW_HEIGHT / 2;
-      const x2 = edge.toCol * COL_WIDTH + GRAPH_PADDING / 2;
+      const x2 = edge.toCol * COL_WIDTH + 10;
       const y2 = toVis * ROW_HEIGHT + ROW_HEIGHT / 2;
 
       const path = document.createElementNS("http://www.w3.org/2000/svg", "path");
@@ -215,208 +259,321 @@ export class GraphView extends ItemView {
       if (x1 === x2) {
         path.setAttribute("d", `M${x1},${y1} L${x2},${y2}`);
       } else {
-        const midY = y1 + ROW_HEIGHT;
-        path.setAttribute(
-          "d",
-          `M${x1},${y1} C${x1},${midY} ${x2},${y2 - ROW_HEIGHT} ${x2},${y2}`
-        );
+        const cy1 = y1 + Math.min(ROW_HEIGHT * 1.5, Math.abs(y2 - y1) * 0.4);
+        const cy2 = y2 - Math.min(ROW_HEIGHT * 1.5, Math.abs(y2 - y1) * 0.4);
+        path.setAttribute("d", `M${x1},${y1} C${x1},${cy1} ${x2},${cy2} ${x2},${y2}`);
       }
       path.setAttribute("stroke", color);
       path.setAttribute("stroke-width", "2");
       path.setAttribute("fill", "none");
-      this.svgEl!.appendChild(path);
+      this.svgLayer!.appendChild(path);
     }
 
-    for (let i = startRow; i <= endRow; i++) {
-      const origIdx = visibleRows[i];
+    for (let vi = 0; vi < visibleRows.length; vi++) {
+      const visRow = vi + offset;
+      if (visRow < startVis - 2 || visRow > endVis + 2) continue;
+      const origIdx = visibleRows[vi];
       if (origIdx >= this.nodes.length) continue;
       const node = this.nodes[origIdx];
-      const x = node.column * COL_WIDTH + GRAPH_PADDING / 2;
-      const y = i * ROW_HEIGHT + ROW_HEIGHT / 2;
+      const x = node.column * COL_WIDTH + 10;
+      const y = visRow * ROW_HEIGHT + ROW_HEIGHT / 2;
       const color = COLORS[node.color % COLORS.length];
+      const isMerge = node.commit.parents.length > 1;
 
       const circle = document.createElementNS("http://www.w3.org/2000/svg", "circle");
       circle.setAttribute("cx", String(x));
       circle.setAttribute("cy", String(y));
-      circle.setAttribute("r", String(NODE_RADIUS));
-      circle.setAttribute("fill", node.commit.parents.length > 1 ? "var(--background-primary)" : color);
+      circle.setAttribute("r", String(isMerge ? NODE_RADIUS + 1 : NODE_RADIUS));
+      circle.setAttribute("fill", isMerge ? "var(--background-primary, #1e1e2e)" : color);
       circle.setAttribute("stroke", color);
-      circle.setAttribute("stroke-width", node.commit.parents.length > 1 ? "2.5" : "0");
-      this.svgEl!.appendChild(circle);
+      circle.setAttribute("stroke-width", isMerge ? "2" : "0");
+      this.svgLayer!.appendChild(circle);
+    }
+
+    if (this.hasWorkingChanges && startVis === 0) {
+      const cx = 10;
+      const cy = ROW_HEIGHT / 2;
+      const ring = document.createElementNS("http://www.w3.org/2000/svg", "circle");
+      ring.setAttribute("cx", String(cx));
+      ring.setAttribute("cy", String(cy));
+      ring.setAttribute("r", String(NODE_RADIUS + 2));
+      ring.setAttribute("fill", "none");
+      ring.setAttribute("stroke", "#22c55e");
+      ring.setAttribute("stroke-width", "2");
+      ring.setAttribute("stroke-dasharray", "3 2");
+      this.svgLayer!.appendChild(ring);
+      const dot = document.createElementNS("http://www.w3.org/2000/svg", "circle");
+      dot.setAttribute("cx", String(cx));
+      dot.setAttribute("cy", String(cy));
+      dot.setAttribute("r", "2");
+      dot.setAttribute("fill", "#22c55e");
+      this.svgLayer!.appendChild(dot);
     }
   }
 
-  private renderRows(visibleRows: number[], startRow: number, endRow: number): void {
-    if (!this.rowsEl) return;
-    this.rowsEl.empty();
+  private renderRows(visibleRows: number[], startVis: number, endVis: number, offset: number): void {
+    if (!this.tableBody) return;
+    this.tableBody.empty();
 
-    const graphWidth = (this.maxColumns + 1) * COL_WIDTH + GRAPH_PADDING;
-    this.rowsEl.style.paddingLeft = graphWidth + "px";
+    if (this.hasWorkingChanges && startVis === 0) {
+      const wcRow = this.createWorkingChangesRow();
+      wcRow.style.top = "0px";
+      wcRow.style.height = ROW_HEIGHT + "px";
+      this.tableBody.appendChild(wcRow);
+    }
 
-    for (let i = startRow; i <= endRow; i++) {
-      const origIdx = visibleRows[i];
+    for (let vi = 0; vi < visibleRows.length; vi++) {
+      const visRow = vi + offset;
+      if (visRow < startVis || visRow > endVis) continue;
+      const origIdx = visibleRows[vi];
       if (origIdx >= this.nodes.length) continue;
+
       const node = this.nodes[origIdx];
       const commit = node.commit;
-
-      const row = this.rowsEl.createDiv("git-graph-row");
-      row.style.top = i * ROW_HEIGHT + "px";
+      const row = this.createCommitRow(commit, node);
+      row.style.top = visRow * ROW_HEIGHT + "px";
       row.style.height = ROW_HEIGHT + "px";
-      row.dataset.hash = commit.hash;
-
-      if (commit.hash === this.selectedCommit) {
-        row.addClass("git-graph-row-selected");
-      }
-
-      const refsEl = row.createDiv("git-graph-refs");
-      for (const ref of commit.refs) {
-        const pill = refsEl.createSpan("git-graph-ref");
-        if (ref.type === "head") {
-          pill.addClass("git-graph-ref-head");
-        } else if (ref.type === "remote") {
-          pill.addClass("git-graph-ref-remote");
-        } else if (ref.type === "tag") {
-          pill.addClass("git-graph-ref-tag");
-        } else {
-          pill.addClass("git-graph-ref-branch");
-        }
-        pill.setText(ref.name);
-      }
-
-      const msgEl = row.createSpan("git-graph-message");
-      msgEl.setText(commit.message);
-
-      const metaEl = row.createDiv("git-graph-meta");
-      const authorEl = metaEl.createSpan("git-graph-author");
-      authorEl.setText(commit.author);
-      const dateEl = metaEl.createSpan("git-graph-date");
-      dateEl.setText(formatRelativeDate(commit.date));
-      const hashEl = metaEl.createSpan("git-graph-hash");
-      hashEl.setText(commit.shortHash);
-
-      row.addEventListener("click", () => this.selectCommit(commit));
-      row.addEventListener("contextmenu", (e) => this.showCommitMenu(e, commit));
+      this.tableBody.appendChild(row);
     }
   }
 
-  private async selectCommit(commit: CommitInfo): Promise<void> {
-    this.selectedCommit = commit.hash;
+  private createWorkingChangesRow(): HTMLElement {
+    const row = createDiv("gs-graph-row gs-row-wc");
+    row.createDiv("gs-cell gs-cell-ref");
+    row.createDiv("gs-cell gs-cell-graph");
+
+    const msgCell = row.createDiv("gs-cell gs-cell-msg");
+    msgCell.createSpan("gs-wc-label").setText("Working Changes");
+
+    const authorCell = row.createDiv("gs-cell gs-cell-author");
+    authorCell.setText("You");
+
+    const filesCell = row.createDiv("gs-cell gs-cell-files");
+    const changed = this.store.changedFiles.length + this.store.untrackedFiles.length;
+    const staged = this.store.stagedFiles.length;
+    const statsEl = filesCell.createSpan("gs-file-stats");
+    if (staged > 0) statsEl.createSpan("gs-stat-staged").setText(`+${staged}`);
+    if (changed > 0) statsEl.createSpan("gs-stat-changed").setText(`${staged > 0 ? " / " : ""}${changed}`);
+
+    row.createDiv("gs-cell gs-cell-date");
+    row.createDiv("gs-cell gs-cell-hash");
+
+    row.addEventListener("click", () => this.plugin.openSourceControlView());
+    return row;
+  }
+
+  private createCommitRow(commit: CommitInfo, node: GraphNode): HTMLElement {
+    const row = createDiv("gs-graph-row");
+    if (commit.hash === this.selectedHash) row.addClass("gs-row-selected");
+
+    const refCell = row.createDiv("gs-cell gs-cell-ref");
+    for (const ref of commit.refs) {
+      const pill = refCell.createSpan("gs-ref-pill");
+      if (ref.type === "head") {
+        pill.addClass("gs-ref-head");
+        const icon = pill.createSpan("gs-ref-icon");
+        setIcon(icon, "check");
+      } else if (ref.type === "remote") {
+        pill.addClass("gs-ref-remote");
+        const icon = pill.createSpan("gs-ref-icon");
+        setIcon(icon, "cloud");
+      } else if (ref.type === "tag") {
+        pill.addClass("gs-ref-tag");
+        const icon = pill.createSpan("gs-ref-icon");
+        setIcon(icon, "tag");
+      } else {
+        pill.addClass("gs-ref-branch");
+        const icon = pill.createSpan("gs-ref-icon");
+        setIcon(icon, "git-branch");
+      }
+      pill.createSpan("gs-ref-name").setText(ref.name);
+    }
+
+    row.createDiv("gs-cell gs-cell-graph");
+
+    const msgCell = row.createDiv("gs-cell gs-cell-msg");
+    msgCell.createSpan("gs-commit-msg").setText(commit.message);
+
+    const authorCell = row.createDiv("gs-cell gs-cell-author");
+    authorCell.setText(commit.author);
+
+    const filesCell = row.createDiv("gs-cell gs-cell-files");
+
+    const dateCell = row.createDiv("gs-cell gs-cell-date");
+    dateCell.setText(formatRelativeDate(commit.date));
+
+    const hashCell = row.createDiv("gs-cell gs-cell-hash");
+    hashCell.setText(commit.shortHash);
+
+    row.addEventListener("click", (e) => this.onRowClick(e, commit, row));
+    row.addEventListener("contextmenu", (e) => this.showCommitMenu(e, commit));
+
+    this.loadFileCount(commit.hash, filesCell);
+
+    return row;
+  }
+
+  private async loadFileCount(hash: string, cell: HTMLElement): Promise<void> {
+    try {
+      const files = await this.git.showCommitFiles(hash);
+      const icon = cell.createSpan("gs-files-icon");
+      setIcon(icon, "file");
+      cell.createSpan("gs-files-count").setText(String(files.length));
+    } catch {
+      // ignore
+    }
+  }
+
+  private async onRowClick(e: MouseEvent, commit: CommitInfo, row: HTMLElement): Promise<void> {
+    if (this.selectedHash === commit.hash) {
+      this.selectedHash = null;
+      this.hidePopup();
+      this.renderVisible();
+      return;
+    }
+
+    this.selectedHash = commit.hash;
     this.renderVisible();
-    await this.showCommitDetails(commit);
+    await this.showPopup(commit, row);
   }
 
-  private async showCommitDetails(commit: CommitInfo): Promise<void> {
-    if (!this.detailEl) return;
-    this.detailEl.empty();
+  private async showPopup(commit: CommitInfo, anchor: HTMLElement): Promise<void> {
+    if (!this.popupEl || !this.scrollEl) return;
+    this.popupEl.empty();
+    this.popupEl.style.display = "block";
 
-    const header = this.detailEl.createDiv("git-detail-header");
-    header.createEl("h3", { text: commit.message });
-    if (commit.body) {
-      header.createEl("p", { cls: "git-detail-body", text: commit.body });
-    }
+    const header = this.popupEl.createDiv("gs-popup-header");
+    const avatar = header.createDiv("gs-popup-avatar");
+    const initials = commit.author.split(" ").map(w => w[0] || "").join("").substring(0, 2).toUpperCase();
+    avatar.setText(initials);
 
-    const info = this.detailEl.createDiv("git-detail-info");
-    info.createDiv({ cls: "git-detail-row" }).innerHTML =
-      `<span class="git-detail-label">Author</span><span>${this.escapeHtml(commit.author)} &lt;${this.escapeHtml(commit.authorEmail)}&gt;</span>`;
-    info.createDiv({ cls: "git-detail-row" }).innerHTML =
-      `<span class="git-detail-label">Date</span><span>${commit.date.toLocaleString()}</span>`;
-    info.createDiv({ cls: "git-detail-row" }).innerHTML =
-      `<span class="git-detail-label">Hash</span><span class="git-detail-hash">${commit.hash}</span>`;
+    const info = header.createDiv("gs-popup-info");
+    const authorLine = info.createDiv("gs-popup-author-line");
+    authorLine.createSpan("gs-popup-author-name").setText(commit.author);
+    authorLine.createSpan("gs-popup-time").setText(formatRelativeDate(commit.date));
+    authorLine.createSpan("gs-popup-fulldate").setText(`(${commit.date.toLocaleString()})`);
+
+    const metaLine = info.createDiv("gs-popup-meta");
+    const parentLabel = metaLine.createSpan("gs-popup-parent-label");
+    parentLabel.setText(`◆ ${commit.shortHash}`);
     if (commit.parents.length > 0) {
-      info.createDiv({ cls: "git-detail-row" }).innerHTML =
-        `<span class="git-detail-label">Parents</span><span>${commit.parents.map(p => p.substring(0, 7)).join(", ")}</span>`;
+      metaLine.createSpan("gs-popup-parent-hash").setText(
+        ` ← ${commit.parents.map(p => p.substring(0, 7)).join(", ")}`
+      );
     }
-
-    const copyBtn = info.createEl("button", { cls: "git-graph-btn git-detail-copy", text: "Copy hash" });
-    copyBtn.addEventListener("click", () => {
-      navigator.clipboard.writeText(commit.hash);
-      new Notice("Hash copied");
-    });
 
     try {
       const files = await this.git.showCommitFiles(commit.hash);
-      const fileList = this.detailEl.createDiv("git-detail-files");
-      fileList.createEl("h4", { text: `Changed files (${files.length})` });
-      for (const f of files) {
-        const row = fileList.createDiv("git-detail-file-row");
-        const stats = row.createSpan("git-detail-file-stats");
-        if (f.additions > 0) stats.createSpan("git-stat-add").setText(`+${f.additions}`);
-        if (f.deletions > 0) stats.createSpan("git-stat-del").setText(`-${f.deletions}`);
-        const pathEl = row.createSpan("git-detail-file-path");
-        pathEl.setText(f.path);
-        row.addEventListener("click", () => {
-          this.plugin.openDiff(f.path, commit.hash);
-        });
-      }
+      const totalAdd = files.reduce((s, f) => s + f.additions, 0);
+      const totalDel = files.reduce((s, f) => s + f.deletions, 0);
+      const statsLine = metaLine.createSpan("gs-popup-stats");
+      statsLine.setText(` (${files.length} file${files.length !== 1 ? "s" : ""} changed)`);
+      if (totalAdd > 0) statsLine.createSpan("gs-stat-add").setText(` ${totalAdd} additions`);
+      if (totalDel > 0) statsLine.createSpan("gs-stat-del").setText(` ${totalDel} deletions`);
     } catch {
-      this.detailEl.createDiv({ text: "Could not load file list." });
+      // ignore
     }
+
+    const msgDiv = this.popupEl.createDiv("gs-popup-msg");
+    msgDiv.setText(commit.message);
+    if (commit.body) {
+      this.popupEl.createDiv("gs-popup-body").setText(commit.body);
+    }
+
+    const actions = this.popupEl.createDiv("gs-popup-actions");
+    const copyBtn = actions.createEl("button", { cls: "gs-popup-btn", text: "Copy SHA" });
+    copyBtn.addEventListener("click", (e) => {
+      e.stopPropagation();
+      navigator.clipboard.writeText(commit.hash);
+      new Notice("SHA copied");
+    });
+    const diffBtn = actions.createEl("button", { cls: "gs-popup-btn", text: "View Changes" });
+    diffBtn.addEventListener("click", async (e) => {
+      e.stopPropagation();
+      try {
+        const files = await this.git.showCommitFiles(commit.hash);
+        if (files.length > 0) {
+          this.plugin.openDiff(files[0].path, commit.hash);
+        }
+      } catch {
+        new Notice("Could not load changes");
+      }
+    });
+    const branchBtn = actions.createEl("button", { cls: "gs-popup-btn", text: "Create Branch" });
+    branchBtn.addEventListener("click", async (e) => {
+      e.stopPropagation();
+      const name = await this.promptText("New branch name:");
+      if (name) {
+        try {
+          await this.git.createBranch(name, commit.hash);
+          await this.store.refresh();
+          await this.store.refreshLog({ all: true });
+          new Notice(`Branch '${name}' created`);
+        } catch (err: unknown) {
+          new Notice(`Error: ${err instanceof Error ? err.message : String(err)}`);
+        }
+      }
+    });
+
+    const anchorRect = anchor.getBoundingClientRect();
+    const scrollRect = this.scrollEl.getBoundingClientRect();
+    this.popupEl.style.left = "0";
+    this.popupEl.style.right = "0";
+    this.popupEl.style.top = (anchorRect.bottom - scrollRect.top + this.scrollEl.scrollTop) + "px";
+  }
+
+  private hidePopup(): void {
+    if (this.popupEl) this.popupEl.style.display = "none";
   }
 
   private showCommitMenu(event: MouseEvent, commit: CommitInfo): void {
     const menu = new Menu();
-
-    menu.addItem((item) =>
-      item.setTitle("Copy hash").setIcon("copy").onClick(() => {
-        navigator.clipboard.writeText(commit.hash);
-        new Notice("Hash copied");
-      })
-    );
-
-    menu.addItem((item) =>
-      item.setTitle("Create branch here...").setIcon("git-branch-plus").onClick(async () => {
-        const name = await this.promptText("New branch name:");
-        if (name) {
-          try {
-            await this.git.createBranch(name, commit.hash);
-            await this.store.refresh();
-            await this.store.refreshLog({ all: true });
-            new Notice(`Branch '${name}' created`);
-          } catch (e: unknown) {
-            new Notice(`Error: ${e instanceof Error ? e.message : String(e)}`);
-          }
-        }
-      })
-    );
-
-    menu.addItem((item) =>
-      item.setTitle("Checkout").setIcon("log-in").onClick(async () => {
-        try {
-          await this.git.checkout(commit.hash);
-          await this.store.refresh();
-          new Notice("Checked out " + commit.shortHash);
-        } catch (e: unknown) {
-          new Notice(`Error: ${e instanceof Error ? e.message : String(e)}`);
-        }
-      })
-    );
-
+    menu.addItem(i => i.setTitle("Copy SHA").setIcon("copy").onClick(() => {
+      navigator.clipboard.writeText(commit.hash);
+      new Notice("SHA copied");
+    }));
     menu.addSeparator();
-
-    menu.addItem((item) =>
-      item.setTitle("Cherry-pick").setIcon("cherry").onClick(async () => {
+    menu.addItem(i => i.setTitle("Create Branch here...").setIcon("git-branch-plus").onClick(async () => {
+      const name = await this.promptText("New branch name:");
+      if (name) {
         try {
-          await this.git["exec"](["cherry-pick", commit.hash]);
+          await this.git.createBranch(name, commit.hash);
           await this.store.refresh();
-          new Notice("Cherry-picked " + commit.shortHash);
+          await this.store.refreshLog({ all: true });
+          new Notice(`Branch '${name}' created`);
         } catch (e: unknown) {
           new Notice(`Error: ${e instanceof Error ? e.message : String(e)}`);
         }
-      })
-    );
-
-    menu.addItem((item) =>
-      item.setTitle("Revert").setIcon("undo").onClick(async () => {
-        try {
-          await this.git["exec"](["revert", "--no-edit", commit.hash]);
-          await this.store.refresh();
-          new Notice("Reverted " + commit.shortHash);
-        } catch (e: unknown) {
-          new Notice(`Error: ${e instanceof Error ? e.message : String(e)}`);
-        }
-      })
-    );
-
+      }
+    }));
+    menu.addItem(i => i.setTitle("Checkout").setIcon("log-in").onClick(async () => {
+      try {
+        await this.git.checkout(commit.hash);
+        await this.store.refresh();
+        new Notice("Checked out " + commit.shortHash);
+      } catch (e: unknown) {
+        new Notice(`Error: ${e instanceof Error ? e.message : String(e)}`);
+      }
+    }));
+    menu.addSeparator();
+    menu.addItem(i => i.setTitle("Cherry-pick").setIcon("cherry").onClick(async () => {
+      try {
+        await (this.git as any).exec(["cherry-pick", commit.hash]);
+        await this.store.refresh();
+        new Notice("Cherry-picked " + commit.shortHash);
+      } catch (e: unknown) {
+        new Notice(`Error: ${e instanceof Error ? e.message : String(e)}`);
+      }
+    }));
+    menu.addItem(i => i.setTitle("Revert").setIcon("undo").onClick(async () => {
+      try {
+        await (this.git as any).exec(["revert", "--no-edit", commit.hash]);
+        await this.store.refresh();
+        new Notice("Reverted " + commit.shortHash);
+      } catch (e: unknown) {
+        new Notice(`Error: ${e instanceof Error ? e.message : String(e)}`);
+      }
+    }));
     menu.showAtMouseEvent(event);
   }
 
@@ -425,10 +582,10 @@ export class GraphView extends ItemView {
       const modal = new (require("obsidian").Modal)(this.app);
       modal.titleEl.setText(label);
       const input = modal.contentEl.createEl("input", {
-        cls: "git-studio-input",
+        cls: "gs-modal-input",
         attr: { type: "text" },
       });
-      const btnRow = modal.contentEl.createDiv("git-studio-btn-row");
+      const btnRow = modal.contentEl.createDiv("gs-modal-btns");
       const ok = btnRow.createEl("button", { text: "OK", cls: "mod-cta" });
       const cancel = btnRow.createEl("button", { text: "Cancel" });
       ok.addEventListener("click", () => { modal.close(); resolve(input.value || null); });
@@ -442,13 +599,7 @@ export class GraphView extends ItemView {
     });
   }
 
-  private escapeHtml(s: string): string {
-    const el = document.createElement("span");
-    el.textContent = s;
-    return el.innerHTML;
-  }
-
   async onClose(): Promise<void> {
-    // cleanup handled by Obsidian
+    this.hidePopup();
   }
 }

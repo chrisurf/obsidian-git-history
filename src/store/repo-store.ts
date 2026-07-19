@@ -11,6 +11,9 @@ export class RepoStore extends Events {
   private _behind = 0;
   private _loading = false;
   private _merging = false;
+  private _refreshQueued = false;
+  private _statusFingerprint: string | null = null;
+  private _branchFingerprint: string | null = null;
 
   constructor(private git: GitService) {
     super();
@@ -32,7 +35,15 @@ export class RepoStore extends Events {
     return this._status.filter(f => f.indexStatus === "U" || f.workingStatus === "U");
   }
 
+  private computeFingerprint(status: FileStatus[]): string {
+    return status.map(f => `${f.path}:${f.indexStatus}:${f.workingStatus}:${f.staged}`).join("|");
+  }
+
   async refresh(): Promise<void> {
+    if (this._loading) {
+      this._refreshQueued = true;
+      return;
+    }
     this._loading = true;
     this.trigger("loading", true);
     try {
@@ -41,18 +52,32 @@ export class RepoStore extends Events {
         this.git.currentBranch(),
         this.git.getAheadBehind(),
       ]);
+
+      const newStatusFp = this.computeFingerprint(status);
+      const newBranchFp = `${branch}:${ab.ahead}:${ab.behind}`;
+      const isFirstLoad = this._statusFingerprint === null;
+      const statusChanged = isFirstLoad || newStatusFp !== this._statusFingerprint;
+      const branchChanged = isFirstLoad || newBranchFp !== this._branchFingerprint;
+
       this._status = status;
       this._branch = branch;
       this._ahead = ab.ahead;
       this._behind = ab.behind;
       this._merging = status.some(f => f.indexStatus === "U" || f.workingStatus === "U");
-      this.trigger("status-changed", this._status);
-      this.trigger("branch-changed", this._branch);
+      this._statusFingerprint = newStatusFp;
+      this._branchFingerprint = newBranchFp;
+
+      if (statusChanged) this.trigger("status-changed", this._status);
+      if (branchChanged) this.trigger("branch-changed", this._branch);
     } catch (e) {
       this.trigger("error", e);
     } finally {
       this._loading = false;
       this.trigger("loading", false);
+      if (this._refreshQueued) {
+        this._refreshQueued = false;
+        this.refresh();
+      }
     }
   }
 
