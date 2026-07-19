@@ -31,6 +31,8 @@ export class SourceControlView extends ItemView {
   private graphNodes: GraphNode[] = [];
   private graphListEl: HTMLElement | null = null;
   private graphSelectedHash: string | null = null;
+  private focusHandler: (() => void) | null = null;
+  private visibilityHandler: (() => void) | null = null;
 
   constructor(leaf: WorkspaceLeaf, plugin: GitStudioPlugin) {
     super(leaf);
@@ -71,6 +73,20 @@ export class SourceControlView extends ItemView {
     this.registerEvent(this.store.on("loading", (l: boolean) => {
       contentEl.toggleClass("gs-loading", l);
     }));
+
+    this.focusHandler = () => this.store.refresh();
+    window.addEventListener("focus", this.focusHandler);
+
+    this.visibilityHandler = () => {
+      if (!document.hidden) this.store.refresh();
+    };
+    document.addEventListener("visibilitychange", this.visibilityHandler);
+
+    this.registerEvent(
+      this.app.workspace.on("active-leaf-change", (leaf) => {
+        if (leaf === this.leaf) this.store.refresh();
+      })
+    );
 
     await this.store.refresh();
     await this.store.refreshBranches();
@@ -808,6 +824,7 @@ export class SourceControlView extends ItemView {
   }
 
   async onClose(): Promise<void> {
-    // cleanup
+    if (this.focusHandler) window.removeEventListener("focus", this.focusHandler);
+    if (this.visibilityHandler) document.removeEventListener("visibilitychange", this.visibilityHandler);
   }
 }
