@@ -433,33 +433,54 @@ export class SourceControlView extends ItemView {
     const statsEl = rightSide.createSpan("gs-tree-file-stats");
 
     const actions = rightSide.createDiv("gs-tree-file-actions");
+
+    if (group === "changed" || group === "untracked") {
+      const openBtn = actions.createEl("button", { cls: "gs-action-btn" });
+      setIcon(openBtn, "file-diff");
+      openBtn.setAttribute("aria-label", "Open Changes");
+      openBtn.addEventListener("click", (e) => {
+        e.stopPropagation();
+        this.plugin.openDiff(file.path);
+      });
+    }
+
+    if (group === "changed") {
+      const discardBtn = actions.createEl("button", { cls: "gs-action-btn" });
+      setIcon(discardBtn, "undo");
+      discardBtn.setAttribute("aria-label", "Discard Changes");
+      discardBtn.addEventListener("click", async (e) => {
+        e.stopPropagation();
+        await this.git.discard([file.path]);
+        await this.store.refresh();
+      });
+    }
+
     if (group !== "staged" && group !== "conflict") {
-      const stageBtn = actions.createEl("button", { cls: "gs-icon-btn gs-icon-btn-sm" });
+      const stageBtn = actions.createEl("button", { cls: "gs-action-btn" });
       setIcon(stageBtn, "plus");
-      stageBtn.setAttribute("aria-label", "Stage");
+      stageBtn.setAttribute("aria-label", "Stage Changes");
       stageBtn.addEventListener("click", async (e) => {
         e.stopPropagation();
         await this.git.stage([file.path]);
         await this.store.refresh();
       });
     }
+
     if (group === "staged") {
-      const unstageBtn = actions.createEl("button", { cls: "gs-icon-btn gs-icon-btn-sm" });
+      const openBtn = actions.createEl("button", { cls: "gs-action-btn" });
+      setIcon(openBtn, "file-diff");
+      openBtn.setAttribute("aria-label", "Open Changes");
+      openBtn.addEventListener("click", (e) => {
+        e.stopPropagation();
+        this.plugin.openDiff(file.path);
+      });
+
+      const unstageBtn = actions.createEl("button", { cls: "gs-action-btn" });
       setIcon(unstageBtn, "minus");
-      unstageBtn.setAttribute("aria-label", "Unstage");
+      unstageBtn.setAttribute("aria-label", "Unstage Changes");
       unstageBtn.addEventListener("click", async (e) => {
         e.stopPropagation();
         await this.git.unstage([file.path]);
-        await this.store.refresh();
-      });
-    }
-    if (group === "changed") {
-      const discardBtn = actions.createEl("button", { cls: "gs-icon-btn gs-icon-btn-sm" });
-      setIcon(discardBtn, "rotate-ccw");
-      discardBtn.setAttribute("aria-label", "Discard");
-      discardBtn.addEventListener("click", async (e) => {
-        e.stopPropagation();
-        await this.git.discard([file.path]);
         await this.store.refresh();
       });
     }

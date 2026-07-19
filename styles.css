@@ -448,13 +448,33 @@
 
 .gs-section-actions {
   display: flex;
-  gap: 1px;
+  gap: 2px;
   flex-shrink: 0;
   opacity: 0;
   transition: opacity 0.1s;
+  margin-left: auto;
+  padding-left: 8px;
 }
 
 .gs-sc-section-header:hover .gs-section-actions { opacity: 1; }
+
+.gs-section-actions .gs-icon-btn-sm {
+  background: none;
+  border: none;
+  color: var(--gs-text-muted);
+  cursor: pointer;
+  padding: 2px;
+  border-radius: 3px;
+  display: flex;
+  align-items: center;
+  width: 20px;
+  height: 20px;
+}
+
+.gs-section-actions .gs-icon-btn-sm:hover {
+  background: rgba(255, 255, 255, 0.1);
+  color: var(--gs-text);
+}
 
 /* Tree view – VS Code style */
 .gs-tree-dir {
@@ -545,10 +565,31 @@
 
 .gs-tree-file-actions {
   display: flex;
-  gap: 1px;
+  gap: 2px;
   opacity: 0;
   transition: opacity 0.1s;
   flex-shrink: 0;
+}
+
+.gs-action-btn {
+  background: none;
+  border: none;
+  color: var(--gs-text-muted);
+  cursor: pointer;
+  padding: 2px;
+  border-radius: 3px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 20px;
+  height: 20px;
+}
+
+.gs-action-btn svg { width: 14px; height: 14px; }
+
+.gs-action-btn:hover {
+  background: rgba(255, 255, 255, 0.1);
+  color: var(--gs-text);
 }
 
 .gs-tree-badge {
