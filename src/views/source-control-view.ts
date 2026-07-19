@@ -77,6 +77,7 @@ export class SourceControlView extends ItemView {
     window.addEventListener("focus", this.focusHandler);
 
     await this.store.refresh();
+    this.renderFiles();
     await this.store.refreshBranches();
   }
 
@@ -103,6 +104,8 @@ export class SourceControlView extends ItemView {
 
     if (tab === "graph") {
       this.store.refreshLog({ all: true, maxCount: 500 });
+    } else if (tab === "changes") {
+      this.renderFiles();
     }
   }
 
@@ -112,7 +115,7 @@ export class SourceControlView extends ItemView {
 
     const actions = bar.createDiv("gs-sc-header-actions");
     for (const [icon, label, fn] of [
-      ["refresh-cw", "Refresh", () => this.store.refresh()],
+      ["refresh-cw", "Refresh", async () => { await this.store.refresh(); this.renderFiles(); }],
       ["download", "Pull", async () => {
         try { await this.git.pull({ strategy: this.plugin.settings.pullStrategy }); await this.store.refresh(); new Notice("Pulled"); }
         catch (e: unknown) { new Notice(`Pull failed: ${e instanceof Error ? e.message : String(e)}`); }
