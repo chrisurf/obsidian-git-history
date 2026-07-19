@@ -439,6 +439,14 @@
   letter-spacing: 0.03em;
 }
 
+.gs-section-right {
+  display: flex;
+  align-items: center;
+  gap: 2px;
+  flex-shrink: 0;
+  margin-left: auto;
+}
+
 .gs-section-count {
   font-size: 10px;
   font-weight: 700;
@@ -449,7 +457,6 @@
   border-radius: 10px;
   color: #fff;
   background: var(--gs-text-faint);
-  margin-left: 4px;
   flex-shrink: 0;
 }
 

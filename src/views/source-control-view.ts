@@ -301,14 +301,16 @@ export class SourceControlView extends ItemView {
     setIcon(chevron, "chevron-down");
     headerLeft.createSpan("gs-section-title").setText(title);
 
-    const countBadge = header.createSpan("gs-section-count");
+    const headerRight = header.createDiv("gs-section-right");
+    const headerActions = headerRight.createDiv("gs-section-actions");
+
+    // Count badge goes after actions (rightmost)
+    const countBadge = headerRight.createSpan("gs-section-count");
     countBadge.setText(String(files.length));
     if (group === "staged") countBadge.addClass("gs-count-staged");
     else if (group === "changed") countBadge.addClass("gs-count-changed");
     else if (group === "untracked") countBadge.addClass("gs-count-untracked");
     else if (group === "conflict") countBadge.addClass("gs-count-conflict");
-
-    const headerActions = header.createDiv("gs-section-actions");
     if (group === "staged") {
       const btn = headerActions.createEl("button", { cls: "gs-icon-btn gs-icon-btn-sm" });
       setIcon(btn, "minus");
