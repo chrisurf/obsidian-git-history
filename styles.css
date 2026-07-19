@@ -675,6 +675,239 @@
 
 .gs-commit-push-btn:hover { background: var(--gs-bg-hover); }
 
+/* --- Tab bar (Changes / Graph toggle) --- */
+.gs-sc-tabbar {
+  display: flex;
+  border-bottom: 1px solid var(--gs-border);
+  flex-shrink: 0;
+}
+
+.gs-sc-tab {
+  flex: 1;
+  padding: 6px 0;
+  font-size: 11px;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+  background: none;
+  border: none;
+  border-bottom: 2px solid transparent;
+  color: var(--gs-text-muted);
+  cursor: pointer;
+  transition: color 0.15s, border-color 0.15s;
+}
+
+.gs-sc-tab:hover { color: var(--gs-text); }
+
+.gs-sc-tab-active {
+  color: var(--gs-accent);
+  border-bottom-color: var(--gs-accent);
+}
+
+.gs-sc-changes-panel,
+.gs-sc-graph-panel {
+  display: flex;
+  flex-direction: column;
+  flex: 1;
+  min-height: 0;
+  overflow-y: auto;
+}
+
+/* --- Sidebar compact graph --- */
+.gs-sg-toolbar {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  padding: 6px 8px;
+  border-bottom: 1px solid var(--gs-border);
+  flex-shrink: 0;
+}
+
+.gs-sg-search-wrap {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  flex: 1;
+  background: var(--gs-bg);
+  border: 1px solid var(--gs-border);
+  border-radius: 4px;
+  padding: 2px 6px;
+}
+
+.gs-sg-search-icon { display: flex; color: var(--gs-text-faint); }
+.gs-sg-search-icon svg { width: 12px; height: 12px; }
+
+.gs-sg-search-input {
+  border: none;
+  background: transparent;
+  color: var(--gs-text);
+  font-size: 12px;
+  outline: none;
+  width: 100%;
+}
+
+.gs-sg-list {
+  overflow-y: auto;
+  flex: 1;
+}
+
+.gs-sg-row {
+  display: flex;
+  align-items: flex-start;
+  gap: 8px;
+  padding: 6px 10px;
+  cursor: pointer;
+  border-bottom: 1px solid var(--gs-border);
+}
+
+.gs-sg-row:hover { background: var(--gs-bg-hover); }
+.gs-sg-row-selected { background: var(--gs-bg-active); }
+
+.gs-sg-row-wc { border-left: 3px solid var(--gs-green); }
+
+.gs-sg-dot-col {
+  flex-shrink: 0;
+  width: 16px;
+  text-align: center;
+  padding-top: 1px;
+}
+
+.gs-sg-wc-dot { color: var(--gs-green); font-size: 14px; }
+.gs-sg-dot { font-size: 12px; }
+
+.gs-sg-info {
+  flex: 1;
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+
+.gs-sg-refs {
+  display: flex;
+  gap: 4px;
+  flex-wrap: wrap;
+}
+
+.gs-sg-ref-pill {
+  display: inline-block;
+  font-size: 10px;
+  font-weight: 600;
+  padding: 1px 5px;
+  border-radius: 3px;
+  white-space: nowrap;
+}
+
+.gs-sg-msg {
+  font-size: 12px;
+  color: var(--gs-text);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.gs-sg-meta {
+  font-size: 10px;
+  color: var(--gs-text-faint);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  font-family: var(--gs-mono);
+}
+
+.gs-sg-empty {
+  padding: 24px;
+  text-align: center;
+  color: var(--gs-text-faint);
+  font-size: 13px;
+}
+
+/* Sidebar graph detail panel */
+.gs-sg-detail {
+  padding: 8px 10px 8px 34px;
+  border-bottom: 1px solid var(--gs-border);
+  background: var(--gs-bg2);
+  font-size: 12px;
+}
+
+.gs-sg-detail-msg {
+  font-weight: 600;
+  color: var(--gs-text);
+  margin-bottom: 4px;
+}
+
+.gs-sg-detail-body {
+  color: var(--gs-text-muted);
+  margin-bottom: 6px;
+  white-space: pre-wrap;
+}
+
+.gs-sg-detail-meta {
+  color: var(--gs-text-faint);
+  font-size: 11px;
+  line-height: 1.5;
+  margin-bottom: 6px;
+}
+
+.gs-sg-detail-sha {
+  font-family: var(--gs-mono);
+  font-size: 10px;
+  color: var(--gs-text-faint);
+  user-select: all;
+}
+
+.gs-sg-detail-actions {
+  display: flex;
+  gap: 6px;
+  margin-bottom: 8px;
+}
+
+.gs-sg-detail-btn {
+  font-size: 11px;
+  padding: 3px 8px;
+  border: 1px solid var(--gs-border);
+  border-radius: 4px;
+  background: var(--gs-bg);
+  color: var(--gs-text);
+  cursor: pointer;
+}
+
+.gs-sg-detail-btn:hover { background: var(--gs-bg-hover); }
+
+.gs-sg-detail-files { margin-top: 4px; }
+
+.gs-sg-detail-files-header {
+  font-size: 10px;
+  font-weight: 600;
+  color: var(--gs-text-faint);
+  text-transform: uppercase;
+  margin-bottom: 4px;
+}
+
+.gs-sg-detail-file {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  padding: 2px 4px;
+  cursor: pointer;
+  border-radius: 3px;
+}
+
+.gs-sg-detail-file:hover { background: var(--gs-bg-hover); }
+
+.gs-sg-detail-filename {
+  font-family: var(--gs-mono);
+  font-size: 11px;
+  color: var(--gs-text-muted);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  flex: 1;
+  min-width: 0;
+}
+
+.gs-sg-detail-filestats { flex-shrink: 0; font-size: 11px; }
+
 /* ================================================================
    HISTORY VIEW
    ================================================================ */

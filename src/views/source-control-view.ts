@@ -1,7 +1,8 @@
 import { ItemView, WorkspaceLeaf, setIcon, Menu, Notice } from "obsidian";
-import { SOURCE_CONTROL_VIEW_TYPE, FileStatus } from "../types";
+import { SOURCE_CONTROL_VIEW_TYPE, FileStatus, CommitInfo, GraphNode, GraphEdge } from "../types";
 import { RepoStore } from "../store/repo-store";
 import { GitService } from "../git/git-service";
+import { computeGraphLayout, formatRelativeDate } from "../utils/graph-layout";
 import type GitStudioPlugin from "../main";
 
 interface FileTreeNode {
@@ -13,6 +14,8 @@ interface FileTreeNode {
   expanded: boolean;
 }
 
+type SidebarTab = "changes" | "graph";
+
 export class SourceControlView extends ItemView {
   private plugin: GitStudioPlugin;
   private store: RepoStore;
@@ -22,6 +25,16 @@ export class SourceControlView extends ItemView {
   private branchEl: HTMLElement | null = null;
   private summaryEl: HTMLElement | null = null;
   private expandedDirs = new Set<string>();
+  private activeTab: SidebarTab = "changes";
+  private changesPanel: HTMLElement | null = null;
+  private graphPanel: HTMLElement | null = null;
+  private tabBtns: Record<string, HTMLElement> = {};
+
+  private graphNodes: GraphNode[] = [];
+  private graphEdges: GraphEdge[] = [];
+  private graphMaxCols = 0;
+  private graphListEl: HTMLElement | null = null;
+  private graphSelectedHash: string | null = null;
 
   constructor(leaf: WorkspaceLeaf, plugin: GitStudioPlugin) {
     super(leaf);
@@ -40,20 +53,60 @@ export class SourceControlView extends ItemView {
     contentEl.addClass("gs-sc-view");
 
     this.buildHeader(contentEl);
-    this.buildBranchBar(contentEl);
-    this.buildSummary(contentEl);
-    this.buildFilterBar(contentEl);
-    this.fileListEl = contentEl.createDiv("gs-sc-filelist");
-    this.buildCommitArea(contentEl);
+    this.buildTabBar(contentEl);
 
-    this.registerEvent(this.store.on("status-changed", () => this.renderFiles()));
+    this.changesPanel = contentEl.createDiv("gs-sc-changes-panel");
+    this.graphPanel = contentEl.createDiv("gs-sc-graph-panel");
+    this.graphPanel.style.display = "none";
+
+    this.buildBranchBar(this.changesPanel);
+    this.buildSummary(this.changesPanel);
+    this.buildFilterBar(this.changesPanel);
+    this.fileListEl = this.changesPanel.createDiv("gs-sc-filelist");
+    this.buildCommitArea(this.changesPanel);
+
+    this.buildSidebarGraph(this.graphPanel);
+
+    this.registerEvent(this.store.on("status-changed", () => {
+      this.renderFiles();
+      if (this.activeTab === "graph") this.rebuildSidebarGraph();
+    }));
     this.registerEvent(this.store.on("branch-changed", () => this.updateBranch()));
+    this.registerEvent(this.store.on("log-changed", () => {
+      if (this.activeTab === "graph") this.rebuildSidebarGraph();
+    }));
     this.registerEvent(this.store.on("loading", (l: boolean) => {
       contentEl.toggleClass("gs-loading", l);
     }));
 
     await this.store.refresh();
     await this.store.refreshBranches();
+  }
+
+  private buildTabBar(el: HTMLElement): void {
+    const bar = el.createDiv("gs-sc-tabbar");
+
+    const changesBtn = bar.createEl("button", { cls: "gs-sc-tab gs-sc-tab-active", text: "Changes" });
+    const graphBtn = bar.createEl("button", { cls: "gs-sc-tab", text: "Graph" });
+
+    this.tabBtns["changes"] = changesBtn;
+    this.tabBtns["graph"] = graphBtn;
+
+    changesBtn.addEventListener("click", () => this.switchTab("changes"));
+    graphBtn.addEventListener("click", () => this.switchTab("graph"));
+  }
+
+  private switchTab(tab: SidebarTab): void {
+    this.activeTab = tab;
+    for (const [key, btn] of Object.entries(this.tabBtns)) {
+      btn.toggleClass("gs-sc-tab-active", key === tab);
+    }
+    if (this.changesPanel) this.changesPanel.style.display = tab === "changes" ? "" : "none";
+    if (this.graphPanel) this.graphPanel.style.display = tab === "graph" ? "" : "none";
+
+    if (tab === "graph") {
+      this.store.refreshLog({ all: true, maxCount: 500 });
+    }
   }
 
   private buildHeader(el: HTMLElement): void {
@@ -477,6 +530,209 @@ export class SourceControlView extends ItemView {
     const el = document.createElement("span");
     el.textContent = s;
     return el.innerHTML;
+  }
+
+  /* ============================================================
+     Sidebar compact graph
+     ============================================================ */
+  private buildSidebarGraph(panel: HTMLElement): void {
+    const toolbar = panel.createDiv("gs-sg-toolbar");
+    const searchWrap = toolbar.createDiv("gs-sg-search-wrap");
+    const searchIcon = searchWrap.createSpan("gs-sg-search-icon");
+    setIcon(searchIcon, "search");
+    const searchInput = searchWrap.createEl("input", {
+      cls: "gs-sg-search-input",
+      attr: { type: "text", placeholder: "Filter commits..." },
+    });
+    searchInput.addEventListener("input", () => {
+      this.filterSidebarGraph(searchInput.value.toLowerCase());
+    });
+
+    const refreshBtn = toolbar.createEl("button", { cls: "gs-icon-btn" });
+    setIcon(refreshBtn, "refresh-cw");
+    refreshBtn.setAttribute("aria-label", "Refresh");
+    refreshBtn.addEventListener("click", () => {
+      this.store.refreshLog({ all: true, maxCount: 500 });
+      this.store.refresh();
+    });
+
+    const expandBtn = toolbar.createEl("button", { cls: "gs-icon-btn" });
+    setIcon(expandBtn, "maximize-2");
+    expandBtn.setAttribute("aria-label", "Open full graph");
+    expandBtn.addEventListener("click", () => this.plugin.openGraphView());
+
+    this.graphListEl = panel.createDiv("gs-sg-list");
+  }
+
+  private rebuildSidebarGraph(): void {
+    const result = computeGraphLayout(this.store.commits);
+    this.graphNodes = result.nodes;
+    this.graphEdges = result.edges;
+    this.graphMaxCols = result.maxColumns;
+    this.renderSidebarGraphList();
+  }
+
+  private sidebarGraphFilter = "";
+
+  private filterSidebarGraph(text: string): void {
+    this.sidebarGraphFilter = text;
+    this.renderSidebarGraphList();
+  }
+
+  private renderSidebarGraphList(): void {
+    if (!this.graphListEl) return;
+    this.graphListEl.empty();
+
+    const hasWC = this.store.status.length > 0;
+    if (hasWC) {
+      const wcRow = this.graphListEl.createDiv("gs-sg-row gs-sg-row-wc");
+      const dotCol = wcRow.createDiv("gs-sg-dot-col");
+      const dot = dotCol.createSpan("gs-sg-wc-dot");
+      dot.setText("●");
+
+      const info = wcRow.createDiv("gs-sg-info");
+      info.createSpan("gs-sg-msg").setText("Working Changes");
+      const meta = info.createSpan("gs-sg-meta");
+      const totalChanges = this.store.changedFiles.length + this.store.untrackedFiles.length + this.store.stagedFiles.length;
+      meta.setText(`${totalChanges} file${totalChanges !== 1 ? "s" : ""} · You`);
+
+      wcRow.addEventListener("click", () => this.switchTab("changes"));
+    }
+
+    for (let i = 0; i < this.graphNodes.length; i++) {
+      const node = this.graphNodes[i];
+      const commit = node.commit;
+
+      if (this.sidebarGraphFilter) {
+        const q = this.sidebarGraphFilter;
+        if (
+          !commit.message.toLowerCase().includes(q) &&
+          !commit.author.toLowerCase().includes(q) &&
+          !commit.shortHash.toLowerCase().includes(q)
+        ) continue;
+      }
+
+      const row = this.graphListEl.createDiv("gs-sg-row");
+      if (commit.hash === this.graphSelectedHash) row.addClass("gs-sg-row-selected");
+
+      const dotCol = row.createDiv("gs-sg-dot-col");
+      const COLORS = ["#0ea5e9","#22c55e","#f59e0b","#ef4444","#a855f7","#ec4899","#14b8a6","#f97316","#6366f1","#84cc16","#06b6d4","#e879f9"];
+      const color = COLORS[node.color % COLORS.length];
+      const isMerge = commit.parents.length > 1;
+
+      const dot = dotCol.createSpan("gs-sg-dot");
+      dot.setText(isMerge ? "◎" : "●");
+      dot.style.color = color;
+
+      const info = row.createDiv("gs-sg-info");
+
+      if (commit.refs.length > 0) {
+        const refsEl = info.createDiv("gs-sg-refs");
+        for (const ref of commit.refs) {
+          const pill = refsEl.createSpan("gs-sg-ref-pill");
+          if (ref.type === "head") pill.addClass("gs-ref-head");
+          else if (ref.type === "remote") pill.addClass("gs-ref-remote");
+          else if (ref.type === "tag") pill.addClass("gs-ref-tag");
+          else pill.addClass("gs-ref-branch");
+          pill.setText(ref.name);
+        }
+      }
+
+      info.createSpan("gs-sg-msg").setText(commit.message);
+      const meta = info.createSpan("gs-sg-meta");
+      meta.setText(`${commit.shortHash} · ${commit.author} · ${formatRelativeDate(commit.date)}`);
+
+      row.addEventListener("click", () => {
+        if (this.graphSelectedHash === commit.hash) {
+          this.graphSelectedHash = null;
+        } else {
+          this.graphSelectedHash = commit.hash;
+        }
+        this.renderSidebarGraphList();
+      });
+
+      row.addEventListener("contextmenu", (e) => {
+        const menu = new Menu();
+        menu.addItem(item => item.setTitle("Copy SHA").setIcon("copy").onClick(() => {
+          navigator.clipboard.writeText(commit.hash);
+          new Notice("SHA copied");
+        }));
+        menu.addItem(item => item.setTitle("View Changes").setIcon("file-diff").onClick(async () => {
+          try {
+            const files = await this.git.showCommitFiles(commit.hash);
+            if (files.length > 0) this.plugin.openDiff(files[0].path, commit.hash);
+          } catch { new Notice("Could not load changes"); }
+        }));
+        menu.addSeparator();
+        menu.addItem(item => item.setTitle("Checkout").setIcon("log-in").onClick(async () => {
+          try {
+            await this.git.checkout(commit.hash);
+            await this.store.refresh();
+            new Notice("Checked out " + commit.shortHash);
+          } catch (err: unknown) { new Notice(`Error: ${err instanceof Error ? err.message : String(err)}`); }
+        }));
+        menu.addItem(item => item.setTitle("Open in Graph").setIcon("git-branch").onClick(() => this.plugin.openGraphView()));
+        menu.showAtMouseEvent(e);
+      });
+
+      if (this.graphSelectedHash === commit.hash) {
+        const detail = this.graphListEl.createDiv("gs-sg-detail");
+        detail.createDiv("gs-sg-detail-msg").setText(commit.message);
+        if (commit.body) detail.createDiv("gs-sg-detail-body").setText(commit.body);
+
+        const detailMeta = detail.createDiv("gs-sg-detail-meta");
+        detailMeta.createSpan().setText(`${commit.author} <${commit.authorEmail}>`);
+        detailMeta.createEl("br");
+        detailMeta.createSpan().setText(commit.date.toLocaleString());
+        detailMeta.createEl("br");
+        detailMeta.createSpan("gs-sg-detail-sha").setText(commit.hash);
+
+        const detailActions = detail.createDiv("gs-sg-detail-actions");
+        const copyBtn = detailActions.createEl("button", { cls: "gs-sg-detail-btn", text: "Copy SHA" });
+        copyBtn.addEventListener("click", (e) => {
+          e.stopPropagation();
+          navigator.clipboard.writeText(commit.hash);
+          new Notice("SHA copied");
+        });
+        const viewBtn = detailActions.createEl("button", { cls: "gs-sg-detail-btn", text: "View Changes" });
+        viewBtn.addEventListener("click", async (e) => {
+          e.stopPropagation();
+          try {
+            const files = await this.git.showCommitFiles(commit.hash);
+            if (files.length > 0) this.plugin.openDiff(files[0].path, commit.hash);
+          } catch { new Notice("Could not load changes"); }
+        });
+
+        this.loadSidebarCommitFiles(commit.hash, detail);
+      }
+    }
+
+    if (this.graphNodes.length === 0 && !hasWC) {
+      this.graphListEl.createDiv("gs-sg-empty").setText("No commits");
+    }
+  }
+
+  private async loadSidebarCommitFiles(hash: string, detail: HTMLElement): Promise<void> {
+    try {
+      const files = await this.git.showCommitFiles(hash);
+      if (files.length === 0) return;
+      const filesEl = detail.createDiv("gs-sg-detail-files");
+      filesEl.createDiv("gs-sg-detail-files-header").setText(`${files.length} file${files.length !== 1 ? "s" : ""} changed`);
+      for (const f of files) {
+        const fileRow = filesEl.createDiv("gs-sg-detail-file");
+        const name = fileRow.createSpan("gs-sg-detail-filename");
+        name.setText(f.path);
+        const stats = fileRow.createSpan("gs-sg-detail-filestats");
+        if (f.additions > 0) stats.createSpan("gs-stat-add").setText(`+${f.additions}`);
+        if (f.deletions > 0) stats.createSpan("gs-stat-del").setText(` -${f.deletions}`);
+        fileRow.addEventListener("click", (e) => {
+          e.stopPropagation();
+          this.plugin.openDiff(f.path, hash);
+        });
+      }
+    } catch {
+      // ignore
+    }
   }
 
   async onClose(): Promise<void> {
