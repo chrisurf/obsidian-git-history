@@ -418,7 +418,7 @@
   background: var(--gs-bg2);
 }
 
-.gs-sc-section-header:hover { background: var(--gs-bg-hover); }
+.gs-sc-section-header:hover { background: rgba(255, 255, 255, 0.04); }
 
 .gs-section-left {
   display: flex;
@@ -509,15 +509,15 @@
   display: flex;
   align-items: center;
   gap: 4px;
-  padding: 2px 8px;
+  padding: 4px 8px;
   cursor: pointer;
   font-size: 13px;
   color: var(--gs-text);
   user-select: none;
-  height: 22px;
+  min-height: 26px;
 }
 
-.gs-tree-dir:hover { background: var(--gs-bg-hover); }
+.gs-tree-dir:hover { background: rgba(255, 255, 255, 0.04); }
 .gs-tree-dir:hover .gs-tree-dir-actions { opacity: 1; }
 .gs-tree-dir:hover .gs-tree-dir-dot { display: none; }
 
@@ -561,14 +561,14 @@
   display: flex;
   align-items: center;
   gap: 4px;
-  padding: 2px 8px;
+  padding: 4px 8px;
   cursor: pointer;
   font-size: 13px;
   color: var(--gs-text);
-  height: 22px;
+  min-height: 26px;
 }
 
-.gs-tree-file:hover { background: var(--gs-bg-hover); }
+.gs-tree-file:hover { background: rgba(255, 255, 255, 0.04); }
 .gs-tree-file:hover .gs-tree-file-actions { opacity: 1; }
 
 .gs-tree-file-icon { display: flex; flex-shrink: 0; }
