@@ -851,32 +851,15 @@
   color: var(--gs-text-faint);
   cursor: pointer;
   line-height: 18px;
-  background: transparent !important;
-  border-top: none !important;
-  border-left: none !important;
-  border-right: none !important;
   border-bottom: 2px solid transparent;
-  border-radius: 0 !important;
-  box-shadow: none !important;
-  outline: none !important;
 }
-.gs-sg-subtab:hover,
-.gs-sg-subtab:focus,
-.gs-sg-subtab:active {
+.gs-sg-subtab:hover {
   color: var(--gs-text-muted);
-  background: transparent !important;
-  border-top: none !important;
-  border-left: none !important;
-  border-right: none !important;
-  border-bottom: 2px solid transparent;
-  box-shadow: none !important;
 }
-.gs-sg-subtab.gs-sg-subtab-active,
-.gs-sg-subtab.gs-sg-subtab-active:hover,
-.gs-sg-subtab.gs-sg-subtab-active:focus {
+.gs-sg-subtab-active {
   color: var(--gs-accent);
   font-weight: 500;
-  border-bottom: 2px solid var(--gs-accent);
+  border-bottom-color: var(--gs-accent);
 }
 
 .gs-sg-subpanel {

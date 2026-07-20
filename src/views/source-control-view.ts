@@ -624,8 +624,10 @@ export class SourceControlView extends ItemView {
      ============================================================ */
   private buildSidebarGraph(panel: HTMLElement): void {
     const subTabBar = panel.createDiv("gs-sg-subtabbar");
-    const graphSubBtn = subTabBar.createEl("button", { cls: "gs-sg-subtab gs-sg-subtab-active", text: "Graph" });
-    const changesSubBtn = subTabBar.createEl("button", { cls: "gs-sg-subtab", text: "Changes" });
+    const graphSubBtn = subTabBar.createSpan("gs-sg-subtab gs-sg-subtab-active");
+    graphSubBtn.setText("Graph");
+    const changesSubBtn = subTabBar.createSpan("gs-sg-subtab");
+    changesSubBtn.setText("Changes");
     this.graphSubTabBtns["graph"] = graphSubBtn;
     this.graphSubTabBtns["commit-changes"] = changesSubBtn;
     graphSubBtn.addEventListener("click", () => this.switchGraphSubTab("graph"));
