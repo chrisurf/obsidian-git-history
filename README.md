@@ -1,8 +1,20 @@
+<p align="center">
+  <img src="docs/screenshots/hero.png" alt="Git History for Obsidian" width="100%" />
+</p>
+
 # Git History for Obsidian
 
-A full-featured Git management plugin for [Obsidian](https://obsidian.md), bringing VS Code / GitLens-style source control directly into your vault.
+A full-featured Git management plugin for [Obsidian](https://obsidian.md) that brings **VS Code / GitLens-style** source control directly into your vault.
+
+Stage, commit, push, pull, and browse your entire commit history — without ever leaving Obsidian.
+
+---
 
 ## Features
+
+<p align="center">
+  <img src="docs/screenshots/overview.png" alt="Git Graph and Source Control panel" width="100%" />
+</p>
 
 ### Source Control Panel
 
@@ -19,6 +31,7 @@ A full-featured Git management plugin for [Obsidian](https://obsidian.md), bring
 - **Visual commit graph** with colored lanes and merge indicators
 - **Ref pills** for branches, remotes, and tags
 - **Commit detail popup** with full metadata and changed files
+- **Green/red changes bar** showing additions vs deletions per commit
 - **Working changes row** showing uncommitted modifications
 - **Search and filter** commits by message, author, or hash
 
@@ -26,6 +39,9 @@ A full-featured Git management plugin for [Obsidian](https://obsidian.md), bring
 
 - Quickly browse recent commits without leaving the sidebar
 - Toggle between **Changes** and **Graph** tabs
+- **Author avatar circles** with initials on each commit
+- **Hover tooltip** with author, date, SHA, file stats, and commit message
+- **Changes bar** with additions/deletions per commit
 - Click a commit to expand details inline
 
 ### Diff Viewer
@@ -38,6 +54,8 @@ A full-featured Git management plugin for [Obsidian](https://obsidian.md), bring
 
 - View the full commit history for any single file
 - Open from the command palette or context menu
+
+---
 
 ## Installation
 
@@ -57,6 +75,8 @@ Copy `main.js`, `manifest.json`, and `styles.css` into your vault's `.obsidian/p
 - Obsidian 1.5.0 or later
 - Git installed and available in PATH
 - Desktop only (uses Node.js APIs)
+
+---
 
 ## Commands
 
@@ -84,6 +104,8 @@ Copy `main.js`, `manifest.json`, and `styles.css` into your vault's `.obsidian/p
 | Auto-fetch interval | 300s | Seconds between auto-fetches |
 | Show status bar | on | Git status in the Obsidian status bar |
 | Debounce | 1000ms | Delay before refreshing after file changes |
+
+---
 
 ## License
 
