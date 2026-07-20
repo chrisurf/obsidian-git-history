@@ -435,7 +435,11 @@ export class SourceControlView extends ItemView {
       btn.setAttribute("aria-label", "Unstage All");
       btn.addEventListener("click", async (e) => {
         e.stopPropagation();
-        await this.git.unstageAll();
+        try {
+          await this.git.unstageAll();
+        } catch (err) {
+          new Notice(`Unstage all failed: ${err instanceof Error ? err.message : String(err)}`);
+        }
         await this.store.refresh();
       });
     } else if (group !== "conflict") {
@@ -444,7 +448,11 @@ export class SourceControlView extends ItemView {
       btn.setAttribute("aria-label", "Stage All");
       btn.addEventListener("click", async (e) => {
         e.stopPropagation();
-        await this.git.stageAll();
+        try {
+          await this.git.stageAll();
+        } catch (err) {
+          new Notice(`Stage all failed: ${err instanceof Error ? err.message : String(err)}`);
+        }
         await this.store.refresh();
       });
     }
@@ -454,7 +462,11 @@ export class SourceControlView extends ItemView {
       btn.setAttribute("aria-label", "Discard All");
       btn.addEventListener("click", async (e) => {
         e.stopPropagation();
-        await this.git.discardAll();
+        try {
+          await this.git.discardAll();
+        } catch (err) {
+          new Notice(`Discard all failed: ${err instanceof Error ? err.message : String(err)}`);
+        }
         await this.store.refresh();
       });
     }

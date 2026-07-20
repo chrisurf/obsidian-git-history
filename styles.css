@@ -470,9 +470,14 @@
   font-size: 13px;
 }
 
+/*
+ * Background refreshes (file watcher, window focus, auto-fetch) toggle this on
+ * the whole view. It must stay a visual hint only — disabling pointer events
+ * here made every button in the panel dead while a `git status` was in flight,
+ * which on an active vault is most of the time.
+ */
 .gs-loading {
-  opacity: 0.6;
-  pointer-events: none;
+  opacity: 0.85;
 }
 
 /* Header */

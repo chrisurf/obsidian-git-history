@@ -100,6 +100,9 @@ function installDomHelpers(): void {
     this.textContent = text;
     return this;
   };
+  proto.appendText = function (this: Element, text: string) {
+    this.appendChild(document.createTextNode(text));
+  };
   proto.empty = function (this: Element) {
     while (this.firstChild) this.removeChild(this.firstChild);
   };
