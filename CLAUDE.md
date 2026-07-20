@@ -2,7 +2,7 @@
 
 ## Project Overview
 
-Obsidian plugin providing full Git management: GitKraken-style commit graph, source control panel, diff viewer, and history browser. Desktop-only (requires Node.js/Electron for Git operations).
+Obsidian plugin for Git management: interactive commit graph, source control panel, diff viewer, and history browser. Desktop-only (requires Node.js/Electron for Git operations).
 
 ## Tech Stack
 

@@ -3,7 +3,7 @@
   "name": "Git History",
   "version": "1.0.0",
   "minAppVersion": "1.5.0",
-  "description": "Full Git management with GitKraken-style commit graph, source control panel, and diff viewer.",
+  "description": "Manage Git repositories with an interactive commit graph, source control panel, and diff viewer.",
   "author": "chrisurf",
   "isDesktopOnly": true
 }
