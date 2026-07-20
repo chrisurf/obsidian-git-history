@@ -22,6 +22,7 @@
   --gs-orange: #f0883e;
   --gs-mono: var(--font-monospace);
   --gs-graph-col-width: 60px;
+  --gs-ref-col-width: 140px;
 }
 
 /* ================================================================
@@ -183,7 +184,7 @@
   flex-shrink: 0;
 }
 .gs-col-ref {
-  width: 140px;
+  width: var(--gs-ref-col-width);
 }
 .gs-col-graph {
   width: var(--gs-graph-col-width);
@@ -266,6 +267,7 @@
 }
 .gs-row-selected {
   background: var(--gs-bg-active) !important;
+  box-shadow: inset 2px 0 0 var(--gs-accent);
 }
 
 .gs-row-wc {
@@ -286,7 +288,7 @@
 }
 
 .gs-cell-ref {
-  width: 140px;
+  width: var(--gs-ref-col-width);
   display: flex;
   gap: 3px;
   overflow: hidden;
@@ -396,21 +398,25 @@
 }
 
 /* Commit popup */
-/* Expanded commit card. It overlays the rows below the one that was clicked,
-   so it has to be opaque and clearly above them — the rows carry z-index 2. */
+/* Expanded commit card. The rows below it move down by its height, so it never
+   covers them — but it starts after the branch and graph columns so the lane
+   stays visible and stretches across the gap. */
 .gs-commit-popup {
   position: absolute;
-  left: 0;
-  right: 0;
-  z-index: 100;
-  background: var(--gs-bg2);
-  border: 1px solid var(--gs-border);
-  border-left: 2px solid var(--gs-accent);
+  left: calc(var(--gs-ref-col-width) + var(--gs-graph-col-width));
+  right: 8px;
+  z-index: 3;
+  /* The accent wash guarantees the card reads as raised in every theme —
+     --background-secondary is nearly identical to the list background in some
+     of them, which left the card looking like a hole rather than a panel. */
+  background:
+    linear-gradient(0deg, rgba(88, 166, 255, 0.07), rgba(88, 166, 255, 0.07)), var(--gs-bg2);
+  border: 1px solid var(--background-modifier-border-hover, var(--gs-border));
+  border-left: 3px solid var(--gs-accent);
   border-radius: 6px;
-  margin: 2px 8px 0;
-  padding: 12px;
-  box-shadow: 0 4px 16px rgba(0, 0, 0, 0.3);
-  max-width: 600px;
+  padding: 12px 14px;
+  box-shadow: 0 2px 12px rgba(0, 0, 0, 0.35);
+  max-width: 620px;
   /* Long subjects and pasted URLs must not push the card wider than the list. */
   overflow-wrap: anywhere;
 }
@@ -445,6 +451,7 @@
   gap: 8px;
   align-items: baseline;
   flex-wrap: wrap;
+  margin-top: 6px;
 }
 
 .gs-popup-author-name {
@@ -461,6 +468,10 @@
 }
 
 .gs-popup-meta {
+  display: flex;
+  gap: 8px;
+  align-items: baseline;
+  flex-wrap: wrap;
   font-size: 11px;
   color: var(--gs-text-muted);
   margin-top: 4px;
@@ -474,15 +485,17 @@
   color: var(--gs-text-faint);
 }
 .gs-popup-stats {
+  display: flex;
+  gap: 6px;
   color: var(--gs-text-muted);
 }
 
 .gs-popup-msg {
-  margin-top: 10px;
   white-space: pre-wrap;
-  font-size: 13px;
+  font-size: 14px;
+  line-height: 1.35;
   color: var(--gs-text);
-  font-weight: 500;
+  font-weight: 600;
 }
 
 .gs-popup-body {
@@ -493,7 +506,7 @@
 }
 
 .gs-popup-actions {
-  margin-top: 10px;
+  margin-top: 12px;
   display: flex;
   gap: 6px;
 }

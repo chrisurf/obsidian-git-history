@@ -6,6 +6,10 @@ import { computeGraphLayout, formatRelativeDate } from "../utils/graph-layout";
 import type GitHistoryPlugin from "../main";
 
 const ROW_HEIGHT = 32;
+/** Height reserved for the expanded card before it can be measured. */
+const CARD_ESTIMATED_HEIGHT = 130;
+/** Breathing room between the card and the rows around it. */
+const CARD_GAP = 8;
 const COL_WIDTH = 14;
 const GRAPH_COL_MIN_WIDTH = 60;
 const NODE_RADIUS = 4;
@@ -64,6 +68,9 @@ export class GraphView extends ItemView {
   private svgLayer: SVGSVGElement | null = null;
   private spacerEl: HTMLElement | null = null;
   private popupEl: HTMLElement | null = null;
+  /** Visual row the expanded card belongs to, and the gap it opens below it. */
+  private expandedVisRow: number | null = null;
+  private expandedHeight = 0;
 
   private nodes: GraphNode[] = [];
   private edges: GraphEdge[] = [];
@@ -303,11 +310,27 @@ export class GraphView extends ItemView {
     return this.hasWorkingChanges ? 1 : 0;
   }
 
+  /**
+   * Y position of a visual row. The expanded commit card is not an overlay —
+   * it pushes everything below it down, so the rows stay readable and the lane
+   * stretches across the gap instead of running behind the card.
+   */
+  private yOf(visRow: number): number {
+    const gap =
+      this.expandedVisRow !== null && visRow > this.expandedVisRow ? this.expandedHeight : 0;
+    return visRow * ROW_HEIGHT + gap;
+  }
+
+  /** Height of the whole list including the open card. */
+  private contentHeight(totalRows: number): number {
+    return totalRows * ROW_HEIGHT + this.expandedHeight;
+  }
+
   private updateLayout(): void {
     const rows = this.getVisibleRows();
     const offset = this.getRowOffset();
     const totalRows = rows.length + offset;
-    const totalHeight = totalRows * ROW_HEIGHT;
+    const totalHeight = this.contentHeight(totalRows);
     if (this.spacerEl) this.spacerEl.style.height = totalHeight + "px";
 
     const graphWidth = Math.max(GRAPH_COL_MIN_WIDTH, (this.maxColumns + 1) * COL_WIDTH + 20);
@@ -369,10 +392,19 @@ export class GraphView extends ItemView {
     const scrollTop = this.scrollEl.scrollTop;
     const viewHeight = this.scrollEl.clientHeight;
 
-    const startVisRow = Math.max(0, Math.floor(scrollTop / ROW_HEIGHT) - OVERSCAN);
+    // Below the open card every row sits `expandedHeight` lower, so the scroll
+    // offset has to be mapped back to row indices before slicing the window.
+    const gapAbove = (y: number): number =>
+      this.expandedVisRow !== null && y > this.yOf(this.expandedVisRow + 1)
+        ? this.expandedHeight
+        : 0;
+    const top = scrollTop - gapAbove(scrollTop);
+    const bottom = scrollTop + viewHeight - gapAbove(scrollTop + viewHeight);
+
+    const startVisRow = Math.max(0, Math.floor(top / ROW_HEIGHT) - OVERSCAN);
     const endVisRow = Math.min(
       visibleRows.length + offset - 1,
-      Math.ceil((scrollTop + viewHeight) / ROW_HEIGHT) + OVERSCAN,
+      Math.ceil(bottom / ROW_HEIGHT) + OVERSCAN,
     );
 
     this.renderSvg(visibleRows, startVisRow, endVisRow, offset);
@@ -407,7 +439,7 @@ export class GraphView extends ItemView {
     if (!this.svgLayer) return;
 
     const graphWidth = Math.max(GRAPH_COL_MIN_WIDTH, (this.maxColumns + 1) * COL_WIDTH + 20);
-    const totalHeight = (visibleRows.length + offset) * ROW_HEIGHT;
+    const totalHeight = this.contentHeight(visibleRows.length + offset);
     this.svgLayer.setAttribute("viewBox", `0 0 ${graphWidth} ${totalHeight}`);
     this.svgLayer.setAttribute("width", String(graphWidth));
 
@@ -429,9 +461,9 @@ export class GraphView extends ItemView {
         if (maxVis < startVis - 5 || minVis > endVis + 5) continue;
 
         const x1 = edge.fromCol * COL_WIDTH + 10;
-        const y1 = edge.fromVis * ROW_HEIGHT + ROW_HEIGHT / 2;
+        const y1 = this.yOf(edge.fromVis) + ROW_HEIGHT / 2;
         const x2 = edge.toCol * COL_WIDTH + 10;
-        const y2 = edge.toVis * ROW_HEIGHT + ROW_HEIGHT / 2;
+        const y2 = this.yOf(edge.toVis) + ROW_HEIGHT / 2;
 
         const path = this.takePath(pathCount++);
         if (x1 === x2) {
@@ -460,7 +492,7 @@ export class GraphView extends ItemView {
 
       const circle = this.takeCircle(circleCount++);
       circle.setAttribute("cx", String(node.column * COL_WIDTH + 10));
-      circle.setAttribute("cy", String(visRow * ROW_HEIGHT + ROW_HEIGHT / 2));
+      circle.setAttribute("cy", String(this.yOf(visRow) + ROW_HEIGHT / 2));
       circle.setAttribute("r", String(isMerge ? NODE_RADIUS + 1 : NODE_RADIUS));
       circle.setAttribute("fill", isMerge ? "var(--background-primary, #1e1e2e)" : color);
       circle.setAttribute("stroke", color);
@@ -544,10 +576,15 @@ export class GraphView extends ItemView {
       let handle = this.mountedRows.get(visRow);
       if (!handle) {
         handle = this.rowPool.pop() ?? this.createRowShell();
-        handle.el.style.top = visRow * ROW_HEIGHT + "px";
         this.mountedRows.set(visRow, handle);
         this.tableBody.appendChild(handle.el);
       }
+      // Recycled rows used to keep the position they were mounted at, which was
+      // safe while a visual row always sat at the same y. Opening a card moves
+      // everything below it, so the position is written whenever it changed —
+      // the comparison keeps the write out of the common case.
+      const top = this.yOf(visRow) + "px";
+      if (handle.el.style.top !== top) handle.el.style.top = top;
       if (handle.key !== key) {
         this.bindRow(handle, commit, selected);
         handle.key = key;
@@ -733,55 +770,57 @@ export class GraphView extends ItemView {
     }
 
     this.selectedHash = commit.hash;
-    this.renderVisible();
+    this.expandedVisRow = parseInt(row.style.top || "0", 10) / ROW_HEIGHT;
     await this.showPopup(commit, row);
     this.plugin.showCommitChangesInSidebar(commit);
   }
 
-  private async showPopup(commit: CommitInfo, anchor: HTMLElement): Promise<void> {
+  private async showPopup(commit: CommitInfo, _anchor: HTMLElement): Promise<void> {
     if (!this.popupEl || !this.scrollEl) return;
     this.popupEl.empty();
     this.popupEl.style.display = "block";
 
+    // Subject first: it is what the row was clicked for. The identifiers come
+    // after it, not before.
     const header = this.popupEl.createDiv("gs-popup-header");
     const avatar = header.createDiv("gs-popup-avatar");
-    const initials = commit.author
-      .split(" ")
-      .map((w) => w[0] || "")
-      .join("")
-      .substring(0, 2)
-      .toUpperCase();
-    avatar.setText(initials);
+    avatar.setText(
+      commit.author
+        .split(" ")
+        .map((w) => w[0] || "")
+        .join("")
+        .substring(0, 2)
+        .toUpperCase(),
+    );
 
     const info = header.createDiv("gs-popup-info");
+    info.createDiv("gs-popup-msg").setText(commit.message);
+
     const authorLine = info.createDiv("gs-popup-author-line");
     authorLine.createSpan("gs-popup-author-name").setText(commit.author);
     authorLine.createSpan("gs-popup-time").setText(formatRelativeDate(commit.date));
-    authorLine.createSpan("gs-popup-fulldate").setText(`(${commit.date.toLocaleString()})`);
+    authorLine.createSpan("gs-popup-fulldate").setText(commit.date.toLocaleString());
 
     const metaLine = info.createDiv("gs-popup-meta");
-    const parentLabel = metaLine.createSpan("gs-popup-parent-label");
-    parentLabel.setText(`◆ ${commit.shortHash}`);
+    metaLine.createSpan("gs-popup-parent-label").setText(commit.shortHash);
     if (commit.parents.length > 0) {
       metaLine
         .createSpan("gs-popup-parent-hash")
-        .setText(` ← ${commit.parents.map((p) => p.substring(0, 7)).join(", ")}`);
+        .setText(`← ${commit.parents.map((p) => p.substring(0, 7)).join(", ")}`);
     }
 
     try {
       const files = await this.git.showCommitFiles(commit.hash);
-      const totalAdd = files.reduce((s, f) => s + f.additions, 0);
-      const totalDel = files.reduce((s, f) => s + f.deletions, 0);
+      const totalAdd = files.reduce((sum, f) => sum + f.additions, 0);
+      const totalDel = files.reduce((sum, f) => sum + f.deletions, 0);
       const statsLine = metaLine.createSpan("gs-popup-stats");
-      statsLine.setText(` (${files.length} file${files.length !== 1 ? "s" : ""} changed)`);
-      if (totalAdd > 0) statsLine.createSpan("gs-stat-add").setText(` ${totalAdd} additions`);
-      if (totalDel > 0) statsLine.createSpan("gs-stat-del").setText(` ${totalDel} deletions`);
+      statsLine.setText(`${files.length} file${files.length !== 1 ? "s" : ""} changed`);
+      if (totalAdd > 0) statsLine.createSpan("gs-stat-add").setText(`+${totalAdd}`);
+      if (totalDel > 0) statsLine.createSpan("gs-stat-del").setText(`-${totalDel}`);
     } catch {
-      // ignore
+      // The card is still useful without the stats.
     }
 
-    const msgDiv = this.popupEl.createDiv("gs-popup-msg");
-    msgDiv.setText(commit.message);
     if (commit.body) {
       this.popupEl.createDiv("gs-popup-body").setText(commit.body);
     }
@@ -821,15 +860,31 @@ export class GraphView extends ItemView {
       }
     });
 
-    const anchorRect = anchor.getBoundingClientRect();
-    const scrollRect = this.scrollEl.getBoundingClientRect();
+    this.placeCard();
+  }
+
+  /**
+   * Reserves the room the card needs and puts it in the gap. The height has to
+   * be measured after the content exists — a commit with a long body is taller
+   * than a one-liner — and the estimate is the fallback for the frame before
+   * layout has happened.
+   */
+  private placeCard(): void {
+    if (!this.popupEl || this.expandedVisRow === null) return;
+    const measured = this.popupEl.offsetHeight;
+    this.expandedHeight = (measured > 0 ? measured : CARD_ESTIMATED_HEIGHT) + CARD_GAP;
     this.popupEl.style.left = "0";
     this.popupEl.style.right = "0";
-    this.popupEl.style.top = anchorRect.bottom - scrollRect.top + this.scrollEl.scrollTop + "px";
+    this.popupEl.style.top = this.expandedVisRow * ROW_HEIGHT + ROW_HEIGHT + "px";
+    this.updateLayout();
+    this.renderVisible();
   }
 
   private hidePopup(): void {
     if (this.popupEl) this.popupEl.style.display = "none";
+    this.expandedVisRow = null;
+    this.expandedHeight = 0;
+    this.updateLayout();
   }
 
   private showCommitMenu(event: MouseEvent, commit: CommitInfo): void {

@@ -45,9 +45,15 @@ describe("styles.css — the expanded commit card", () => {
     expect(zIndex(".gs-commit-popup")).toBeGreaterThan(zIndex(".gs-graph-svg"));
   });
 
-  it("is opaque, so the rows underneath cannot show through", () => {
+  it("carries an opaque colour layer under the accent wash", () => {
+    // The wash on its own is translucent; without the colour beneath it the
+    // card would take the list background and stop reading as a panel.
     const body = ruleBody(".gs-commit-popup");
-    expect(body).toMatch(/background\s*:\s*var\(--gs-bg2\)/);
-    expect(body).not.toMatch(/background\s*:\s*(transparent|none)/);
+    expect(body).toMatch(/var\(--gs-bg2\)/);
+    expect(body).not.toMatch(/background\s*:\s*(transparent|none)\s*;/);
+  });
+
+  it("starts after the branch and graph columns so the lane stays visible", () => {
+    expect(ruleBody(".gs-commit-popup")).toMatch(/left\s*:\s*calc\(/);
   });
 });

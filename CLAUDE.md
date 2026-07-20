@@ -88,6 +88,36 @@ src/
 - **CI** (`.github/workflows/ci.yml`): Runs on feature branches and PRs to main — eslint, typecheck, prettier, build, manifest validation, commitlint
 - **Release** (`.github/workflows/release.yml`): Runs on push to main — semantic-release creates GitHub release with `main.js`, `manifest.json`, `styles.css`
 
+## Invariants
+
+Rules earned from bugs. Break one and the symptom is silent, not a crash.
+
+- **Git status has two halves.** A file can be staged *and* changed (`AM`, `MM`).
+  Derive Staged from the index letter, Changes from the worktree letter — never
+  from `!staged`. Every entry must land in a bucket or it is invisible.
+- **Never pass a whole status list to `git add`.** Nested repos and staged
+  deletions abort the entire call. Filter, then stage.
+- **A rename is two pathspecs.** Pass `originalPath` alongside `path` for
+  stage/unstage/discard, or half the rename is applied.
+- **The graph positions everything through `yOf()`.** Rows, dots, edges,
+  spacer height. Recycled rows must rewrite `top` — a visual row's y is no
+  longer constant.
+- **Progress belongs to `store.runTask()`, not the `loading` event.** That one
+  fires on every file-watcher refresh and would blink while typing.
+- **Never disable buttons during background work.** That broke Stage All once.
+- **CSS lives on `:root`.** `--gs-*` reference Obsidian theme variables; declared
+  anywhere else they resolve to invalid and silently drop the whole rule.
+- **A card that overlays rows needs an opaque layer and a higher `z-index`**
+  than `.gs-graph-tbody` — translucent tints alone let text bleed through.
+
+## Verifying UI changes
+
+happy-dom does no layout or paint, so a DOM test cannot tell you it *looks*
+right. For visual work, serve a small HTML harness that links the real
+`styles.css` and mirrors the rendered markup, open it in a browser and look at
+it. Assert the arithmetic (positions, heights, spacing) in Vitest; assert the
+intent of load-bearing CSS rules in `tests/styles.test.ts`.
+
 ## Important Notes
 
 - `skipLibCheck: true` in tsconfig.json due to Obsidian API type definition issues

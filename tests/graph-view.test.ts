@@ -460,3 +460,76 @@ describe("GraphView — expanded commit card", () => {
     expect(popup(h).style.display).toBe("none");
   });
 });
+
+/**
+ * The card is not an overlay: the rows below it move down by its height and the
+ * lane stretches across the gap. Everything positions through one function, so
+ * these assertions are what keep rows, dots and edges from drifting apart.
+ */
+describe("GraphView — expanding a commit pushes the list down", () => {
+  const CARD_HEIGHT = 130 + 8; // CARD_ESTIMATED_HEIGHT + CARD_GAP, the fallback without layout
+  const card = (h: Harness): HTMLElement =>
+    h.view.contentEl.querySelector(".gs-commit-popup") as HTMLElement;
+
+  async function expandFirstRow(h: Harness): Promise<void> {
+    readRows(h.tbody)[0].el.dispatchEvent(new MouseEvent("click", { bubbles: true }));
+    await Promise.resolve();
+    await Promise.resolve();
+    flushFrames();
+  }
+
+  it("moves every row below the expanded one down by the card height", async () => {
+    const h = await mount();
+    const before = readRows(h.tbody).map((r) => r.top);
+    await expandFirstRow(h);
+    const after = readRows(h.tbody).map((r) => r.top);
+
+    expect(after[0], "the expanded row itself must not move").toBe(before[0]);
+    expect(after[1]).toBe(before[1] + CARD_HEIGHT);
+    expect(after[5]).toBe(before[5] + CARD_HEIGHT);
+  });
+
+  it("puts the card in the gap it opened, directly under its row", async () => {
+    const h = await mount();
+    await expandFirstRow(h);
+    expect(card(h).style.top).toBe(`${ROW_HEIGHT}px`);
+  });
+
+  it("stretches the lane so the dots follow the rows", async () => {
+    const h = await mount();
+    const cy = (): number[] =>
+      [...h.view.contentEl.querySelectorAll("circle")]
+        .filter((c) => (c as SVGElement).style.display !== "none")
+        .map((c) => parseFloat(c.getAttribute("cy") || "0"))
+        .sort((a, b) => a - b);
+
+    const before = cy();
+    await expandFirstRow(h);
+    const after = cy();
+
+    const gap = after[1] - after[0];
+    expect(gap, "the dots kept their old spacing across the card").toBeGreaterThan(
+      before[1] - before[0],
+    );
+    expect(gap).toBe(ROW_HEIGHT + CARD_HEIGHT);
+  });
+
+  it("grows the scrollable height so the last row stays reachable", async () => {
+    const h = await mount();
+    const spacer = h.view.contentEl.querySelector(".gs-graph-spacer") as HTMLElement;
+    const before = parseInt(spacer.style.height, 10);
+    await expandFirstRow(h);
+
+    expect(parseInt(spacer.style.height, 10)).toBe(before + CARD_HEIGHT);
+  });
+
+  it("closes back to the original layout", async () => {
+    const h = await mount();
+    const before = readRows(h.tbody).map((r) => r.top);
+    await expandFirstRow(h);
+    await expandFirstRow(h);
+
+    expect(readRows(h.tbody).map((r) => r.top)).toEqual(before);
+    expect(card(h).style.display).toBe("none");
+  });
+});
