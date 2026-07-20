@@ -235,12 +235,12 @@ export default class GitHistoryPlugin extends Plugin {
     }
   }
 
-  async openDiff(path: string, ref?: string): Promise<void> {
+  async openDiff(path: string, ref?: string, staged = false): Promise<void> {
     const leaf = this.app.workspace.getLeaf("tab");
     if (leaf) {
       await leaf.setViewState({ type: DIFF_VIEW_TYPE, active: true });
       const view = leaf.view as DiffView;
-      view.setFile(path, ref);
+      view.setFile(path, ref, staged);
       this.app.workspace.revealLeaf(leaf);
     }
   }

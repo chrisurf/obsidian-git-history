@@ -3,7 +3,12 @@ export const HISTORY_VIEW_TYPE = "git-history-history";
 export const GRAPH_VIEW_TYPE = "git-history-graph";
 export const DIFF_VIEW_TYPE = "git-history-diff";
 
-export type FileStatusCode = "M" | "A" | "D" | "R" | "C" | "U" | "?" | "!";
+/**
+ * Status letters git can report per side. "." is porcelain v2's "unchanged"
+ * and "T" a type change (file <-> symlink), both of which the parser passes
+ * through unmodified.
+ */
+export type FileStatusCode = "M" | "T" | "A" | "D" | "R" | "C" | "U" | "?" | "!" | ".";
 
 export interface FileStatus {
   path: string;

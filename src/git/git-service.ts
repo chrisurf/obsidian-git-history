@@ -159,6 +159,10 @@ export class GitService {
     }
     const paths = status
       .filter((f) => !f.embeddedRepo)
+      // Entries whose worktree half is clean are already staged, and a staged
+      // deletion matches neither the index nor the worktree — passing it as a
+      // pathspec fails the whole call with "did not match any files".
+      .filter((f) => f.workingStatus !== "." && f.workingStatus !== " ")
       .flatMap((f) => (f.originalPath ? [f.path, f.originalPath] : [f.path]));
     await this.stage(paths);
     return { skipped };
@@ -166,7 +170,12 @@ export class GitService {
 
   async unstage(paths: string[]): Promise<void> {
     if (paths.length === 0) return;
-    await this.enqueue(() => this.exec(["reset", "HEAD", "--", ...paths]));
+    await this.enqueue(async () => {
+      for (let i = 0; i < paths.length; i += GitService.PATHS_PER_CALL) {
+        const chunk = paths.slice(i, i + GitService.PATHS_PER_CALL);
+        await this.exec(["reset", "HEAD", "--", ...chunk]);
+      }
+    });
   }
 
   async unstageAll(): Promise<void> {

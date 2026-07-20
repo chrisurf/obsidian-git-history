@@ -421,6 +421,8 @@ export class DiffView extends ItemView {
   private git: GitService;
   private filePath = "";
   private ref: string | null = null;
+  /** Show the index against HEAD instead of the worktree against the index. */
+  private staged = false;
   private mode: "side-by-side" | "inline" = "side-by-side";
   private diffContainer: HTMLElement | null = null;
   private minimapCanvas: HTMLCanvasElement | null = null;
@@ -447,9 +449,10 @@ export class DiffView extends ItemView {
     return "file-diff";
   }
 
-  setFile(path: string, ref?: string): void {
+  setFile(path: string, ref?: string, staged = false): void {
     this.filePath = path;
     this.ref = ref ?? null;
+    this.staged = staged;
     this.tokenize = getTokenizer(path);
     (this.leaf as WorkspaceLeaf & { updateHeader?: () => void }).updateHeader?.();
     if (this.diffContainer) this.loadDiff();
@@ -535,6 +538,8 @@ export class DiffView extends ItemView {
       if (this.ref) {
         const parentRef = this.ref + "^";
         rawDiff = await this.git.diffCommit(parentRef, this.ref, this.filePath);
+      } else if (this.staged) {
+        rawDiff = await this.git.diff(this.filePath, true);
       } else {
         rawDiff = await this.git.diff(this.filePath);
         if (!rawDiff) {
@@ -636,7 +641,7 @@ export class DiffView extends ItemView {
           `@@ -${hunk.oldStart},${hunk.oldLines} +${hunk.newStart},${hunk.newLines} @@`,
       );
 
-      if (!this.ref) {
+      if (!this.ref && !this.staged) {
         const hunkActions = rightHunkHeader.createDiv("git-diff-hunk-actions");
         const stageBtn = hunkActions.createEl("button", {
           cls: "git-diff-hunk-btn",
@@ -737,7 +742,7 @@ export class DiffView extends ItemView {
         `@@ -${hunk.oldStart},${hunk.oldLines} +${hunk.newStart},${hunk.newLines} @@ ${hunk.header}`,
       );
 
-      if (!this.ref) {
+      if (!this.ref && !this.staged) {
         const hunkActions = hunkHeader.createDiv("git-diff-hunk-actions");
         const stageBtn = hunkActions.createEl("button", {
           cls: "git-diff-hunk-btn",

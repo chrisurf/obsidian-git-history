@@ -525,18 +525,26 @@ export class SourceControlView extends ItemView {
     return paths;
   }
 
-  private collectFilePaths(node: FileTreeNode): string[] {
-    const paths: string[] = [];
+  private collectFiles(node: FileTreeNode): FileStatus[] {
+    const files: FileStatus[] = [];
     for (const child of node.children) {
       if (child.isDir) {
-        paths.push(...this.collectFilePaths(child));
+        files.push(...this.collectFiles(child));
       } else if (child.file && !child.file.embeddedRepo) {
         // `git add` cannot index a nested repository, and one of them in the
         // list makes the whole call fail.
-        paths.push(child.file.path);
+        files.push(child.file);
       }
     }
-    return paths;
+    return files;
+  }
+
+  /**
+   * Pathspecs for a git command. A rename is one entry with two paths, and
+   * leaving the old one out would stage or unstage only half of it.
+   */
+  private pathspecs(files: FileStatus[]): string[] {
+    return files.flatMap((f) => (f.originalPath ? [f.path, f.originalPath] : [f.path]));
   }
 
   private buildFileTree(files: FileStatus[], _group: string): FileTreeNode[] {
@@ -607,7 +615,7 @@ export class SourceControlView extends ItemView {
             discardBtn.setAttribute("aria-label", "Discard All in Folder");
             discardBtn.addEventListener("click", async (e) => {
               e.stopPropagation();
-              await this.git.discard(this.collectFilePaths(node));
+              await this.git.discard(this.pathspecs(this.collectFiles(node)));
               await this.store.refresh();
             });
           }
@@ -616,7 +624,7 @@ export class SourceControlView extends ItemView {
           stageBtn.setAttribute("aria-label", "Stage All in Folder");
           stageBtn.addEventListener("click", async (e) => {
             e.stopPropagation();
-            await this.git.stage(this.collectFilePaths(node));
+            await this.git.stage(this.pathspecs(this.collectFiles(node)));
             await this.store.refresh();
           });
         }
@@ -627,7 +635,7 @@ export class SourceControlView extends ItemView {
           unstageBtn.setAttribute("aria-label", "Unstage All in Folder");
           unstageBtn.addEventListener("click", async (e) => {
             e.stopPropagation();
-            await this.git.unstage(this.collectFilePaths(node));
+            await this.git.unstage(this.pathspecs(this.collectFiles(node)));
             await this.store.refresh();
           });
         }
@@ -705,7 +713,7 @@ export class SourceControlView extends ItemView {
       discardBtn.setAttribute("aria-label", "Discard Changes");
       discardBtn.addEventListener("click", async (e) => {
         e.stopPropagation();
-        await this.git.discard([file.path]);
+        await this.git.discard(this.pathspecs([file]));
         await this.store.refresh();
       });
     }
@@ -716,7 +724,7 @@ export class SourceControlView extends ItemView {
       stageBtn.setAttribute("aria-label", "Stage Changes");
       stageBtn.addEventListener("click", async (e) => {
         e.stopPropagation();
-        await this.git.stage([file.path]);
+        await this.git.stage(this.pathspecs([file]));
         await this.store.refresh();
       });
     }
@@ -727,7 +735,7 @@ export class SourceControlView extends ItemView {
       openBtn.setAttribute("aria-label", "Open Changes");
       openBtn.addEventListener("click", (e) => {
         e.stopPropagation();
-        this.plugin.openDiff(file.path);
+        this.plugin.openDiff(file.path, undefined, true);
       });
 
       const unstageBtn = actions.createEl("button", { cls: "gs-action-btn" });
@@ -735,7 +743,7 @@ export class SourceControlView extends ItemView {
       unstageBtn.setAttribute("aria-label", "Unstage Changes");
       unstageBtn.addEventListener("click", async (e) => {
         e.stopPropagation();
-        await this.git.unstage([file.path]);
+        await this.git.unstage(this.pathspecs([file]));
         await this.store.refresh();
       });
     }
@@ -746,7 +754,10 @@ export class SourceControlView extends ItemView {
     badge.setText(displayChar);
     badge.addClass(`gs-badge-${displayChar}`);
 
-    row.addEventListener("click", () => this.plugin.openDiff(file.path));
+    // A file can appear in both sections at once; each row opens its own half.
+    row.addEventListener("click", () =>
+      this.plugin.openDiff(file.path, undefined, group === "staged"),
+    );
     row.addEventListener("contextmenu", (e) => {
       const menu = new Menu();
       menu.addItem((i) =>
@@ -759,7 +770,7 @@ export class SourceControlView extends ItemView {
         i
           .setTitle("Open Diff")
           .setIcon("file-diff")
-          .onClick(() => this.plugin.openDiff(file.path)),
+          .onClick(() => this.plugin.openDiff(file.path, undefined, group === "staged")),
       );
       menu.addSeparator();
       menu.addItem((i) =>

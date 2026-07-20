@@ -56,8 +56,20 @@ export class RepoStore extends Events {
   get stagedFiles(): FileStatus[] {
     return this.visible.filter((f) => f.staged);
   }
+  /**
+   * The worktree half of the status. A file can be staged and edited again
+   * before the commit (`AM`, `MM`), and then it belongs in both sections: the
+   * index version is what a commit would record, the worktree version is what
+   * it would leave behind. Filtering these out hid the second edit entirely.
+   */
   get changedFiles(): FileStatus[] {
-    return this.visible.filter((f) => !f.staged && f.workingStatus !== "?");
+    return this.visible.filter(
+      (f) =>
+        f.workingStatus !== "." &&
+        f.workingStatus !== " " &&
+        f.workingStatus !== "?" &&
+        f.workingStatus !== "U",
+    );
   }
   get untrackedFiles(): FileStatus[] {
     return this.visible.filter((f) => f.workingStatus === "?");
