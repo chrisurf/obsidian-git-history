@@ -18,7 +18,9 @@ export class StatusBarController {
 
     this.store.on("branch-changed", () => this.update());
     this.store.on("status-changed", () => this.update());
-    this.store.on("loading", (loading: boolean) => this.setLoading(loading));
+    this.store.on("loading", ((...args: unknown[]) => this.setLoading(args[0] as boolean)) as (
+      ...data: unknown[]
+    ) => unknown);
   }
 
   private build(): void {

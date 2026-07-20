@@ -1,8 +1,6 @@
 import { CommitInfo, GraphNode, GraphEdge, GraphData } from "../types";
 
-const BRANCH_COLORS = [
-  0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11,
-];
+const BRANCH_COLORS = [0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11];
 
 export function computeGraphLayout(commits: CommitInfo[]): GraphData {
   if (commits.length === 0) return { nodes: [], edges: [], maxColumns: 0 };

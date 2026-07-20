@@ -36,7 +36,6 @@ export class SourceControlView extends ItemView {
   private tooltipEl: HTMLElement | null = null;
   private tooltipTimeout: ReturnType<typeof setTimeout> | null = null;
 
-  private graphSubTab: GraphSubTab = "graph";
   private graphSubTabBtns: Record<string, HTMLElement> = {};
   private graphSubGraphPanel: HTMLElement | null = null;
   private graphSubChangesPanel: HTMLElement | null = null;
@@ -49,9 +48,15 @@ export class SourceControlView extends ItemView {
     this.git = plugin.git;
   }
 
-  getViewType(): string { return SOURCE_CONTROL_VIEW_TYPE; }
-  getDisplayText(): string { return "Source Control"; }
-  getIcon(): string { return "git-commit-horizontal"; }
+  getViewType(): string {
+    return SOURCE_CONTROL_VIEW_TYPE;
+  }
+  getDisplayText(): string {
+    return "Source Control";
+  }
+  getIcon(): string {
+    return "git-commit-horizontal";
+  }
 
   async onOpen(): Promise<void> {
     const { contentEl } = this;
@@ -70,17 +75,23 @@ export class SourceControlView extends ItemView {
 
     this.buildSidebarGraph(this.graphPanel);
 
-    this.registerEvent(this.store.on("status-changed", () => {
-      this.renderFiles();
-      if (this.activeTab === "graph") this.rebuildSidebarGraph();
-    }));
+    this.registerEvent(
+      this.store.on("status-changed", () => {
+        this.renderFiles();
+        if (this.activeTab === "graph") this.rebuildSidebarGraph();
+      }),
+    );
     this.registerEvent(this.store.on("branch-changed", () => this.updateBranch()));
-    this.registerEvent(this.store.on("log-changed", () => {
-      if (this.activeTab === "graph") this.rebuildSidebarGraph();
-    }));
-    this.registerEvent(this.store.on("loading", (l: boolean) => {
-      contentEl.toggleClass("gs-loading", l);
-    }));
+    this.registerEvent(
+      this.store.on("log-changed", () => {
+        if (this.activeTab === "graph") this.rebuildSidebarGraph();
+      }),
+    );
+    this.registerEvent(
+      this.store.on("loading", ((...args: unknown[]) => {
+        contentEl.toggleClass("gs-loading", args[0] as boolean);
+      }) as (...data: unknown[]) => unknown),
+    );
 
     this.focusHandler = () => this.store.refresh();
     window.addEventListener("focus", this.focusHandler);
@@ -93,7 +104,10 @@ export class SourceControlView extends ItemView {
   private buildTabBar(el: HTMLElement): void {
     const bar = el.createDiv("gs-sc-tabbar");
 
-    const changesBtn = bar.createEl("button", { cls: "gs-sc-tab gs-sc-tab-active", text: "Changes" });
+    const changesBtn = bar.createEl("button", {
+      cls: "gs-sc-tab gs-sc-tab-active",
+      text: "Changes",
+    });
     const graphBtn = bar.createEl("button", { cls: "gs-sc-tab", text: "Graph" });
 
     this.tabBtns["changes"] = changesBtn;
@@ -124,23 +138,66 @@ export class SourceControlView extends ItemView {
 
     const actions = bar.createDiv("gs-sc-header-actions");
     for (const [icon, label, fn] of [
-      ["refresh-cw", "Refresh", async () => { await this.store.refresh(); this.renderFiles(); }],
-      ["download", "Pull", async () => {
-        try { await this.git.pull({ strategy: this.plugin.settings.pullStrategy }); await this.store.refresh(); new Notice("Pulled"); }
-        catch (e: unknown) { new Notice(`Pull failed: ${e instanceof Error ? e.message : String(e)}`); }
-      }],
-      ["upload", "Push", async () => {
-        try { await this.git.push({ setUpstream: true, remote: "origin", branch: this.store.branch }); await this.store.refresh(); new Notice("Pushed"); }
-        catch (e: unknown) { new Notice(`Push failed: ${e instanceof Error ? e.message : String(e)}`); }
-      }],
-      ["cloud-download", "Fetch", async () => {
-        try { await this.git.fetch(); await this.store.refresh(); new Notice("Fetched"); }
-        catch (e: unknown) { new Notice(`Fetch failed: ${e instanceof Error ? e.message : String(e)}`); }
-      }],
-      ["archive", "Stash", async () => {
-        try { await this.git.stashSave(); await this.store.refresh(); new Notice("Stashed"); }
-        catch (e: unknown) { new Notice(`${e instanceof Error ? e.message : String(e)}`); }
-      }],
+      [
+        "refresh-cw",
+        "Refresh",
+        async () => {
+          await this.store.refresh();
+          this.renderFiles();
+        },
+      ],
+      [
+        "download",
+        "Pull",
+        async () => {
+          try {
+            await this.git.pull({ strategy: this.plugin.settings.pullStrategy });
+            await this.store.refresh();
+            new Notice("Pulled");
+          } catch (e: unknown) {
+            new Notice(`Pull failed: ${e instanceof Error ? e.message : String(e)}`);
+          }
+        },
+      ],
+      [
+        "upload",
+        "Push",
+        async () => {
+          try {
+            await this.git.push({ setUpstream: true, remote: "origin", branch: this.store.branch });
+            await this.store.refresh();
+            new Notice("Pushed");
+          } catch (e: unknown) {
+            new Notice(`Push failed: ${e instanceof Error ? e.message : String(e)}`);
+          }
+        },
+      ],
+      [
+        "cloud-download",
+        "Fetch",
+        async () => {
+          try {
+            await this.git.fetch();
+            await this.store.refresh();
+            new Notice("Fetched");
+          } catch (e: unknown) {
+            new Notice(`Fetch failed: ${e instanceof Error ? e.message : String(e)}`);
+          }
+        },
+      ],
+      [
+        "archive",
+        "Stash",
+        async () => {
+          try {
+            await this.git.stashSave();
+            await this.store.refresh();
+            new Notice("Stashed");
+          } catch (e: unknown) {
+            new Notice(`${e instanceof Error ? e.message : String(e)}`);
+          }
+        },
+      ],
       ["more-horizontal", "More", (e: MouseEvent) => this.showMoreMenu(e)],
     ] as [string, string, (...a: any[]) => void][]) {
       const btn = actions.createEl("button", { cls: "gs-icon-btn" });
@@ -150,14 +207,16 @@ export class SourceControlView extends ItemView {
     }
   }
 
-
   private buildCommitArea(el: HTMLElement): void {
     const area = el.createDiv("gs-sc-commit-area");
 
     const inputWrap = area.createDiv("gs-commit-input-wrap");
     this.commitInput = inputWrap.createEl("input", {
       cls: "gs-commit-input",
-      attr: { type: "text", placeholder: `Message (⌘Enter to commit on "${this.store.branch || "main"}")` },
+      attr: {
+        type: "text",
+        placeholder: `Message (⌘Enter to commit on "${this.store.branch || "main"}")`,
+      },
     });
 
     this.commitInput.addEventListener("keydown", (e: KeyboardEvent) => {
@@ -180,10 +239,20 @@ export class SourceControlView extends ItemView {
     setIcon(chevron, "chevron-down");
     dropdownBtn.addEventListener("click", (e) => {
       const menu = new Menu();
-      menu.addItem(i => i.setTitle("Commit").setIcon("check").onClick(() => this.doCommit()));
-      menu.addItem(i => i.setTitle("Commit & Push").setIcon("upload").onClick(() => this.doCommit(true)));
+      menu.addItem((i) =>
+        i
+          .setTitle("Commit")
+          .setIcon("check")
+          .onClick(() => this.doCommit()),
+      );
+      menu.addItem((i) =>
+        i
+          .setTitle("Commit & Push")
+          .setIcon("upload")
+          .onClick(() => this.doCommit(true)),
+      );
       menu.addSeparator();
-      menu.addItem(i => {
+      menu.addItem((i) => {
         const isAmend = this.contentEl.querySelector(".gs-commit-input") as HTMLInputElement;
         i.setTitle("Amend Previous Commit").setIcon("edit");
         i.onClick(async () => {
@@ -204,24 +273,49 @@ export class SourceControlView extends ItemView {
 
   private showMoreMenu(event: MouseEvent): void {
     const menu = new Menu();
-    menu.addItem(i => i.setTitle("Pop Stash").setIcon("archive-restore").onClick(async () => {
-      try { await this.git.stashPop(); await this.store.refresh(); new Notice("Stash popped"); }
-      catch (e: unknown) { new Notice(`${e instanceof Error ? e.message : String(e)}`); }
-    }));
+    menu.addItem((i) =>
+      i
+        .setTitle("Pop Stash")
+        .setIcon("archive-restore")
+        .onClick(async () => {
+          try {
+            await this.git.stashPop();
+            await this.store.refresh();
+            new Notice("Stash popped");
+          } catch (e: unknown) {
+            new Notice(`${e instanceof Error ? e.message : String(e)}`);
+          }
+        }),
+    );
     menu.addSeparator();
-    menu.addItem(i => i.setTitle("Switch Branch...").setIcon("git-branch").onClick(async (e) => {
-      await this.showBranchMenu(event);
-    }));
-    menu.addItem(i => i.setTitle("Open Git Graph").setIcon("git-branch").onClick(() => this.plugin.openGraphView()));
-    menu.addItem(i => i.setTitle("Open History").setIcon("history").onClick(() => this.plugin.openHistoryView()));
+    menu.addItem((i) =>
+      i
+        .setTitle("Switch Branch...")
+        .setIcon("git-branch")
+        .onClick(async () => {
+          await this.showBranchMenu(event);
+        }),
+    );
+    menu.addItem((i) =>
+      i
+        .setTitle("Open Git Graph")
+        .setIcon("git-branch")
+        .onClick(() => this.plugin.openGraphView()),
+    );
+    menu.addItem((i) =>
+      i
+        .setTitle("Open History")
+        .setIcon("history")
+        .onClick(() => this.plugin.openHistoryView()),
+    );
     menu.showAtMouseEvent(event);
   }
 
   private async showBranchMenu(event: MouseEvent): Promise<void> {
     await this.store.refreshBranches();
     const menu = new Menu();
-    for (const b of this.store.branches.filter(b => !b.remote)) {
-      menu.addItem(i => {
+    for (const b of this.store.branches.filter((b) => !b.remote)) {
+      menu.addItem((i) => {
         i.setTitle(`${b.current ? "✓ " : "  "}${b.name}`);
         i.setIcon("git-branch");
         if (!b.current) {
@@ -238,30 +332,41 @@ export class SourceControlView extends ItemView {
       });
     }
     menu.addSeparator();
-    menu.addItem(i => i.setTitle("+ Create new branch...").setIcon("plus").onClick(async () => {
-      const name = prompt("New branch name:");
-      if (name) {
-        try {
-          await this.git.createBranch(name);
-          await this.store.refresh();
-          new Notice(`Branch '${name}' created and checked out`);
-        } catch (e: unknown) {
-          new Notice(`${e instanceof Error ? e.message : String(e)}`);
-        }
-      }
-    }));
+    menu.addItem((i) =>
+      i
+        .setTitle("+ Create new branch...")
+        .setIcon("plus")
+        .onClick(async () => {
+          const name = prompt("New branch name:");
+          if (name) {
+            try {
+              await this.git.createBranch(name);
+              await this.store.refresh();
+              new Notice(`Branch '${name}' created and checked out`);
+            } catch (e: unknown) {
+              new Notice(`${e instanceof Error ? e.message : String(e)}`);
+            }
+          }
+        }),
+    );
     menu.showAtMouseEvent(event);
   }
 
   private updateBranch(): void {
     if (this.commitInput) {
-      this.commitInput.setAttribute("placeholder", `Message (⌘Enter to commit on "${this.store.branch || "main"}")`);
+      this.commitInput.setAttribute(
+        "placeholder",
+        `Message (⌘Enter to commit on "${this.store.branch || "main"}")`,
+      );
     }
   }
 
   private async doCommit(andPush = false): Promise<void> {
     const msg = this.commitInput?.value?.trim();
-    if (!msg) { new Notice("Please enter a commit message"); return; }
+    if (!msg) {
+      new Notice("Please enter a commit message");
+      return;
+    }
 
     const staged = this.store.stagedFiles;
     if (staged.length === 0) {
@@ -328,24 +433,36 @@ export class SourceControlView extends ItemView {
       const btn = headerActions.createEl("button", { cls: "gs-icon-btn gs-icon-btn-sm" });
       setIcon(btn, "minus");
       btn.setAttribute("aria-label", "Unstage All");
-      btn.addEventListener("click", async (e) => { e.stopPropagation(); await this.git.unstageAll(); await this.store.refresh(); });
+      btn.addEventListener("click", async (e) => {
+        e.stopPropagation();
+        await this.git.unstageAll();
+        await this.store.refresh();
+      });
     } else if (group !== "conflict") {
       const btn = headerActions.createEl("button", { cls: "gs-icon-btn gs-icon-btn-sm" });
       setIcon(btn, "plus");
       btn.setAttribute("aria-label", "Stage All");
-      btn.addEventListener("click", async (e) => { e.stopPropagation(); await this.git.stageAll(); await this.store.refresh(); });
+      btn.addEventListener("click", async (e) => {
+        e.stopPropagation();
+        await this.git.stageAll();
+        await this.store.refresh();
+      });
     }
     if (group === "changed") {
       const btn = headerActions.createEl("button", { cls: "gs-icon-btn gs-icon-btn-sm" });
       setIcon(btn, "rotate-ccw");
       btn.setAttribute("aria-label", "Discard All");
-      btn.addEventListener("click", async (e) => { e.stopPropagation(); await this.git.discardAll(); await this.store.refresh(); });
+      btn.addEventListener("click", async (e) => {
+        e.stopPropagation();
+        await this.git.discardAll();
+        await this.store.refresh();
+      });
     }
 
     const tree = this.buildFileTree(files, group);
     const allDirPaths = this.collectDirPaths(tree);
 
-    let allExpanded = allDirPaths.every(p => this.expandedDirs.has(p));
+    let allExpanded = allDirPaths.every((p) => this.expandedDirs.has(p));
     const toggleBtn = headerActions.createEl("button", { cls: "gs-icon-btn gs-icon-btn-sm" });
     setIcon(toggleBtn, allExpanded ? "fold-vertical" : "unfold-vertical");
     toggleBtn.setAttribute("aria-label", allExpanded ? "Collapse All" : "Expand All");
@@ -396,7 +513,7 @@ export class SourceControlView extends ItemView {
     return paths;
   }
 
-  private buildFileTree(files: FileStatus[], group: string): FileTreeNode[] {
+  private buildFileTree(files: FileStatus[], _group: string): FileTreeNode[] {
     const root: FileTreeNode[] = [];
     const dirMap = new Map<string, FileTreeNode>();
 
@@ -435,11 +552,16 @@ export class SourceControlView extends ItemView {
     return root;
   }
 
-  private renderTree(parent: HTMLElement, nodes: FileTreeNode[], group: string, depth: number): void {
+  private renderTree(
+    parent: HTMLElement,
+    nodes: FileTreeNode[],
+    group: string,
+    depth: number,
+  ): void {
     for (const node of nodes) {
       if (node.isDir) {
         const dirRow = parent.createDiv("gs-tree-dir");
-        dirRow.style.paddingLeft = (depth * 16 + 8) + "px";
+        dirRow.style.paddingLeft = depth * 16 + 8 + "px";
 
         const chevron = dirRow.createSpan("gs-tree-chevron");
         setIcon(chevron, node.expanded ? "chevron-down" : "chevron-right");
@@ -504,14 +626,23 @@ export class SourceControlView extends ItemView {
 
   private renderFileRow(parent: HTMLElement, file: FileStatus, group: string, depth: number): void {
     const row = parent.createDiv("gs-tree-file");
-    row.style.paddingLeft = (depth * 16 + 8) + "px";
+    row.style.paddingLeft = depth * 16 + 8 + "px";
 
     const fileIcon = row.createSpan("gs-tree-file-icon");
     const ext = file.path.split(".").pop()?.toLowerCase() || "";
     const iconMap: Record<string, string> = {
-      md: "file-text", json: "braces", css: "paintbrush", js: "file-code",
-      ts: "file-code", html: "code", yml: "file-cog", yaml: "file-cog",
-      png: "image", jpg: "image", svg: "image", gif: "image",
+      md: "file-text",
+      json: "braces",
+      css: "paintbrush",
+      js: "file-code",
+      ts: "file-code",
+      html: "code",
+      yml: "file-cog",
+      yaml: "file-cog",
+      png: "image",
+      jpg: "image",
+      svg: "image",
+      gif: "image",
     };
     setIcon(fileIcon, iconMap[ext] || "file");
     fileIcon.addClass(`gs-ext-${ext || "default"}`);
@@ -585,10 +716,28 @@ export class SourceControlView extends ItemView {
     row.addEventListener("click", () => this.plugin.openDiff(file.path));
     row.addEventListener("contextmenu", (e) => {
       const menu = new Menu();
-      menu.addItem(i => i.setTitle("Open File").setIcon("file").onClick(() => this.app.workspace.openLinkText(file.path, "", false)));
-      menu.addItem(i => i.setTitle("Open Diff").setIcon("file-diff").onClick(() => this.plugin.openDiff(file.path)));
+      menu.addItem((i) =>
+        i
+          .setTitle("Open File")
+          .setIcon("file")
+          .onClick(() => this.app.workspace.openLinkText(file.path, "", false)),
+      );
+      menu.addItem((i) =>
+        i
+          .setTitle("Open Diff")
+          .setIcon("file-diff")
+          .onClick(() => this.plugin.openDiff(file.path)),
+      );
       menu.addSeparator();
-      menu.addItem(i => i.setTitle("Copy Path").setIcon("copy").onClick(() => { navigator.clipboard.writeText(file.path); new Notice("Path copied"); }));
+      menu.addItem((i) =>
+        i
+          .setTitle("Copy Path")
+          .setIcon("copy")
+          .onClick(() => {
+            navigator.clipboard.writeText(file.path);
+            new Notice("Path copied");
+          }),
+      );
       menu.showAtMouseEvent(e);
     });
 
@@ -597,11 +746,11 @@ export class SourceControlView extends ItemView {
 
   private async loadFileStats(file: FileStatus, el: HTMLElement, group: string): Promise<void> {
     try {
-      const raw = group === "staged"
-        ? await this.git.diff(file.path, true)
-        : await this.git.diff(file.path);
+      const raw =
+        group === "staged" ? await this.git.diff(file.path, true) : await this.git.diff(file.path);
       if (!raw) return;
-      let adds = 0, dels = 0;
+      let adds = 0,
+        dels = 0;
       for (const line of raw.split("\n")) {
         if (line.startsWith("+") && !line.startsWith("+++")) adds++;
         if (line.startsWith("-") && !line.startsWith("---")) dels++;
@@ -611,12 +760,6 @@ export class SourceControlView extends ItemView {
     } catch {
       // ignore
     }
-  }
-
-  private escapeHtml(s: string): string {
-    const el = document.createElement("span");
-    el.textContent = s;
-    return el.innerHTML;
   }
 
   /* ============================================================
@@ -664,16 +807,19 @@ export class SourceControlView extends ItemView {
 
     this.graphListEl = this.graphSubGraphPanel.createDiv("gs-sg-list");
 
-    this.graphSubChangesPanel.createDiv("gs-sg-changes-empty").setText("Click a commit in the Git Graph to see its changes here.");
+    this.graphSubChangesPanel
+      .createDiv("gs-sg-changes-empty")
+      .setText("Click a commit in the Git Graph to see its changes here.");
   }
 
   private switchGraphSubTab(tab: GraphSubTab): void {
-    this.graphSubTab = tab;
     for (const [key, btn] of Object.entries(this.graphSubTabBtns)) {
       btn.toggleClass("gs-sg-subtab-active", key === tab);
     }
-    if (this.graphSubGraphPanel) this.graphSubGraphPanel.style.display = tab === "graph" ? "" : "none";
-    if (this.graphSubChangesPanel) this.graphSubChangesPanel.style.display = tab === "commit-changes" ? "" : "none";
+    if (this.graphSubGraphPanel)
+      this.graphSubGraphPanel.style.display = tab === "graph" ? "" : "none";
+    if (this.graphSubChangesPanel)
+      this.graphSubChangesPanel.style.display = tab === "commit-changes" ? "" : "none";
   }
 
   showCommitChanges(commit: CommitInfo): void {
@@ -691,7 +837,12 @@ export class SourceControlView extends ItemView {
 
     const header = this.graphSubChangesPanel.createDiv("gs-sg-changes-header");
     const avatarEl = header.createDiv("gs-sg-avatar");
-    const initials = commit.author.split(" ").map(w => w[0] || "").join("").substring(0, 2).toUpperCase();
+    const initials = commit.author
+      .split(" ")
+      .map((w) => w[0] || "")
+      .join("")
+      .substring(0, 2)
+      .toUpperCase();
     if (initials) {
       avatarEl.setText(initials);
     } else {
@@ -714,7 +865,9 @@ export class SourceControlView extends ItemView {
       try {
         const files = await this.git.showCommitFiles(commit.hash);
         if (files.length > 0) this.plugin.openDiff(files[0].path, commit.hash);
-      } catch { new Notice("Could not load changes"); }
+      } catch {
+        new Notice("Could not load changes");
+      }
     });
 
     const filesContainer = this.graphSubChangesPanel.createDiv("gs-sg-changes-files");
@@ -788,8 +941,13 @@ export class SourceControlView extends ItemView {
       const info = wcRow.createDiv("gs-sg-info");
       info.createSpan("gs-sg-msg").setText("Working Changes");
       const metaLine = info.createDiv("gs-sg-meta-line");
-      const totalChanges = this.store.changedFiles.length + this.store.untrackedFiles.length + this.store.stagedFiles.length;
-      metaLine.createSpan("gs-sg-meta").setText(`${totalChanges} file${totalChanges !== 1 ? "s" : ""} · You`);
+      const totalChanges =
+        this.store.changedFiles.length +
+        this.store.untrackedFiles.length +
+        this.store.stagedFiles.length;
+      metaLine
+        .createSpan("gs-sg-meta")
+        .setText(`${totalChanges} file${totalChanges !== 1 ? "s" : ""} · You`);
 
       wcRow.addEventListener("click", () => this.switchTab("changes"));
     }
@@ -804,7 +962,8 @@ export class SourceControlView extends ItemView {
           !commit.message.toLowerCase().includes(q) &&
           !commit.author.toLowerCase().includes(q) &&
           !commit.shortHash.toLowerCase().includes(q)
-        ) continue;
+        )
+          continue;
       }
 
       const row = this.graphListEl.createDiv("gs-sg-row");
@@ -812,7 +971,12 @@ export class SourceControlView extends ItemView {
 
       const avatarCol = row.createDiv("gs-sg-avatar-col");
       const avatar = avatarCol.createDiv("gs-sg-avatar");
-      const initials = commit.author.split(" ").map(w => w[0] || "").join("").substring(0, 2).toUpperCase();
+      const initials = commit.author
+        .split(" ")
+        .map((w) => w[0] || "")
+        .join("")
+        .substring(0, 2)
+        .toUpperCase();
       if (initials) {
         avatar.setText(initials);
       } else {
@@ -844,7 +1008,10 @@ export class SourceControlView extends ItemView {
         this.tooltipTimeout = setTimeout(() => this.showCommitTooltip(commit, row), 400);
       });
       row.addEventListener("mouseleave", () => {
-        if (this.tooltipTimeout) { clearTimeout(this.tooltipTimeout); this.tooltipTimeout = null; }
+        if (this.tooltipTimeout) {
+          clearTimeout(this.tooltipTimeout);
+          this.tooltipTimeout = null;
+        }
         this.hideCommitTooltip();
       });
 
@@ -861,25 +1028,49 @@ export class SourceControlView extends ItemView {
       row.addEventListener("contextmenu", (e) => {
         this.hideCommitTooltip();
         const menu = new Menu();
-        menu.addItem(item => item.setTitle("Copy SHA").setIcon("copy").onClick(() => {
-          navigator.clipboard.writeText(commit.hash);
-          new Notice("SHA copied");
-        }));
-        menu.addItem(item => item.setTitle("View Changes").setIcon("file-diff").onClick(async () => {
-          try {
-            const files = await this.git.showCommitFiles(commit.hash);
-            if (files.length > 0) this.plugin.openDiff(files[0].path, commit.hash);
-          } catch { new Notice("Could not load changes"); }
-        }));
+        menu.addItem((item) =>
+          item
+            .setTitle("Copy SHA")
+            .setIcon("copy")
+            .onClick(() => {
+              navigator.clipboard.writeText(commit.hash);
+              new Notice("SHA copied");
+            }),
+        );
+        menu.addItem((item) =>
+          item
+            .setTitle("View Changes")
+            .setIcon("file-diff")
+            .onClick(async () => {
+              try {
+                const files = await this.git.showCommitFiles(commit.hash);
+                if (files.length > 0) this.plugin.openDiff(files[0].path, commit.hash);
+              } catch {
+                new Notice("Could not load changes");
+              }
+            }),
+        );
         menu.addSeparator();
-        menu.addItem(item => item.setTitle("Checkout").setIcon("log-in").onClick(async () => {
-          try {
-            await this.git.checkout(commit.hash);
-            await this.store.refresh();
-            new Notice("Checked out " + commit.shortHash);
-          } catch (err: unknown) { new Notice(`Error: ${err instanceof Error ? err.message : String(err)}`); }
-        }));
-        menu.addItem(item => item.setTitle("Open in Graph").setIcon("git-branch").onClick(() => this.plugin.openGraphView()));
+        menu.addItem((item) =>
+          item
+            .setTitle("Checkout")
+            .setIcon("log-in")
+            .onClick(async () => {
+              try {
+                await this.git.checkout(commit.hash);
+                await this.store.refresh();
+                new Notice("Checked out " + commit.shortHash);
+              } catch (err: unknown) {
+                new Notice(`Error: ${err instanceof Error ? err.message : String(err)}`);
+              }
+            }),
+        );
+        menu.addItem((item) =>
+          item
+            .setTitle("Open in Graph")
+            .setIcon("git-branch")
+            .onClick(() => this.plugin.openGraphView()),
+        );
         menu.showAtMouseEvent(e);
       });
 
@@ -896,19 +1087,27 @@ export class SourceControlView extends ItemView {
         detailMeta.createSpan("gs-sg-detail-sha").setText(commit.hash);
 
         const detailActions = detail.createDiv("gs-sg-detail-actions");
-        const copyBtn = detailActions.createEl("button", { cls: "gs-sg-detail-btn", text: "Copy SHA" });
+        const copyBtn = detailActions.createEl("button", {
+          cls: "gs-sg-detail-btn",
+          text: "Copy SHA",
+        });
         copyBtn.addEventListener("click", (e) => {
           e.stopPropagation();
           navigator.clipboard.writeText(commit.hash);
           new Notice("SHA copied");
         });
-        const viewBtn = detailActions.createEl("button", { cls: "gs-sg-detail-btn", text: "View Changes" });
+        const viewBtn = detailActions.createEl("button", {
+          cls: "gs-sg-detail-btn",
+          text: "View Changes",
+        });
         viewBtn.addEventListener("click", async (e) => {
           e.stopPropagation();
           try {
             const files = await this.git.showCommitFiles(commit.hash);
             if (files.length > 0) this.plugin.openDiff(files[0].path, commit.hash);
-          } catch { new Notice("Could not load changes"); }
+          } catch {
+            new Notice("Could not load changes");
+          }
         });
 
         this.loadSidebarCommitFiles(commit.hash, detail);
@@ -925,7 +1124,9 @@ export class SourceControlView extends ItemView {
       const files = await this.git.showCommitFiles(hash);
       if (files.length === 0) return;
       const filesEl = detail.createDiv("gs-sg-detail-files");
-      filesEl.createDiv("gs-sg-detail-files-header").setText(`${files.length} file${files.length !== 1 ? "s" : ""} changed`);
+      filesEl
+        .createDiv("gs-sg-detail-files-header")
+        .setText(`${files.length} file${files.length !== 1 ? "s" : ""} changed`);
       for (const f of files) {
         const fileRow = filesEl.createDiv("gs-sg-detail-file");
         const name = fileRow.createSpan("gs-sg-detail-filename");
@@ -961,7 +1162,7 @@ export class SourceControlView extends ItemView {
       const addSegment = bar.createDiv("gs-sg-changes-add");
       addSegment.style.width = addPct + "%";
       const delSegment = bar.createDiv("gs-sg-changes-del");
-      delSegment.style.width = (100 - addPct) + "%";
+      delSegment.style.width = 100 - addPct + "%";
     } catch {
       // ignore
     }
@@ -978,7 +1179,12 @@ export class SourceControlView extends ItemView {
     this.hideCommitTooltip();
     const tip = this.el("div", "gs-sg-tooltip");
 
-    const initials = commit.author.split(" ").map(w => w[0] || "").join("").substring(0, 2).toUpperCase();
+    const initials = commit.author
+      .split(" ")
+      .map((w) => w[0] || "")
+      .join("")
+      .substring(0, 2)
+      .toUpperCase();
     tip.appendChild(this.el("div", "gs-sg-tip-avatar", initials || "?"));
 
     const body = this.el("div", "gs-sg-tip-body");
@@ -990,8 +1196,13 @@ export class SourceControlView extends ItemView {
     body.appendChild(authorLine);
 
     const dateStr = commit.date.toLocaleString("en-US", {
-      weekday: "long", year: "numeric", month: "long", day: "numeric",
-      hour: "numeric", minute: "2-digit", hour12: true,
+      weekday: "long",
+      year: "numeric",
+      month: "long",
+      day: "numeric",
+      hour: "numeric",
+      minute: "2-digit",
+      hour12: true,
     });
     body.appendChild(this.el("div", "gs-sg-tip-date-full", dateStr));
 
@@ -999,8 +1210,13 @@ export class SourceControlView extends ItemView {
     shaLine.appendChild(this.el("span", "gs-sg-tip-sha-icon", "◇"));
     shaLine.appendChild(this.el("span", "gs-sg-tip-sha", commit.shortHash));
     if (commit.parents.length > 0) {
-      shaLine.appendChild(this.el("span", "gs-sg-tip-parents-label",
-        ` (${commit.parents.length} parent${commit.parents.length > 1 ? "s" : ""})`));
+      shaLine.appendChild(
+        this.el(
+          "span",
+          "gs-sg-tip-parents-label",
+          ` (${commit.parents.length} parent${commit.parents.length > 1 ? "s" : ""})`,
+        ),
+      );
     }
     body.appendChild(shaLine);
 
@@ -1025,7 +1241,8 @@ export class SourceControlView extends ItemView {
       let top = rect.top - tipRect.height - 6;
       if (top < 8) top = rect.bottom + 6;
       let left = rect.left + 20;
-      if (left + tipRect.width > window.innerWidth - 8) left = window.innerWidth - tipRect.width - 8;
+      if (left + tipRect.width > window.innerWidth - 8)
+        left = window.innerWidth - tipRect.width - 8;
       tip.style.top = top + "px";
       tip.style.left = left + "px";
       tip.style.opacity = "1";
@@ -1038,10 +1255,17 @@ export class SourceControlView extends ItemView {
       if (!this.tooltipEl || files.length === 0) return;
       const totalAdd = files.reduce((s, f) => s + f.additions, 0);
       const totalDel = files.reduce((s, f) => s + f.deletions, 0);
-      container.appendChild(this.el("span", "gs-sg-tip-stats-files",
-        `${files.length} file${files.length !== 1 ? "s" : ""} changed`));
-      if (totalAdd > 0) container.appendChild(this.el("span", "gs-stat-add", `  ${totalAdd} additions`));
-      if (totalDel > 0) container.appendChild(this.el("span", "gs-stat-del", `  ${totalDel} deletions`));
+      container.appendChild(
+        this.el(
+          "span",
+          "gs-sg-tip-stats-files",
+          `${files.length} file${files.length !== 1 ? "s" : ""} changed`,
+        ),
+      );
+      if (totalAdd > 0)
+        container.appendChild(this.el("span", "gs-stat-add", `  ${totalAdd} additions`));
+      if (totalDel > 0)
+        container.appendChild(this.el("span", "gs-stat-del", `  ${totalDel} deletions`));
     } catch {
       // ignore
     }

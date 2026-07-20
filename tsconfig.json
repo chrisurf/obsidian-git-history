@@ -6,15 +6,18 @@
     "module": "ESNext",
     "target": "ES2020",
     "allowJs": true,
-    "noImplicitAny": true,
-    "strictNullChecks": true,
+    "strict": true,
+    "noUnusedLocals": true,
+    "noUnusedParameters": true,
+    "noFallthroughCasesInSwitch": true,
+    "forceConsistentCasingInFileNames": true,
     "moduleResolution": "node",
     "importHelpers": true,
     "isolatedModules": true,
-    "strictBindCallApply": true,
     "lib": ["ES2020", "DOM", "DOM.Iterable"],
     "outDir": "./dist",
     "sourceMap": false,
+    "skipLibCheck": true,
     "paths": {
       "obsidian": ["node_modules/obsidian"]
     }

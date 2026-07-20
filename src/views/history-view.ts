@@ -19,13 +19,19 @@ export class HistoryView extends ItemView {
     this.git = plugin.git;
   }
 
-  getViewType(): string { return HISTORY_VIEW_TYPE; }
-  getDisplayText(): string { return this.filterPath ? `History: ${this.filterPath}` : "History"; }
-  getIcon(): string { return "history"; }
+  getViewType(): string {
+    return HISTORY_VIEW_TYPE;
+  }
+  getDisplayText(): string {
+    return this.filterPath ? `History: ${this.filterPath}` : "History";
+  }
+  getIcon(): string {
+    return "history";
+  }
 
   setFilterPath(path: string | null): void {
     this.filterPath = path;
-    this.leaf.updateHeader();
+    (this.leaf as WorkspaceLeaf & { updateHeader?: () => void }).updateHeader?.();
     this.loadHistory();
   }
 
@@ -79,7 +85,7 @@ export class HistoryView extends ItemView {
       const indicator = row.createDiv("git-history-indicator");
       const dot = indicator.createDiv("git-history-dot");
 
-      if (commit.refs.some(r => r.current)) {
+      if (commit.refs.some((r) => r.current)) {
         dot.addClass("git-history-dot-head");
       }
 
@@ -101,7 +107,7 @@ export class HistoryView extends ItemView {
       const bottomLine = content.createDiv("git-history-bottom");
       const initials = commit.author
         .split(" ")
-        .map(w => w[0])
+        .map((w) => w[0])
         .join("")
         .toUpperCase()
         .substring(0, 2);
@@ -130,32 +136,47 @@ export class HistoryView extends ItemView {
 
   private showMenu(event: MouseEvent, commit: CommitInfo): void {
     const menu = new Menu();
-    menu.addItem(i => i.setTitle("Copy hash").setIcon("copy").onClick(() => {
-      navigator.clipboard.writeText(commit.hash);
-      new Notice("Hash copied");
-    }));
-    menu.addItem(i => i.setTitle("Create branch here...").setIcon("git-branch-plus").onClick(async () => {
-      // simplified - would use modal in production
-      const name = prompt("Branch name:");
-      if (name) {
-        try {
-          await this.git.createBranch(name, commit.hash);
-          await this.store.refresh();
-          new Notice(`Branch '${name}' created`);
-        } catch (e: unknown) {
-          new Notice(`Error: ${e instanceof Error ? e.message : String(e)}`);
-        }
-      }
-    }));
-    menu.addItem(i => i.setTitle("Checkout").setIcon("log-in").onClick(async () => {
-      try {
-        await this.git.checkout(commit.hash);
-        await this.store.refresh();
-        new Notice("Checked out " + commit.shortHash);
-      } catch (e: unknown) {
-        new Notice(`Error: ${e instanceof Error ? e.message : String(e)}`);
-      }
-    }));
+    menu.addItem((i) =>
+      i
+        .setTitle("Copy hash")
+        .setIcon("copy")
+        .onClick(() => {
+          navigator.clipboard.writeText(commit.hash);
+          new Notice("Hash copied");
+        }),
+    );
+    menu.addItem((i) =>
+      i
+        .setTitle("Create branch here...")
+        .setIcon("git-branch-plus")
+        .onClick(async () => {
+          // simplified - would use modal in production
+          const name = prompt("Branch name:");
+          if (name) {
+            try {
+              await this.git.createBranch(name, commit.hash);
+              await this.store.refresh();
+              new Notice(`Branch '${name}' created`);
+            } catch (e: unknown) {
+              new Notice(`Error: ${e instanceof Error ? e.message : String(e)}`);
+            }
+          }
+        }),
+    );
+    menu.addItem((i) =>
+      i
+        .setTitle("Checkout")
+        .setIcon("log-in")
+        .onClick(async () => {
+          try {
+            await this.git.checkout(commit.hash);
+            await this.store.refresh();
+            new Notice("Checked out " + commit.shortHash);
+          } catch (e: unknown) {
+            new Notice(`Error: ${e instanceof Error ? e.message : String(e)}`);
+          }
+        }),
+    );
     menu.showAtMouseEvent(event);
   }
 
