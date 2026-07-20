@@ -1,5 +1,5 @@
 /* ================================================================
-   Git Studio for Obsidian – GitLens-inspired styles
+   Git History for Obsidian – GitLens-inspired styles
    ================================================================ */
 
 /* --- CSS Custom Properties --- */
@@ -1035,7 +1035,7 @@
    HISTORY VIEW
    ================================================================ */
 
-.git-studio-history-view {
+.git-history-history-view {
   display: flex;
   flex-direction: column;
   height: 100%;
@@ -1160,7 +1160,7 @@
    DIFF VIEW
    ================================================================ */
 
-.git-studio-diff-view {
+.git-history-diff-view {
   display: flex;
   flex-direction: column;
   height: 100%;
@@ -1313,7 +1313,7 @@
    STATUS BAR
    ================================================================ */
 
-.git-studio-statusbar {
+.git-history-statusbar {
   display: flex;
   align-items: center;
   gap: 4px;
@@ -1321,7 +1321,7 @@
   padding: 0 4px;
 }
 
-.git-studio-statusbar:hover { color: var(--gs-text); }
+.git-history-statusbar:hover { color: var(--gs-text); }
 .git-sb-icon { display: inline-flex; align-items: center; }
 .git-sb-icon svg { width: 12px; height: 12px; }
 .git-sb-branch { font-size: 12px; }

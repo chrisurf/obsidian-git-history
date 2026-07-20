@@ -3,16 +3,16 @@ import { HISTORY_VIEW_TYPE, CommitInfo } from "../types";
 import { RepoStore } from "../store/repo-store";
 import { GitService } from "../git/git-service";
 import { formatRelativeDate } from "../utils/graph-layout";
-import type GitStudioPlugin from "../main";
+import type GitHistoryPlugin from "../main";
 
 export class HistoryView extends ItemView {
-  private plugin: GitStudioPlugin;
+  private plugin: GitHistoryPlugin;
   private store: RepoStore;
   private git: GitService;
   private listEl: HTMLElement | null = null;
   private filterPath: string | null = null;
 
-  constructor(leaf: WorkspaceLeaf, plugin: GitStudioPlugin) {
+  constructor(leaf: WorkspaceLeaf, plugin: GitHistoryPlugin) {
     super(leaf);
     this.plugin = plugin;
     this.store = plugin.store;
@@ -32,7 +32,7 @@ export class HistoryView extends ItemView {
   async onOpen(): Promise<void> {
     const { contentEl } = this;
     contentEl.empty();
-    contentEl.addClass("git-studio-history-view");
+    contentEl.addClass("git-history-history-view");
 
     const toolbar = contentEl.createDiv("git-history-toolbar");
     const refreshBtn = toolbar.createEl("button", { cls: "git-sc-btn" });

@@ -1,7 +1,7 @@
-export const SOURCE_CONTROL_VIEW_TYPE = "git-studio-source-control";
-export const HISTORY_VIEW_TYPE = "git-studio-history";
-export const GRAPH_VIEW_TYPE = "git-studio-graph";
-export const DIFF_VIEW_TYPE = "git-studio-diff";
+export const SOURCE_CONTROL_VIEW_TYPE = "git-history-source-control";
+export const HISTORY_VIEW_TYPE = "git-history-history";
+export const GRAPH_VIEW_TYPE = "git-history-graph";
+export const DIFF_VIEW_TYPE = "git-history-diff";
 
 export type FileStatusCode = "M" | "A" | "D" | "R" | "C" | "U" | "?" | "!";
 
@@ -99,7 +99,7 @@ export interface GraphData {
   maxColumns: number;
 }
 
-export interface GitStudioSettings {
+export interface GitHistorySettings {
   commitTemplate: string;
   pullStrategy: "merge" | "rebase" | "ff-only";
   autoFetchEnabled: boolean;
@@ -111,7 +111,7 @@ export interface GitStudioSettings {
   debounceMs: number;
 }
 
-export const DEFAULT_SETTINGS: GitStudioSettings = {
+export const DEFAULT_SETTINGS: GitHistorySettings = {
   commitTemplate: "",
   pullStrategy: "merge",
   autoFetchEnabled: false,

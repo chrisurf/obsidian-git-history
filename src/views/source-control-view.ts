@@ -3,7 +3,7 @@ import { SOURCE_CONTROL_VIEW_TYPE, FileStatus, GraphNode } from "../types";
 import { RepoStore } from "../store/repo-store";
 import { GitService } from "../git/git-service";
 import { computeGraphLayout, formatRelativeDate } from "../utils/graph-layout";
-import type GitStudioPlugin from "../main";
+import type GitHistoryPlugin from "../main";
 
 interface FileTreeNode {
   name: string;
@@ -17,7 +17,7 @@ interface FileTreeNode {
 type SidebarTab = "changes" | "graph";
 
 export class SourceControlView extends ItemView {
-  private plugin: GitStudioPlugin;
+  private plugin: GitHistoryPlugin;
   private store: RepoStore;
   private git: GitService;
   private commitInput: HTMLInputElement | null = null;
@@ -33,7 +33,7 @@ export class SourceControlView extends ItemView {
   private graphSelectedHash: string | null = null;
   private focusHandler: (() => void) | null = null;
 
-  constructor(leaf: WorkspaceLeaf, plugin: GitStudioPlugin) {
+  constructor(leaf: WorkspaceLeaf, plugin: GitHistoryPlugin) {
     super(leaf);
     this.plugin = plugin;
     this.store = plugin.store;

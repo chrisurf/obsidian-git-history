@@ -1,17 +1,17 @@
 import { ItemView, WorkspaceLeaf, setIcon, Notice } from "obsidian";
 import { DIFF_VIEW_TYPE, FileDiff, DiffHunk } from "../types";
 import { GitService } from "../git/git-service";
-import type GitStudioPlugin from "../main";
+import type GitHistoryPlugin from "../main";
 
 export class DiffView extends ItemView {
-  private plugin: GitStudioPlugin;
+  private plugin: GitHistoryPlugin;
   private git: GitService;
   private filePath = "";
   private ref: string | null = null;
   private mode: "side-by-side" | "inline" = "side-by-side";
   private diffContainer: HTMLElement | null = null;
 
-  constructor(leaf: WorkspaceLeaf, plugin: GitStudioPlugin) {
+  constructor(leaf: WorkspaceLeaf, plugin: GitHistoryPlugin) {
     super(leaf);
     this.plugin = plugin;
     this.git = plugin.git;
@@ -32,7 +32,7 @@ export class DiffView extends ItemView {
   async onOpen(): Promise<void> {
     const { contentEl } = this;
     contentEl.empty();
-    contentEl.addClass("git-studio-diff-view");
+    contentEl.addClass("git-history-diff-view");
 
     const toolbar = contentEl.createDiv("git-diff-toolbar");
     this.buildToolbar(toolbar);

@@ -3,7 +3,7 @@ import { GRAPH_VIEW_TYPE, CommitInfo, GraphNode, GraphEdge } from "../types";
 import { RepoStore } from "../store/repo-store";
 import { GitService } from "../git/git-service";
 import { computeGraphLayout, formatRelativeDate } from "../utils/graph-layout";
-import type GitStudioPlugin from "../main";
+import type GitHistoryPlugin from "../main";
 
 const ROW_HEIGHT = 32;
 const COL_WIDTH = 14;
@@ -27,7 +27,7 @@ const COLORS = [
 ];
 
 export class GraphView extends ItemView {
-  private plugin: GitStudioPlugin;
+  private plugin: GitHistoryPlugin;
   private store: RepoStore;
   private git: GitService;
 
@@ -45,7 +45,7 @@ export class GraphView extends ItemView {
   private filteredIndices: number[] | null = null;
   private hasWorkingChanges = false;
 
-  constructor(leaf: WorkspaceLeaf, plugin: GitStudioPlugin) {
+  constructor(leaf: WorkspaceLeaf, plugin: GitHistoryPlugin) {
     super(leaf);
     this.plugin = plugin;
     this.store = plugin.store;
