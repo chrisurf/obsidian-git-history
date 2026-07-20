@@ -845,37 +845,40 @@
   flex-shrink: 0;
   margin-top: -2px;
 }
+.gs-sg-subtab,
+.gs-sg-subtab:hover,
+.gs-sg-subtab:focus,
+.gs-sg-subtab:active,
+.gs-sg-subtab-active,
+.gs-sg-subtab-active:hover,
+.gs-sg-subtab-active:focus {
+  background: transparent !important;
+  border: none !important;
+  border-top: none !important;
+  border-left: none !important;
+  border-right: none !important;
+  border-radius: 0 !important;
+  box-shadow: none !important;
+  outline: none !important;
+}
 .gs-sg-subtab {
   padding: 2px 0 3px;
   font-size: 11px;
   font-weight: 400;
   color: var(--gs-text-faint);
-  background: transparent !important;
-  border: none !important;
-  border-bottom: 1.5px solid transparent !important;
-  border-radius: 0;
   cursor: pointer;
-  transition: color 0.15s, border-color 0.15s;
   line-height: 18px;
-  outline: none;
-  box-shadow: none;
+  border-bottom: 2px solid transparent !important;
 }
 .gs-sg-subtab:hover {
   color: var(--gs-text-muted);
-  background: transparent !important;
-  border: none !important;
-  border-bottom: 1.5px solid transparent !important;
+  border-bottom: 2px solid transparent !important;
 }
-.gs-sg-subtab:focus {
-  background: transparent !important;
-  box-shadow: none;
-}
-.gs-sg-subtab-active {
+.gs-sg-subtab-active,
+.gs-sg-subtab-active:hover {
   color: var(--gs-accent);
   font-weight: 500;
-  background: transparent !important;
-  border: none !important;
-  border-bottom: 1.5px solid var(--gs-accent) !important;
+  border-bottom: 2px solid var(--gs-accent) !important;
 }
 
 .gs-sg-subpanel {
