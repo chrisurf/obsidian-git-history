@@ -15,8 +15,49 @@ export class RepoStore extends Events {
   private _statusFingerprint: string | null = null;
   private _branchFingerprint: string | null = null;
 
+  private _busy = 0;
+  private _busyLabel: string | null = null;
+
   constructor(private git: GitService) {
     super();
+  }
+
+  /** True while a long-running git command started by the user is in flight. */
+  get busy(): boolean {
+    return this._busy > 0;
+  }
+
+  get busyLabel(): string | null {
+    return this._busyLabel;
+  }
+
+  /**
+   * Runs a git command that takes long enough to need feedback and reports it
+   * through the "busy-changed" event.
+   *
+   * Deliberately separate from the "loading" event: that one fires on every
+   * status refresh, including the ones the file watcher triggers while the user
+   * types, and a progress bar wired to it would blink constantly.
+   *
+   * The counter matters — an auto-fetch and a clicked push can overlap, and a
+   * boolean would let whichever finishes first declare the view idle.
+   */
+  async runTask<T>(label: string, fn: () => Promise<T>): Promise<T> {
+    this._busy++;
+    if (this._busy === 1) {
+      this._busyLabel = label;
+      this.trigger("busy-changed", true, label);
+    }
+    try {
+      return await fn();
+    } finally {
+      // finally, not then: a failed push has to clear the bar as well.
+      this._busy--;
+      if (this._busy === 0) {
+        this._busyLabel = null;
+        this.trigger("busy-changed", false, null);
+      }
+    }
   }
 
   /**

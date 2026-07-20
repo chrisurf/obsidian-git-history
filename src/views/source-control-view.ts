@@ -39,6 +39,12 @@ export class SourceControlView extends ItemView {
   private focusHandler: (() => void) | null = null;
   private tooltipEl: HTMLElement | null = null;
   private tooltipTimeout: ReturnType<typeof setTimeout> | null = null;
+  private progressEl: HTMLElement | null = null;
+  private progressHideTimer: number | null = null;
+  private progressShownAt = 0;
+
+  /** Shortest time the progress bar stays up once it appeared. */
+  private static readonly PROGRESS_MIN_MS = 300;
 
   private graphSubTabBtns: Record<string, HTMLElement> = {};
   private graphSubGraphPanel: HTMLElement | null = null;
@@ -68,6 +74,7 @@ export class SourceControlView extends ItemView {
     contentEl.addClass("gs-sc-view");
 
     this.buildHeader(contentEl);
+    this.buildProgressBar(contentEl);
     this.buildTabBar(contentEl);
 
     this.changesPanel = contentEl.createDiv("gs-sc-changes-panel");
@@ -93,6 +100,11 @@ export class SourceControlView extends ItemView {
       }),
     );
     this.registerEvent(
+      this.store.on("busy-changed", ((...args: unknown[]) => {
+        this.setProgress(args[0] as boolean, args[1] as string | null);
+      }) as (...data: unknown[]) => unknown),
+    );
+    this.registerEvent(
       this.store.on("loading", ((...args: unknown[]) => {
         contentEl.toggleClass("gs-loading", args[0] as boolean);
       }) as (...data: unknown[]) => unknown),
@@ -104,6 +116,47 @@ export class SourceControlView extends ItemView {
     await this.store.refresh();
     this.renderFiles();
     await this.store.refreshBranches();
+  }
+
+  /**
+   * A two-pixel bar between the header and the tabs. It always occupies its
+   * row so the panel does not shift by 2px whenever a command runs; only the
+   * moving segment appears.
+   */
+  private buildProgressBar(el: HTMLElement): void {
+    this.progressEl = el.createDiv("gs-progress");
+    this.progressEl.setAttribute("role", "progressbar");
+    this.progressEl.createDiv("gs-progress-bar");
+  }
+
+  private setProgress(active: boolean, label: string | null): void {
+    const el = this.progressEl;
+    if (!el) return;
+    if (this.progressHideTimer) {
+      window.clearTimeout(this.progressHideTimer);
+      this.progressHideTimer = null;
+    }
+
+    if (active) {
+      this.progressShownAt = Date.now();
+      el.addClass("gs-progress-active");
+      el.setAttribute("aria-label", label ?? "Working");
+      el.setAttribute("aria-busy", "true");
+      return;
+    }
+
+    // A command that finishes in 40ms would otherwise flash once and read as a
+    // rendering glitch rather than as feedback.
+    const shownFor = Date.now() - this.progressShownAt;
+    const wait = Math.max(0, SourceControlView.PROGRESS_MIN_MS - shownFor);
+    const hide = (): void => {
+      el.removeClass("gs-progress-active");
+      el.setAttribute("aria-busy", "false");
+      el.removeAttribute("aria-label");
+      this.progressHideTimer = null;
+    };
+    if (wait === 0) hide();
+    else this.progressHideTimer = window.setTimeout(hide, wait);
   }
 
   private buildTabBar(el: HTMLElement): void {
@@ -156,7 +209,9 @@ export class SourceControlView extends ItemView {
         "Pull",
         async () => {
           try {
-            await this.git.pull({ strategy: this.plugin.settings.pullStrategy });
+            await this.store.runTask("Pulling", () =>
+              this.git.pull({ strategy: this.plugin.settings.pullStrategy }),
+            );
             await this.store.refresh();
             new Notice("Pulled");
           } catch (e: unknown) {
@@ -169,7 +224,9 @@ export class SourceControlView extends ItemView {
         "Push",
         async () => {
           try {
-            await this.git.push({ setUpstream: true, remote: "origin", branch: this.store.branch });
+            await this.store.runTask("Pushing", () =>
+              this.git.push({ setUpstream: true, remote: "origin", branch: this.store.branch }),
+            );
             await this.store.refresh();
             new Notice("Pushed");
           } catch (e: unknown) {
@@ -182,7 +239,7 @@ export class SourceControlView extends ItemView {
         "Fetch",
         async () => {
           try {
-            await this.git.fetch();
+            await this.store.runTask("Fetching", () => this.git.fetch());
             await this.store.refresh();
             new Notice("Fetched");
           } catch (e: unknown) {
@@ -195,7 +252,7 @@ export class SourceControlView extends ItemView {
         "Stash",
         async () => {
           try {
-            await this.git.stashSave();
+            await this.store.runTask("Stashing", () => this.git.stashSave());
             await this.store.refresh();
             new Notice("Stashed");
           } catch (e: unknown) {
@@ -263,7 +320,9 @@ export class SourceControlView extends ItemView {
         i.onClick(async () => {
           try {
             const msg = isAmend?.value?.trim() || "";
-            await this.git.commit(msg || "amend", { amend: true });
+            await this.store.runTask("Amending", () =>
+              this.git.commit(msg || "amend", { amend: true }),
+            );
             if (isAmend) isAmend.value = "";
             await this.store.refresh();
             new Notice("Amended");
@@ -284,7 +343,7 @@ export class SourceControlView extends ItemView {
         .setIcon("archive-restore")
         .onClick(async () => {
           try {
-            await this.git.stashPop();
+            await this.store.runTask("Popping stash", () => this.git.stashPop());
             await this.store.refresh();
             new Notice("Stash popped");
           } catch (e: unknown) {
@@ -320,7 +379,7 @@ export class SourceControlView extends ItemView {
         if (!b.current) {
           i.onClick(async () => {
             try {
-              await this.git.checkout(b.name);
+              await this.store.runTask(`Switching to ${b.name}`, () => this.git.checkout(b.name));
               await this.store.refresh();
               new Notice(`Switched to ${b.name}`);
             } catch (e: unknown) {
@@ -339,7 +398,7 @@ export class SourceControlView extends ItemView {
           const name = prompt("New branch name:");
           if (name) {
             try {
-              await this.git.createBranch(name);
+              await this.store.runTask("Creating branch", () => this.git.createBranch(name));
               await this.store.refresh();
               new Notice(`Branch '${name}' created and checked out`);
             } catch (e: unknown) {
@@ -378,11 +437,13 @@ export class SourceControlView extends ItemView {
     }
 
     try {
-      await this.git.commit(msg);
+      await this.store.runTask("Committing", () => this.git.commit(msg));
       if (this.commitInput) this.commitInput.value = "";
       new Notice("Committed");
       if (andPush) {
-        await this.git.push({ setUpstream: true, remote: "origin", branch: this.store.branch });
+        await this.store.runTask("Pushing", () =>
+          this.git.push({ setUpstream: true, remote: "origin", branch: this.store.branch }),
+        );
         new Notice("Pushed");
       }
       await this.store.refresh();

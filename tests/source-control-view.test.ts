@@ -366,3 +366,86 @@ describe("SourceControlView — icons", () => {
     ).toBe(1);
   });
 });
+
+/**
+ * The progress bar exists because push/pull/fetch take long enough to look
+ * broken without it. What matters is that it disappears again — in every case.
+ */
+describe("SourceControlView — progress bar", () => {
+  const bar = (view: { contentEl: HTMLElement }): HTMLElement =>
+    view.contentEl.querySelector(".gs-progress") as HTMLElement;
+  const active = (view: { contentEl: HTMLElement }): boolean =>
+    bar(view).classList.contains("gs-progress-active");
+  /** Longer than PROGRESS_MIN_MS so the minimum-visible delay has elapsed. */
+  const settle = (): Promise<void> => new Promise((r) => setTimeout(r, 350));
+
+  it("sits between the header and the tabs", async () => {
+    const { view } = await mount(screenshotStatus());
+    const children = Array.from(view.contentEl.children);
+    const header = children.findIndex((el) => el.classList.contains("gs-sc-header"));
+    const progress = children.findIndex((el) => el.classList.contains("gs-progress"));
+    const tabs = children.findIndex((el) => el.classList.contains("gs-sc-tabbar"));
+
+    expect(header).toBeGreaterThanOrEqual(0);
+    expect(progress).toBe(header + 1);
+    expect(tabs).toBe(progress + 1);
+  });
+
+  it("stays idle until a command runs", async () => {
+    const { view } = await mount(screenshotStatus());
+    expect(active(view)).toBe(false);
+  });
+
+  it("runs while a command is in flight and names it", async () => {
+    const { view, store } = await mount(screenshotStatus());
+    let release!: () => void;
+    const task = store.runTask("Pushing", () => new Promise<void>((r) => (release = r)));
+    await Promise.resolve();
+
+    expect(active(view)).toBe(true);
+    expect(bar(view).getAttribute("aria-label")).toBe("Pushing");
+    expect(bar(view).getAttribute("aria-busy")).toBe("true");
+
+    release();
+    await task;
+    await settle();
+    expect(active(view)).toBe(false);
+  });
+
+  it("clears when the command fails", async () => {
+    const { view, store } = await mount(screenshotStatus());
+    await expect(
+      store.runTask("Pushing", async () => {
+        throw new Error("no upstream");
+      }),
+    ).rejects.toThrow("no upstream");
+    await settle();
+
+    expect(active(view), "a failed push left the bar running forever").toBe(false);
+  });
+
+  it("keeps running until the last of two overlapping commands finishes", async () => {
+    const { view, store } = await mount(screenshotStatus());
+    let releaseSlow!: () => void;
+    const slow = store.runTask("Pushing", () => new Promise<void>((r) => (releaseSlow = r)));
+    const quick = store.runTask("Fetching", async () => {});
+    await quick;
+    await settle();
+
+    // The auto-fetch finished; the push has not.
+    expect(active(view), "one command ending declared the view idle").toBe(true);
+
+    releaseSlow();
+    await slow;
+    await settle();
+    expect(active(view)).toBe(false);
+  });
+
+  it("ignores the status refreshes the file watcher triggers", async () => {
+    const { view, store } = await mount(screenshotStatus());
+    await store.refresh();
+    flushFrames();
+
+    expect(active(view), "the bar blinks on every vault edit").toBe(false);
+  });
+});

@@ -95,7 +95,9 @@ export default class GitHistoryPlugin extends Plugin {
       name: "Push",
       callback: async () => {
         try {
-          await this.git.push({ setUpstream: true, remote: "origin", branch: this.store.branch });
+          await this.store.runTask("Pushing", () =>
+            this.git.push({ setUpstream: true, remote: "origin", branch: this.store.branch }),
+          );
           await this.store.refresh();
           new Notice("Pushed successfully");
         } catch (e: unknown) {
@@ -109,7 +111,9 @@ export default class GitHistoryPlugin extends Plugin {
       name: "Pull",
       callback: async () => {
         try {
-          await this.git.pull({ strategy: this.settings.pullStrategy });
+          await this.store.runTask("Pulling", () =>
+            this.git.pull({ strategy: this.settings.pullStrategy }),
+          );
           await this.store.refresh();
           new Notice("Pulled successfully");
         } catch (e: unknown) {
@@ -123,7 +127,7 @@ export default class GitHistoryPlugin extends Plugin {
       name: "Fetch",
       callback: async () => {
         try {
-          await this.git.fetch();
+          await this.store.runTask("Fetching", () => this.git.fetch());
           await this.store.refresh();
           new Notice("Fetched");
         } catch (e: unknown) {
@@ -137,12 +141,14 @@ export default class GitHistoryPlugin extends Plugin {
       name: "Backup: Stage All, Commit & Push",
       callback: async () => {
         try {
-          await this.git.stageAll();
-          const msg =
-            this.settings.commitTemplate ||
-            `vault backup ${new Date().toISOString().split("T")[0]}`;
-          await this.git.commit(msg);
-          await this.git.push({ setUpstream: true, remote: "origin", branch: this.store.branch });
+          await this.store.runTask("Backing up", async () => {
+            await this.git.stageAll();
+            const msg =
+              this.settings.commitTemplate ||
+              `vault backup ${new Date().toISOString().split("T")[0]}`;
+            await this.git.commit(msg);
+            await this.git.push({ setUpstream: true, remote: "origin", branch: this.store.branch });
+          });
           await this.store.refresh();
           new Notice("Backup complete");
         } catch (e: unknown) {
