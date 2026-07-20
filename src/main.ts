@@ -5,6 +5,7 @@ import {
   Notice,
   PluginSettingTab,
   App,
+  normalizePath,
   Setting,
   type SettingDefinitionItem,
 } from "obsidian";
@@ -40,9 +41,7 @@ export default class GitHistoryPlugin extends Plugin {
   async onload(): Promise<void> {
     await this.loadSettings();
 
-    const adapter = this.app.vault.adapter as { basePath?: string; getBasePath?: () => string };
-    const basePath = adapter.getBasePath?.() ?? adapter.basePath ?? "";
-    this.git = new GitService(basePath);
+    this.git = new GitService(this.vaultPath());
     this.store = new RepoStore(this.git);
     this.store.showNestedRepos = this.settings.showNestedRepos;
 
@@ -269,25 +268,35 @@ export default class GitHistoryPlugin extends Plugin {
     }
   }
 
+  /** Absolute path of the vault, which git needs as its working directory. */
+  private vaultPath(): string {
+    const adapter = this.app.vault.adapter as { basePath?: string; getBasePath?: () => string };
+    return adapter.getBasePath?.() ?? adapter.basePath ?? "";
+  }
+
   private setupFileWatcher(): void {
     this.registerEvent(this.app.vault.on("modify", () => this.debouncedRefresh()));
     this.registerEvent(this.app.vault.on("create", () => this.debouncedRefresh()));
     this.registerEvent(this.app.vault.on("delete", () => this.debouncedRefresh()));
     this.registerEvent(this.app.vault.on("rename", () => this.debouncedRefresh()));
 
-    const adapter = this.app.vault.adapter as { basePath?: string; getBasePath?: () => string };
-    const basePath = adapter.getBasePath?.() ?? adapter.basePath ?? "";
+    // Obsidian's events cover the notes, but not its own config files —
+    // appearance.json and workspace.json change constantly and show up as
+    // changes in the panel. Watching just the config folder keeps the panel
+    // honest without walking the whole vault.
+    const basePath = this.vaultPath();
     if (basePath) {
+      const configPath = normalizePath(`${basePath}/${this.app.vault.configDir}`);
       try {
-        this.fsWatcher = fs.watch(basePath, { recursive: true }, (_event, filename) => {
-          if (typeof filename === "string" && filename.startsWith(".git")) return;
+        this.fsWatcher = fs.watch(configPath, { recursive: true }, () => {
           if (this.fsDebounceTimer) window.clearTimeout(this.fsDebounceTimer);
           this.fsDebounceTimer = window.setTimeout(() => {
             void this.store.refresh();
           }, 2000);
         });
       } catch {
-        // fs.watch may not support recursive on all platforms
+        // Recursive watching is not available on every platform; the panel
+        // still refreshes on window focus and from the toolbar.
       }
     }
   }
