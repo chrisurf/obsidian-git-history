@@ -4,6 +4,8 @@ import { RepoStore } from "../store/repo-store";
 import { GitService } from "../git/git-service";
 import { computeGraphLayout, formatRelativeDate } from "../utils/graph-layout";
 import type GitHistoryPlugin from "../main";
+import { asVoid } from "../utils/async";
+import { promptText } from "../utils/prompt";
 
 interface FileTreeNode {
   name: string;
@@ -38,7 +40,7 @@ export class SourceControlView extends ItemView {
   private graphSelectedHash: string | null = null;
   private focusHandler: (() => void) | null = null;
   private tooltipEl: HTMLElement | null = null;
-  private tooltipTimeout: ReturnType<typeof setTimeout> | null = null;
+  private tooltipTimeout: number | null = null;
   private progressEl: HTMLElement | null = null;
   private busyLabelEl: HTMLElement | null = null;
   private progressHideTimer: number | null = null;
@@ -69,7 +71,7 @@ export class SourceControlView extends ItemView {
     return SOURCE_CONTROL_VIEW_TYPE;
   }
   getDisplayText(): string {
-    return "Source Control";
+    return "Source control";
   }
   getIcon(): string {
     return "git-commit-horizontal";
@@ -86,7 +88,7 @@ export class SourceControlView extends ItemView {
 
     this.changesPanel = contentEl.createDiv("gs-sc-changes-panel");
     this.graphPanel = contentEl.createDiv("gs-sc-graph-panel");
-    this.graphPanel.style.display = "none";
+    this.graphPanel.addClass("gs-hidden");
 
     this.buildCommitArea(this.changesPanel);
     this.fileListEl = this.changesPanel.createDiv("gs-sc-filelist");
@@ -107,17 +109,19 @@ export class SourceControlView extends ItemView {
       }),
     );
     this.registerEvent(
-      this.store.on("busy-changed", ((...args: unknown[]) => {
+      this.store.on("busy-changed", (...args: unknown[]) => {
         this.setProgress(args[0] as boolean, args[1] as string | null);
-      }) as (...data: unknown[]) => unknown),
+      }),
     );
     this.registerEvent(
-      this.store.on("loading", ((...args: unknown[]) => {
+      this.store.on("loading", (...args: unknown[]) => {
         contentEl.toggleClass("gs-loading", args[0] as boolean);
-      }) as (...data: unknown[]) => unknown),
+      }),
     );
 
-    this.focusHandler = () => this.store.refresh();
+    this.focusHandler = (): void => {
+      void this.store.refresh();
+    };
     window.addEventListener("focus", this.focusHandler);
 
     await this.store.refresh();
@@ -151,7 +155,7 @@ export class SourceControlView extends ItemView {
       el.setAttribute("aria-busy", "true");
       if (this.busyLabelEl) {
         this.busyLabelEl.setText(`${label ?? "Working"}…`);
-        this.busyLabelEl.style.display = "";
+        this.busyLabelEl.removeClass("gs-hidden");
       }
       return;
     }
@@ -164,7 +168,7 @@ export class SourceControlView extends ItemView {
       el.removeClass("gs-progress-active");
       el.setAttribute("aria-busy", "false");
       el.removeAttribute("aria-label");
-      if (this.busyLabelEl) this.busyLabelEl.style.display = "none";
+      this.busyLabelEl?.addClass("gs-hidden");
       this.progressHideTimer = null;
     };
     if (wait === 0) hide();
@@ -192,11 +196,11 @@ export class SourceControlView extends ItemView {
     for (const [key, btn] of Object.entries(this.tabBtns)) {
       btn.toggleClass("gs-sc-tab-active", key === tab);
     }
-    if (this.changesPanel) this.changesPanel.style.display = tab === "changes" ? "" : "none";
-    if (this.graphPanel) this.graphPanel.style.display = tab === "graph" ? "" : "none";
+    this.changesPanel?.toggleClass("gs-hidden", tab !== "changes");
+    this.graphPanel?.toggleClass("gs-hidden", tab !== "graph");
 
     if (tab === "graph") {
-      this.store.refreshLog({ all: true, maxCount: 500 });
+      void this.store.refreshLog({ all: true, maxCount: 500 });
     } else if (tab === "changes") {
       this.renderFiles();
     }
@@ -205,12 +209,12 @@ export class SourceControlView extends ItemView {
   private buildHeader(el: HTMLElement): void {
     const bar = el.createDiv("gs-sc-header");
     const titleWrap = bar.createDiv("gs-sc-header-left");
-    titleWrap.createSpan("gs-sc-header-title").setText("SOURCE CONTROL");
+    titleWrap.createSpan("gs-sc-header-title").setText("Source control");
     // The bar alone sits a few pixels above the active tab's accent underline
     // and reads as part of it. The name of the running command is the part
     // that is actually noticed.
     this.busyLabelEl = titleWrap.createSpan("gs-sc-busy-label");
-    this.busyLabelEl.style.display = "none";
+    this.busyLabelEl.addClass("gs-hidden");
 
     const actions = bar.createDiv("gs-sc-header-actions");
     for (const [icon, label, fn] of [
@@ -279,7 +283,7 @@ export class SourceControlView extends ItemView {
         },
       ],
       ["more-horizontal", "More", (e: MouseEvent) => this.showMoreMenu(e)],
-    ] as [string, string, (...a: any[]) => void][]) {
+    ] as [string, string, (...a: unknown[]) => void][]) {
       const btn = actions.createEl("button", { cls: "gs-icon-btn" });
       setIcon(btn, icon);
       btn.setAttribute("aria-label", label);
@@ -302,7 +306,7 @@ export class SourceControlView extends ItemView {
     this.commitInput.addEventListener("keydown", (e: KeyboardEvent) => {
       if ((e.metaKey || e.ctrlKey) && e.key === "Enter") {
         e.preventDefault();
-        this.doCommit();
+        void this.doCommit();
       }
     });
 
@@ -312,7 +316,9 @@ export class SourceControlView extends ItemView {
     const checkIcon = commitBtn.createSpan("gs-commit-check-icon");
     setIcon(checkIcon, "check");
     commitBtn.appendText(" Commit");
-    commitBtn.addEventListener("click", () => this.doCommit());
+    commitBtn.addEventListener("click", () => {
+      void this.doCommit();
+    });
 
     const dropdownBtn = btnRow.createEl("button", { cls: "gs-commit-dropdown-btn" });
     const chevron = dropdownBtn.createSpan();
@@ -327,14 +333,14 @@ export class SourceControlView extends ItemView {
       );
       menu.addItem((i) =>
         i
-          .setTitle("Commit & Push")
+          .setTitle("Commit & push")
           .setIcon("upload")
           .onClick(() => this.doCommit(true)),
       );
       menu.addSeparator();
       menu.addItem((i) => {
         const isAmend = this.contentEl.querySelector(".gs-commit-input") as HTMLInputElement;
-        i.setTitle("Amend Previous Commit").setIcon("edit");
+        i.setTitle("Amend previous commit").setIcon("edit");
         i.onClick(async () => {
           try {
             const msg = isAmend?.value?.trim() || "";
@@ -357,7 +363,7 @@ export class SourceControlView extends ItemView {
     const menu = new Menu();
     menu.addItem((i) =>
       i
-        .setTitle("Pop Stash")
+        .setTitle("Pop stash")
         .setIcon("archive-restore")
         .onClick(async () => {
           try {
@@ -372,7 +378,7 @@ export class SourceControlView extends ItemView {
     menu.addSeparator();
     menu.addItem((i) =>
       i
-        .setTitle("Switch Branch...")
+        .setTitle("Switch branch...")
         .setIcon("git-branch")
         .onClick(async () => {
           await this.showBranchMenu(event);
@@ -380,7 +386,7 @@ export class SourceControlView extends ItemView {
     );
     menu.addItem((i) =>
       i
-        .setTitle("Open Git Graph")
+        .setTitle("Open Git graph")
         .setIcon("git-branch")
         .onClick(() => this.plugin.openGraphView()),
     );
@@ -410,10 +416,10 @@ export class SourceControlView extends ItemView {
     menu.addSeparator();
     menu.addItem((i) =>
       i
-        .setTitle("+ Create new branch...")
+        .setTitle("+ create new branch...")
         .setIcon("plus")
         .onClick(async () => {
-          const name = prompt("New branch name:");
+          const name = await promptText(this.app, "New branch name:");
           if (name) {
             try {
               await this.store.runTask("Creating branch", () => this.git.createBranch(name));
@@ -510,50 +516,59 @@ export class SourceControlView extends ItemView {
     if (group === "staged") {
       const btn = headerActions.createEl("button", { cls: "gs-icon-btn gs-icon-btn-sm" });
       setIcon(btn, "minus");
-      btn.setAttribute("aria-label", "Unstage All");
-      btn.addEventListener("click", async (e) => {
-        e.stopPropagation();
-        try {
-          await this.git.unstageAll();
-        } catch (err) {
-          new Notice(`Unstage all failed: ${err instanceof Error ? err.message : String(err)}`);
-        }
-        await this.store.refresh();
-      });
+      btn.setAttribute("aria-label", "Unstage all");
+      btn.addEventListener(
+        "click",
+        asVoid(async (e) => {
+          e.stopPropagation();
+          try {
+            await this.git.unstageAll();
+          } catch (err) {
+            new Notice(`Unstage all failed: ${err instanceof Error ? err.message : String(err)}`);
+          }
+          await this.store.refresh();
+        }),
+      );
     } else if (group !== "conflict") {
       const btn = headerActions.createEl("button", { cls: "gs-icon-btn gs-icon-btn-sm" });
       setIcon(btn, "plus");
-      btn.setAttribute("aria-label", "Stage All");
-      btn.addEventListener("click", async (e) => {
-        e.stopPropagation();
-        try {
-          const { skipped } = await this.git.stageAll();
-          // Only worth a notice when the user can actually see the entries the
-          // message is about; otherwise they were deliberately hidden.
-          if (skipped.length > 0 && this.store.showNestedRepos) {
-            new Notice(
-              `Skipped ${skipped.length} nested Git ${skipped.length === 1 ? "repository" : "repositories"}: ${skipped.join(", ")}`,
-            );
+      btn.setAttribute("aria-label", "Stage all");
+      btn.addEventListener(
+        "click",
+        asVoid(async (e) => {
+          e.stopPropagation();
+          try {
+            const { skipped } = await this.git.stageAll();
+            // Only worth a notice when the user can actually see the entries the
+            // message is about; otherwise they were deliberately hidden.
+            if (skipped.length > 0 && this.store.showNestedRepos) {
+              new Notice(
+                `Skipped ${skipped.length} nested Git ${skipped.length === 1 ? "repository" : "repositories"}: ${skipped.join(", ")}`,
+              );
+            }
+          } catch (err) {
+            new Notice(`Stage all failed: ${err instanceof Error ? err.message : String(err)}`);
           }
-        } catch (err) {
-          new Notice(`Stage all failed: ${err instanceof Error ? err.message : String(err)}`);
-        }
-        await this.store.refresh();
-      });
+          await this.store.refresh();
+        }),
+      );
     }
     if (group === "changed") {
       const btn = headerActions.createEl("button", { cls: "gs-icon-btn gs-icon-btn-sm" });
       setIcon(btn, "undo");
-      btn.setAttribute("aria-label", "Discard All");
-      btn.addEventListener("click", async (e) => {
-        e.stopPropagation();
-        try {
-          await this.git.discardAll();
-        } catch (err) {
-          new Notice(`Discard all failed: ${err instanceof Error ? err.message : String(err)}`);
-        }
-        await this.store.refresh();
-      });
+      btn.setAttribute("aria-label", "Discard all");
+      btn.addEventListener(
+        "click",
+        asVoid(async (e) => {
+          e.stopPropagation();
+          try {
+            await this.git.discardAll();
+          } catch (err) {
+            new Notice(`Discard all failed: ${err instanceof Error ? err.message : String(err)}`);
+          }
+          await this.store.refresh();
+        }),
+      );
     }
 
     const tree = this.buildFileTree(files, group);
@@ -562,7 +577,7 @@ export class SourceControlView extends ItemView {
     let allExpanded = allDirPaths.every((p) => this.expandedDirs.has(p));
     const toggleBtn = headerActions.createEl("button", { cls: "gs-icon-btn gs-icon-btn-sm" });
     setIcon(toggleBtn, allExpanded ? "fold-vertical" : "unfold-vertical");
-    toggleBtn.setAttribute("aria-label", allExpanded ? "Collapse All" : "Expand All");
+    toggleBtn.setAttribute("aria-label", allExpanded ? "Collapse all" : "Expand all");
     toggleBtn.addEventListener("click", (e) => {
       e.stopPropagation();
       allExpanded = !allExpanded;
@@ -571,7 +586,7 @@ export class SourceControlView extends ItemView {
         else this.expandedDirs.delete(p);
       }
       setIcon(toggleBtn, allExpanded ? "fold-vertical" : "unfold-vertical");
-      toggleBtn.setAttribute("aria-label", allExpanded ? "Collapse All" : "Expand All");
+      toggleBtn.setAttribute("aria-label", allExpanded ? "Collapse all" : "Expand all");
       this.renderFiles();
     });
 
@@ -685,32 +700,41 @@ export class SourceControlView extends ItemView {
           {
             const discardBtn = dirActions.createEl("button", { cls: "gs-action-btn" });
             setIcon(discardBtn, "undo");
-            discardBtn.setAttribute("aria-label", "Discard All in Folder");
-            discardBtn.addEventListener("click", async (e) => {
-              e.stopPropagation();
-              await this.git.discard(this.pathspecs(this.collectFiles(node)));
-              await this.store.refresh();
-            });
+            discardBtn.setAttribute("aria-label", "Discard all in folder");
+            discardBtn.addEventListener(
+              "click",
+              asVoid(async (e) => {
+                e.stopPropagation();
+                await this.git.discard(this.pathspecs(this.collectFiles(node)));
+                await this.store.refresh();
+              }),
+            );
           }
           const stageBtn = dirActions.createEl("button", { cls: "gs-action-btn" });
           setIcon(stageBtn, "plus");
-          stageBtn.setAttribute("aria-label", "Stage All in Folder");
-          stageBtn.addEventListener("click", async (e) => {
-            e.stopPropagation();
-            await this.git.stage(this.pathspecs(this.collectFiles(node)));
-            await this.store.refresh();
-          });
+          stageBtn.setAttribute("aria-label", "Stage all in folder");
+          stageBtn.addEventListener(
+            "click",
+            asVoid(async (e) => {
+              e.stopPropagation();
+              await this.git.stage(this.pathspecs(this.collectFiles(node)));
+              await this.store.refresh();
+            }),
+          );
         }
 
         if (group === "staged") {
           const unstageBtn = dirActions.createEl("button", { cls: "gs-action-btn" });
           setIcon(unstageBtn, "minus");
-          unstageBtn.setAttribute("aria-label", "Unstage All in Folder");
-          unstageBtn.addEventListener("click", async (e) => {
-            e.stopPropagation();
-            await this.git.unstage(this.pathspecs(this.collectFiles(node)));
-            await this.store.refresh();
-          });
+          unstageBtn.setAttribute("aria-label", "Unstage all in folder");
+          unstageBtn.addEventListener(
+            "click",
+            asVoid(async (e) => {
+              e.stopPropagation();
+              await this.git.unstage(this.pathspecs(this.collectFiles(node)));
+              await this.store.refresh();
+            }),
+          );
         }
 
         dirRight.createSpan("gs-tree-dir-dot");
@@ -773,10 +797,10 @@ export class SourceControlView extends ItemView {
     if (group === "changed") {
       const openBtn = actions.createEl("button", { cls: "gs-action-btn" });
       setIcon(openBtn, "file-diff");
-      openBtn.setAttribute("aria-label", "Open Changes");
+      openBtn.setAttribute("aria-label", "Open changes");
       openBtn.addEventListener("click", (e) => {
         e.stopPropagation();
-        this.plugin.openDiff(file.path);
+        void this.plugin.openDiff(file.path);
       });
       this.addOpenFileButton(actions, file);
     }
@@ -784,43 +808,52 @@ export class SourceControlView extends ItemView {
     if (group === "changed" && file.workingStatus !== "?") {
       const discardBtn = actions.createEl("button", { cls: "gs-action-btn" });
       setIcon(discardBtn, "undo");
-      discardBtn.setAttribute("aria-label", "Discard Changes");
-      discardBtn.addEventListener("click", async (e) => {
-        e.stopPropagation();
-        await this.git.discard(this.pathspecs([file]));
-        await this.store.refresh();
-      });
+      discardBtn.setAttribute("aria-label", "Discard changes");
+      discardBtn.addEventListener(
+        "click",
+        asVoid(async (e) => {
+          e.stopPropagation();
+          await this.git.discard(this.pathspecs([file]));
+          await this.store.refresh();
+        }),
+      );
     }
 
     if (group !== "staged" && group !== "conflict" && !file.embeddedRepo) {
       const stageBtn = actions.createEl("button", { cls: "gs-action-btn" });
       setIcon(stageBtn, "plus");
-      stageBtn.setAttribute("aria-label", "Stage Changes");
-      stageBtn.addEventListener("click", async (e) => {
-        e.stopPropagation();
-        await this.git.stage(this.pathspecs([file]));
-        await this.store.refresh();
-      });
+      stageBtn.setAttribute("aria-label", "Stage changes");
+      stageBtn.addEventListener(
+        "click",
+        asVoid(async (e) => {
+          e.stopPropagation();
+          await this.git.stage(this.pathspecs([file]));
+          await this.store.refresh();
+        }),
+      );
     }
 
     if (group === "staged") {
       const openBtn = actions.createEl("button", { cls: "gs-action-btn" });
       setIcon(openBtn, "file-diff");
-      openBtn.setAttribute("aria-label", "Open Changes");
+      openBtn.setAttribute("aria-label", "Open changes");
       openBtn.addEventListener("click", (e) => {
         e.stopPropagation();
-        this.plugin.openDiff(file.path, undefined, true);
+        void this.plugin.openDiff(file.path, undefined, true);
       });
       this.addOpenFileButton(actions, file);
 
       const unstageBtn = actions.createEl("button", { cls: "gs-action-btn" });
       setIcon(unstageBtn, "minus");
-      unstageBtn.setAttribute("aria-label", "Unstage Changes");
-      unstageBtn.addEventListener("click", async (e) => {
-        e.stopPropagation();
-        await this.git.unstage(this.pathspecs([file]));
-        await this.store.refresh();
-      });
+      unstageBtn.setAttribute("aria-label", "Unstage changes");
+      unstageBtn.addEventListener(
+        "click",
+        asVoid(async (e) => {
+          e.stopPropagation();
+          await this.git.unstage(this.pathspecs([file]));
+          await this.store.refresh();
+        }),
+      );
     }
 
     const badge = rightSide.createSpan("gs-tree-badge");
@@ -830,43 +863,43 @@ export class SourceControlView extends ItemView {
     badge.addClass(`gs-badge-${displayChar}`);
 
     // A file can appear in both sections at once; each row opens its own half.
-    row.addEventListener("click", () =>
-      this.plugin.openDiff(file.path, undefined, group === "staged"),
-    );
+    row.addEventListener("click", () => {
+      void this.plugin.openDiff(file.path, undefined, group === "staged");
+    });
     row.addEventListener("contextmenu", (e) => {
       const menu = new Menu();
       menu.addItem((i) =>
         i
-          .setTitle("Open File")
+          .setTitle("Open file")
           .setIcon("file")
           .onClick(() => this.app.workspace.openLinkText(file.path, "", false)),
       );
       menu.addItem((i) =>
         i
-          .setTitle("File History")
+          .setTitle("File history")
           .setIcon("history")
           .onClick(() => this.plugin.openFileHistory(file.path)),
       );
       menu.addItem((i) =>
         i
-          .setTitle("Open Diff")
+          .setTitle("Open diff")
           .setIcon("file-diff")
           .onClick(() => this.plugin.openDiff(file.path, undefined, group === "staged")),
       );
       menu.addSeparator();
       menu.addItem((i) =>
         i
-          .setTitle("Copy Path")
+          .setTitle("Copy path")
           .setIcon("copy")
           .onClick(() => {
-            navigator.clipboard.writeText(file.path);
+            void navigator.clipboard.writeText(file.path);
             new Notice("Path copied");
           }),
       );
       menu.showAtMouseEvent(e);
     });
 
-    this.loadFileStats(file, statsEl, group);
+    void this.loadFileStats(file, statsEl, group);
   }
 
   /**
@@ -880,12 +913,15 @@ export class SourceControlView extends ItemView {
 
     const btn = actions.createEl("button", { cls: "gs-action-btn" });
     setIcon(btn, "file");
-    btn.setAttribute("aria-label", "Open File");
-    btn.addEventListener("click", async (e) => {
-      e.stopPropagation();
-      const current = this.vaultFile(file.path);
-      if (current) await this.app.workspace.getLeaf(false).openFile(current);
-    });
+    btn.setAttribute("aria-label", "Open file");
+    btn.addEventListener(
+      "click",
+      asVoid(async (e) => {
+        e.stopPropagation();
+        const current = this.vaultFile(file.path);
+        if (current) await this.app.workspace.getLeaf(false).openFile(current);
+      }),
+    );
   }
 
   private vaultFile(path: string): TFile | null {
@@ -927,7 +963,7 @@ export class SourceControlView extends ItemView {
 
     this.graphSubGraphPanel = panel.createDiv("gs-sg-subpanel");
     this.graphSubChangesPanel = panel.createDiv("gs-sg-subpanel");
-    this.graphSubChangesPanel.style.display = "none";
+    this.graphSubChangesPanel.addClass("gs-hidden");
 
     const toolbar = this.graphSubGraphPanel.createDiv("gs-sg-toolbar");
     const searchWrap = toolbar.createDiv("gs-sg-search-wrap");
@@ -945,37 +981,38 @@ export class SourceControlView extends ItemView {
     setIcon(refreshBtn, "refresh-cw");
     refreshBtn.setAttribute("aria-label", "Refresh");
     refreshBtn.addEventListener("click", () => {
-      this.store.refreshLog({ all: true, maxCount: 500 });
-      this.store.refresh();
+      void this.store.refreshLog({ all: true, maxCount: 500 });
+      void this.store.refresh();
     });
 
     const expandBtn = toolbar.createEl("button", { cls: "gs-icon-btn" });
     setIcon(expandBtn, "maximize-2");
     expandBtn.setAttribute("aria-label", "Open full graph");
-    expandBtn.addEventListener("click", () => this.plugin.openGraphView());
+    expandBtn.addEventListener("click", () => {
+      void this.plugin.openGraphView();
+    });
 
     this.graphListEl = this.graphSubGraphPanel.createDiv("gs-sg-list");
 
     this.graphSubChangesPanel
       .createDiv("gs-sg-changes-empty")
-      .setText("Click a commit in the Git Graph to see its changes here.");
+      .setText("Click a commit in the Git graph to see its changes here.");
   }
 
   private switchGraphSubTab(tab: GraphSubTab): void {
     for (const [key, btn] of Object.entries(this.graphSubTabBtns)) {
       btn.toggleClass("gs-sg-subtab-active", key === tab);
     }
-    if (this.graphSubGraphPanel)
-      this.graphSubGraphPanel.style.display = tab === "graph" ? "" : "none";
+    if (this.graphSubGraphPanel) this.graphSubGraphPanel.toggleClass("gs-hidden", tab !== "graph");
     if (this.graphSubChangesPanel)
-      this.graphSubChangesPanel.style.display = tab === "commit-changes" ? "" : "none";
+      this.graphSubChangesPanel.toggleClass("gs-hidden", tab !== "commit-changes");
   }
 
   showCommitChanges(commit: CommitInfo): void {
     this.selectedCommitForChanges = commit;
     this.switchTab("graph");
     this.switchGraphSubTab("commit-changes");
-    this.renderCommitChangesPanel();
+    void this.renderCommitChangesPanel();
   }
 
   private async renderCommitChangesPanel(): Promise<void> {
@@ -1006,18 +1043,21 @@ export class SourceControlView extends ItemView {
     const actionsEl = this.graphSubChangesPanel.createDiv("gs-sg-changes-actions");
     const copyBtn = actionsEl.createEl("button", { cls: "gs-sg-detail-btn", text: "Copy SHA" });
     copyBtn.addEventListener("click", () => {
-      navigator.clipboard.writeText(commit.hash);
+      void navigator.clipboard.writeText(commit.hash);
       new Notice("SHA copied");
     });
-    const viewBtn = actionsEl.createEl("button", { cls: "gs-sg-detail-btn", text: "View Changes" });
-    viewBtn.addEventListener("click", async () => {
-      try {
-        const files = await this.git.showCommitFiles(commit.hash);
-        if (files.length > 0) this.plugin.openDiff(files[0].path, commit.hash);
-      } catch {
-        new Notice("Could not load changes");
-      }
-    });
+    const viewBtn = actionsEl.createEl("button", { cls: "gs-sg-detail-btn", text: "View changes" });
+    viewBtn.addEventListener(
+      "click",
+      asVoid(async () => {
+        try {
+          const files = await this.git.showCommitFiles(commit.hash);
+          if (files.length > 0) void this.plugin.openDiff(files[0].path, commit.hash);
+        } catch {
+          new Notice("Could not load changes");
+        }
+      }),
+    );
 
     const filesContainer = this.graphSubChangesPanel.createDiv("gs-sg-changes-files");
     const loadingEl = filesContainer.createDiv("gs-sg-changes-loading");
@@ -1054,7 +1094,7 @@ export class SourceControlView extends ItemView {
         if (f.deletions > 0) fileStats.createSpan("gs-stat-del").setText(` -${f.deletions}`);
 
         fileRow.addEventListener("click", () => {
-          this.plugin.openDiff(f.path, commit.hash);
+          void this.plugin.openDiff(f.path, commit.hash);
         });
       }
     } catch {
@@ -1090,7 +1130,7 @@ export class SourceControlView extends ItemView {
       setIcon(avatarCol.createDiv("gs-sg-avatar gs-sg-avatar-wc"), "pen-line");
 
       const info = row.createDiv("gs-sg-info");
-      info.createSpan("gs-sg-msg").setText("Working Changes");
+      info.createSpan("gs-sg-msg").setText("Working changes");
       this.sgWcMeta = info.createDiv("gs-sg-meta-line").createSpan("gs-sg-meta");
       row.addEventListener("click", () => this.switchTab("changes"));
 
@@ -1174,12 +1214,12 @@ export class SourceControlView extends ItemView {
       this.renderChangesBar(commit, metaLine);
 
       row.addEventListener("mouseenter", () => {
-        if (this.tooltipTimeout) clearTimeout(this.tooltipTimeout);
-        this.tooltipTimeout = setTimeout(() => this.showCommitTooltip(commit, row), 400);
+        if (this.tooltipTimeout) window.clearTimeout(this.tooltipTimeout);
+        this.tooltipTimeout = window.setTimeout(() => this.showCommitTooltip(commit, row), 400);
       });
       row.addEventListener("mouseleave", () => {
         if (this.tooltipTimeout) {
-          clearTimeout(this.tooltipTimeout);
+          window.clearTimeout(this.tooltipTimeout);
           this.tooltipTimeout = null;
         }
         this.hideCommitTooltip();
@@ -1203,18 +1243,18 @@ export class SourceControlView extends ItemView {
             .setTitle("Copy SHA")
             .setIcon("copy")
             .onClick(() => {
-              navigator.clipboard.writeText(commit.hash);
+              void navigator.clipboard.writeText(commit.hash);
               new Notice("SHA copied");
             }),
         );
         menu.addItem((item) =>
           item
-            .setTitle("View Changes")
+            .setTitle("View changes")
             .setIcon("file-diff")
             .onClick(async () => {
               try {
                 const files = await this.git.showCommitFiles(commit.hash);
-                if (files.length > 0) this.plugin.openDiff(files[0].path, commit.hash);
+                if (files.length > 0) void this.plugin.openDiff(files[0].path, commit.hash);
               } catch {
                 new Notice("Could not load changes");
               }
@@ -1237,7 +1277,7 @@ export class SourceControlView extends ItemView {
         );
         menu.addItem((item) =>
           item
-            .setTitle("Open in Graph")
+            .setTitle("Open in graph")
             .setIcon("git-branch")
             .onClick(() => this.plugin.openGraphView()),
         );
@@ -1263,24 +1303,27 @@ export class SourceControlView extends ItemView {
         });
         copyBtn.addEventListener("click", (e) => {
           e.stopPropagation();
-          navigator.clipboard.writeText(commit.hash);
+          void navigator.clipboard.writeText(commit.hash);
           new Notice("SHA copied");
         });
         const viewBtn = detailActions.createEl("button", {
           cls: "gs-sg-detail-btn",
-          text: "View Changes",
+          text: "View changes",
         });
-        viewBtn.addEventListener("click", async (e) => {
-          e.stopPropagation();
-          try {
-            const files = await this.git.showCommitFiles(commit.hash);
-            if (files.length > 0) this.plugin.openDiff(files[0].path, commit.hash);
-          } catch {
-            new Notice("Could not load changes");
-          }
-        });
+        viewBtn.addEventListener(
+          "click",
+          asVoid(async (e) => {
+            e.stopPropagation();
+            try {
+              const files = await this.git.showCommitFiles(commit.hash);
+              if (files.length > 0) void this.plugin.openDiff(files[0].path, commit.hash);
+            } catch {
+              new Notice("Could not load changes");
+            }
+          }),
+        );
 
-        this.loadSidebarCommitFiles(commit.hash, detail);
+        void this.loadSidebarCommitFiles(commit.hash, detail);
       }
     }
 
@@ -1306,7 +1349,7 @@ export class SourceControlView extends ItemView {
         if (f.deletions > 0) stats.createSpan("gs-stat-del").setText(` -${f.deletions}`);
         fileRow.addEventListener("click", (e) => {
           e.stopPropagation();
-          this.plugin.openDiff(f.path, hash);
+          void this.plugin.openDiff(f.path, hash);
         });
       }
     } catch {
@@ -1361,8 +1404,8 @@ export class SourceControlView extends ItemView {
     bar.createDiv("gs-sg-changes-del").style.width = 100 - addPct + "%";
   }
 
-  private el(tag: string, cls: string, text?: string): HTMLElement {
-    const e = document.createElement(tag);
+  private el(tag: keyof HTMLElementTagNameMap, cls: string, text?: string): HTMLElement {
+    const e = createEl(tag);
     e.className = cls;
     if (text) e.textContent = text;
     return e;
@@ -1417,7 +1460,7 @@ export class SourceControlView extends ItemView {
 
     const statsPlaceholder = this.el("div", "gs-sg-tip-stats");
     body.appendChild(statsPlaceholder);
-    this.loadTooltipStats(commit.hash, statsPlaceholder);
+    void this.loadTooltipStats(commit.hash, statsPlaceholder);
 
     const msgEl = this.el("div", "gs-sg-tip-msg", commit.message);
     body.appendChild(msgEl);
@@ -1428,7 +1471,7 @@ export class SourceControlView extends ItemView {
     document.body.appendChild(tip);
     this.tooltipEl = tip;
 
-    requestAnimationFrame(() => {
+    window.requestAnimationFrame(() => {
       const rect = anchor.getBoundingClientRect();
       const tipRect = tip.getBoundingClientRect();
       let top = rect.top - tipRect.height - 6;
@@ -1438,7 +1481,7 @@ export class SourceControlView extends ItemView {
         left = window.innerWidth - tipRect.width - 8;
       tip.style.top = top + "px";
       tip.style.left = left + "px";
-      tip.style.opacity = "1";
+      tip.addClass("gs-tooltip-visible");
     });
   }
 

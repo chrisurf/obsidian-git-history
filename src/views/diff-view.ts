@@ -455,7 +455,7 @@ export class DiffView extends ItemView {
     this.staged = staged;
     this.tokenize = getTokenizer(path);
     (this.leaf as WorkspaceLeaf & { updateHeader?: () => void }).updateHeader?.();
-    if (this.diffContainer) this.loadDiff();
+    if (this.diffContainer) void this.loadDiff();
   }
 
   async onOpen(): Promise<void> {
@@ -488,12 +488,12 @@ export class DiffView extends ItemView {
     const parts = this.filePath ? this.filePath.split("/") : ["No file selected"];
     parts.forEach((part, idx) => {
       if (idx > 0) {
-        const sep = document.createElement("span");
+        const sep = createSpan();
         sep.className = "git-diff-breadcrumb-sep";
         sep.textContent = "›";
         breadcrumb.appendChild(sep);
       }
-      const seg = document.createElement("span");
+      const seg = createSpan();
       seg.className =
         idx === parts.length - 1 ? "git-diff-breadcrumb-file" : "git-diff-breadcrumb-dir";
       seg.textContent = part;
@@ -507,10 +507,10 @@ export class DiffView extends ItemView {
     syncEl.createSpan("git-diff-sync-stat git-diff-sync-up").setText("↑ 0");
     syncEl.createSpan("git-diff-sync-stat git-diff-sync-down").setText("↓ 0");
 
-    const sxsBtn = right.createEl("button", { cls: "git-diff-mode-btn", text: "Side-by-Side" });
+    const sxsBtn = right.createEl("button", { cls: "git-diff-mode-btn", text: "Side-by-side" });
     const inlineBtn = right.createEl("button", { cls: "git-diff-mode-btn", text: "Inline" });
 
-    const updateMode = () => {
+    const updateMode = (): void => {
       sxsBtn.toggleClass("git-diff-mode-active", this.mode === "side-by-side");
       inlineBtn.toggleClass("git-diff-mode-active", this.mode === "inline");
     };
@@ -519,12 +519,12 @@ export class DiffView extends ItemView {
     sxsBtn.addEventListener("click", () => {
       this.mode = "side-by-side";
       updateMode();
-      this.loadDiff();
+      void this.loadDiff();
     });
     inlineBtn.addEventListener("click", () => {
       this.mode = "inline";
       updateMode();
-      this.loadDiff();
+      void this.loadDiff();
     });
   }
 
@@ -578,7 +578,7 @@ export class DiffView extends ItemView {
       }
 
       this.updateSyncStats(diffs);
-      requestAnimationFrame(() => this.renderMinimap());
+      window.requestAnimationFrame(() => this.renderMinimap());
     } catch (e: unknown) {
       this.diffContainer
         .createDiv("git-diff-error")
@@ -602,7 +602,7 @@ export class DiffView extends ItemView {
   private highlightContent(container: HTMLElement, text: string): void {
     const tokens = this.tokenize(text);
     for (const token of tokens) {
-      const span = document.createElement("span");
+      const span = createSpan();
       span.style.color = TOKEN_COLORS[token.type];
       span.textContent = token.value;
       container.appendChild(span);
@@ -645,14 +645,18 @@ export class DiffView extends ItemView {
         const hunkActions = rightHunkHeader.createDiv("git-diff-hunk-actions");
         const stageBtn = hunkActions.createEl("button", {
           cls: "git-diff-hunk-btn",
-          text: "Stage Hunk",
+          text: "Stage hunk",
         });
-        stageBtn.addEventListener("click", () => this.stageHunk(fileDiff.path, hunk));
+        stageBtn.addEventListener("click", () => {
+          void this.stageHunk(fileDiff.path, hunk);
+        });
         const revertBtn = hunkActions.createEl("button", {
           cls: "git-diff-hunk-btn",
           text: "Revert",
         });
-        revertBtn.addEventListener("click", () => this.revertHunk(fileDiff.path, hunk));
+        revertBtn.addEventListener("click", () => {
+          void this.revertHunk(fileDiff.path, hunk);
+        });
       }
 
       const paired = this.pairLines(hunk.lines);
@@ -748,7 +752,9 @@ export class DiffView extends ItemView {
           cls: "git-diff-hunk-btn",
           text: "Stage",
         });
-        stageBtn.addEventListener("click", () => this.stageHunk(fileDiff.path, hunk));
+        stageBtn.addEventListener("click", () => {
+          void this.stageHunk(fileDiff.path, hunk);
+        });
       }
 
       for (const line of hunk.lines) {
@@ -834,11 +840,11 @@ export class DiffView extends ItemView {
 
     for (const seg of segments) {
       if (seg.changed) {
-        const mark = document.createElement("span");
+        const mark = createSpan();
         mark.className = side === "del" ? "git-diff-char-del" : "git-diff-char-add";
         const tokens = this.tokenize(seg.value);
         for (const token of tokens) {
-          const span = document.createElement("span");
+          const span = createSpan();
           span.style.color = TOKEN_COLORS[token.type];
           span.textContent = token.value;
           mark.appendChild(span);
@@ -847,7 +853,7 @@ export class DiffView extends ItemView {
       } else {
         const tokens = this.tokenize(seg.value);
         for (const token of tokens) {
-          const span = document.createElement("span");
+          const span = createSpan();
           span.style.color = TOKEN_COLORS[token.type];
           span.textContent = token.value;
           container.appendChild(span);
@@ -936,7 +942,9 @@ export class DiffView extends ItemView {
 
     const m = a.length,
       n = b.length;
-    const dp: number[][] = Array.from({ length: m + 1 }, () => new Array(n + 1).fill(0));
+    const dp: number[][] = Array.from({ length: m + 1 }, (): number[] =>
+      new Array<number>(n + 1).fill(0),
+    );
 
     for (let i = 1; i <= m; i++) {
       for (let j = 1; j <= n; j++) {
@@ -990,7 +998,7 @@ export class DiffView extends ItemView {
       return;
     }
 
-    wrap.style.display = "flex";
+    wrap.removeClass("gs-hidden");
     const height = wrap.clientHeight || 400;
     const width = 80;
     const dpr = window.devicePixelRatio || 1;
@@ -1066,7 +1074,7 @@ export class DiffView extends ItemView {
   }
 
   private clearMinimap(): void {
-    if (this.minimapWrap) this.minimapWrap.style.display = "none";
+    this.minimapWrap?.addClass("gs-hidden");
   }
 
   private setupMinimapInteraction(): void {
@@ -1075,7 +1083,7 @@ export class DiffView extends ItemView {
 
     let dragging = false;
 
-    const jumpToPosition = (clientY: number) => {
+    const jumpToPosition = (clientY: number): void => {
       const scrollEl = this.codeScrollEl;
       if (!scrollEl) return;
       const rect = wrap.getBoundingClientRect();
@@ -1105,9 +1113,10 @@ export class DiffView extends ItemView {
       const patch = this.buildPatch(path, hunk);
       const repoRoot = await this.git.getRepoRoot();
       await new Promise<void>((resolve, reject) => {
-        const proc = execFile("git", ["apply", "--cached", "-"], { cwd: repoRoot }, (err) =>
-          err ? reject(err) : resolve(),
-        );
+        const proc = execFile("git", ["apply", "--cached", "-"], { cwd: repoRoot }, (err) => {
+          if (err) reject(err instanceof Error ? err : new Error("git apply failed"));
+          else resolve();
+        });
         proc.stdin?.write(patch);
         proc.stdin?.end();
       });
@@ -1124,9 +1133,10 @@ export class DiffView extends ItemView {
       const patch = this.buildPatch(path, hunk, true);
       const repoRoot = await this.git.getRepoRoot();
       await new Promise<void>((resolve, reject) => {
-        const proc = execFile("git", ["apply", "-R", "-"], { cwd: repoRoot }, (err) =>
-          err ? reject(err) : resolve(),
-        );
+        const proc = execFile("git", ["apply", "-R", "-"], { cwd: repoRoot }, (err) => {
+          if (err) reject(err instanceof Error ? err : new Error("git apply failed"));
+          else resolve();
+        });
         proc.stdin?.write(patch);
         proc.stdin?.end();
       });

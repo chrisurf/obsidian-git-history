@@ -45,8 +45,14 @@ jobs:
 
       - run: npm ci
 
+      # Same rules the Obsidian community review runs (eslint-plugin-obsidianmd
+      # plus typescript-eslint's type-checked set). Zero tolerance: a warning
+      # here is a finding in the review.
       - name: ESLint
-        run: npx eslint src/ --max-warnings 10
+        run: npx eslint src/ --max-warnings 0
+
+      - name: Stylelint
+        run: npx stylelint styles.css
 
       - name: TypeScript
         run: npx tsc --noEmit

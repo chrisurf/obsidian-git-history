@@ -182,7 +182,7 @@ export class RepoStore extends Events {
       this.trigger("loading", false);
       if (this._refreshQueued) {
         this._refreshQueued = false;
-        this.refresh();
+        void this.refresh();
       }
     }
   }

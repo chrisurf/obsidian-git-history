@@ -9,7 +9,7 @@ Obsidian plugin for Git management: interactive commit graph, source control pan
 - **Runtime**: Obsidian Plugin API (desktop, Electron/Node.js)
 - **Language**: TypeScript (strict mode)
 - **Bundler**: esbuild (`esbuild.config.mjs`)
-- **Linting**: ESLint flat config (`eslint.config.mjs`) + Prettier
+- **Linting**: ESLint flat config with `eslint-plugin-obsidianmd`, Stylelint, Prettier
 - **Commits**: Conventional Commits enforced via commitlint + Husky
 - **Release**: semantic-release with custom `scripts/version-bump.mjs`
 
@@ -17,9 +17,10 @@ Obsidian plugin for Git management: interactive commit graph, source control pan
 
 - `npm run build` — production build (outputs `main.js`)
 - `npm run dev` — watch mode for development
-- `npm run validate` — full pipeline: typecheck + lint + format:check + test + build
+- `npm run validate` — full pipeline: typecheck + lint + lint:css + format:check + test + build
 - `npm test` / `npm run test:watch` — Vitest
-- `npm run lint` / `npm run lint:fix` — ESLint
+- `npm run lint` / `npm run lint:fix` — ESLint (zero warnings allowed)
+- `npm run lint:css` — Stylelint
 - `npm run format` / `npm run format:check` — Prettier
 - `npm run typecheck` — `tsc --noEmit`
 
@@ -87,6 +88,19 @@ src/
 
 - **CI** (`.github/workflows/ci.yml`): Runs on feature branches and PRs to main — eslint, typecheck, prettier, build, manifest validation, commitlint
 - **Release** (`.github/workflows/release.yml`): Runs on push to main — semantic-release creates GitHub release with `main.js`, `manifest.json`, `styles.css`
+
+## Code discipline
+
+`npm run validate` is the gate, and CI fails on any warning. The lint setup is
+the same one the Obsidian community review runs
+(`eslint-plugin-obsidianmd` + typescript-eslint type-checked + stylelint), so
+what passes here passes review.
+
+Write to the linters, not around them: use Obsidian's APIs over raw DOM and
+browser globals, keep state in CSS classes rather than inline styles, never
+leave a promise unawaited, and reach for specificity instead of `!important`.
+A rule you cannot satisfy is a design question, not a candidate for a disable
+comment.
 
 ## Verifying UI changes
 

@@ -83,6 +83,13 @@ function makeEl(tag: string, info?: string | DomElementInfo, parent?: Element): 
   return el;
 }
 
+function makeSvg(tag: string, info?: string | DomElementInfo, parent?: Element): SVGElement {
+  const el = document.createElementNS("http://www.w3.org/2000/svg", tag);
+  applyInfo(el as unknown as HTMLElement, info);
+  if (parent) parent.appendChild(el);
+  return el;
+}
+
 function installDomHelpers(): void {
   // Obsidian puts these on Element so they work for SVG nodes too.
   const proto = Element.prototype as unknown as Record<string, unknown>;
@@ -115,13 +122,25 @@ function installDomHelpers(): void {
   proto.removeClass = function (this: Element, ...classes: string[]) {
     this.classList.remove(...classes.filter(Boolean));
   };
+  proto.setCssStyles = function (this: HTMLElement, styles: Record<string, string>) {
+    Object.assign(this.style, styles);
+  };
+  proto.setCssProps = function (this: HTMLElement, props: Record<string, string>) {
+    for (const [name, value] of Object.entries(props)) this.style.setProperty(name, value);
+  };
   proto.toggleClass = function (this: Element, classes: string | string[], value: boolean) {
     for (const cls of Array.isArray(classes) ? classes : [classes]) {
       this.classList.toggle(cls, value);
     }
   };
 
+  // Obsidian's SVG counterparts, used by the graph's lane rendering.
+  proto.createSvg = function (this: Element, tag: string, info?: string | DomElementInfo) {
+    return makeSvg(tag, info, this);
+  };
+
   globals.createEl = (tag: string, info?: string | DomElementInfo) => makeEl(tag, info);
+  globals.createSvg = (tag: string, info?: string | DomElementInfo) => makeSvg(tag, info);
   globals.createDiv = (info?: string | DomElementInfo) => makeEl("div", info);
   globals.createSpan = (info?: string | DomElementInfo) => makeEl("span", info);
   globals.activeDocument = document;

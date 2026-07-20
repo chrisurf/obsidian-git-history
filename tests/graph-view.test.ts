@@ -438,7 +438,7 @@ describe("GraphView — expanded commit card", () => {
 
   it("stays hidden until a commit is clicked", async () => {
     const h = await mount();
-    expect(popup(h).style.display).toBe("none");
+    expect(popup(h).classList.contains("gs-hidden")).toBe(true);
   });
 
   it("opens with the commit's details and closes again on a second click", async () => {
@@ -450,14 +450,14 @@ describe("GraphView — expanded commit card", () => {
     await Promise.resolve();
     flushFrames();
 
-    expect(popup(h).style.display).toBe("block");
+    expect(popup(h).classList.contains("gs-hidden")).toBe(false);
     expect(popup(h).querySelector(".gs-popup-msg")?.textContent).toBe("commit message 0");
     expect(popup(h).querySelector(".gs-popup-actions")).not.toBeNull();
 
     readRows(h.tbody)[0].el.dispatchEvent(new MouseEvent("click", { bubbles: true }));
     await Promise.resolve();
     flushFrames();
-    expect(popup(h).style.display).toBe("none");
+    expect(popup(h).classList.contains("gs-hidden")).toBe(true);
   });
 });
 
@@ -530,6 +530,6 @@ describe("GraphView — expanding a commit pushes the list down", () => {
     await expandFirstRow(h);
 
     expect(readRows(h.tbody).map((r) => r.top)).toEqual(before);
-    expect(card(h).style.display).toBe("none");
+    expect(card(h).classList.contains("gs-hidden")).toBe(true);
   });
 });

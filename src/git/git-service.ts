@@ -403,6 +403,14 @@ export class GitService {
     await this.enqueue(() => this.exec(args));
   }
 
+  async cherryPick(hash: string): Promise<void> {
+    await this.enqueue(() => this.exec(["cherry-pick", hash]));
+  }
+
+  async revert(hash: string): Promise<void> {
+    await this.enqueue(() => this.exec(["revert", "--no-edit", hash]));
+  }
+
   async abortMerge(): Promise<void> {
     await this.enqueue(() => this.exec(["merge", "--abort"]));
   }

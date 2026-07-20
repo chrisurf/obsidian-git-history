@@ -1,110 +1,130 @@
 <p align="center">
-  <img src="docs/screenshots/hero.png" alt="Git History for Obsidian" width="100%" />
+  <picture>
+    <source media="(max-width: 600px)" srcset="docs/screenshots/hero-mobile.png" />
+    <img src="docs/screenshots/hero.png" alt="Git History for Obsidian" width="100%" />
+  </picture>
 </p>
 
 # Git History for Obsidian
 
-A full-featured Git management plugin for [Obsidian](https://obsidian.md) that brings **VS Code / GitLens-style** source control directly into your vault.
+Version control for your vault, with an intuitive interface and no terminal
+required.
 
-Stage, commit, push, pull, and browse your entire commit history — without ever leaving Obsidian.
+Every note you edit is tracked. You can look back at what changed and when, undo
+a change you regret, and keep a backup copy somewhere safe. The plugin shows all
+of it as a visual timeline inside [Obsidian](https://obsidian.md) — point,
+click, done.
 
 ---
 
-## Features
+## New to Git? Start here
+
+Git is a tool that remembers every version of every file. Three ideas cover
+almost everything you will do:
+
+| Term | What it means for your vault |
+| --- | --- |
+| **Commit** | A snapshot of your vault at one moment, with a short note about it. Like a save point you can return to. |
+| **Push** | Uploads your snapshots to a backup copy, so they also exist off this computer. |
+| **Pull** | Downloads snapshots you made elsewhere, for example on another computer. |
+
+A typical day needs one habit: write what changed, press **Commit**, press
+**Push**. Everything else in this plugin is there for the moment you want to
+look back.
+
+If your vault is not a Git repository yet, run the **Initialize Git repository**
+command from Obsidian's command palette and the plugin sets one up for you.
+
+---
+
+## What you get
 
 <p align="center">
-  <img src="docs/screenshots/overview.png" alt="Git Graph and Source Control panel" width="100%" />
+  <img src="docs/screenshots/overview.png" alt="Commit graph and source control panel" width="100%" />
 </p>
 
-### Source Control Panel
+### Source control panel
 
-- **File tree view** with colored icons by file extension
-- **Stage, unstage, and discard** changes on file and folder level
-- **Commit** with message input, amend, and commit & push
-- **Pull, push, fetch, and stash** from the toolbar
-- **Branch switching** and creation
-- **Auto-refresh** on window focus and external file changes
+Your changed notes, grouped and ready to commit.
 
-### Commit Graph
+- See at a glance which notes changed, and by how much
+- Stage individual notes, whole folders, or everything at once
+- Commit with a message, amend the last one, or commit and push in one step
+- Pull, push, fetch and stash from the toolbar, with progress while they run
+- Switch or create branches
+- Refreshes itself when you edit notes or come back to the window
 
-- **GitLens-style table layout** with columns for branch/tag, graph, commit message, author, files changed, date, and SHA
-- **Visual commit graph** with colored lanes and merge indicators
-- **Ref pills** for branches, remotes, and tags
-- **Commit detail popup** with full metadata and changed files
-- **Green/red changes bar** showing additions vs deletions per commit
-- **Working changes row** showing uncommitted modifications
-- **Search and filter** commits by message, author, or hash
+### Commit graph
 
-### Sidebar Compact Graph
+The history of your vault as a timeline.
 
-- Quickly browse recent commits without leaving the sidebar
-- Toggle between **Changes** and **Graph** tabs
-- **Author avatar circles** with initials on each commit
-- **Hover tooltip** with author, date, SHA, file stats, and commit message
-- **Changes bar** with additions/deletions per commit
-- Click a commit to expand details inline
+- Every commit with its author, date, and how much changed
+- Branches and merges drawn as coloured lanes
+- Click a commit to expand it and see what it contained
+- Search by message, author, or commit ID
 
-### File History
+A compact version lives in the sidebar, so you can glance at recent commits
+without leaving what you were doing.
 
-- View the full commit history for any single file, inside the commit graph
-- Follows the file across renames
-- Open from the command palette or the context menu in Source Control
+### File history
 
-### Diff Viewer
+Pick any note and see only the commits that touched it — including the ones from
+before you renamed it. Available from the command palette and from the
+right-click menu in the source control panel.
 
-- **Side-by-side** and **inline** diff modes
-- Syntax-highlighted additions and deletions
-- Navigate diffs from the file tree or commit history
+### Diff viewer
+
+See exactly what changed in a note: old and new side by side, or as one
+annotated text. You can stage or undo a single block of changes instead of the
+whole file.
 
 ---
 
-## Installation
+## Requirements
 
-### From source
-
-```bash
-git clone https://github.com/chrisurf/obsidian-git-history.git
-cd obsidian-git-history
-npm install
-npm run build
-```
-
-Copy `main.js`, `manifest.json`, and `styles.css` into your vault's `.obsidian/plugins/git-history/` directory.
-
-### Requirements
-
-- Obsidian 1.5.0 or later
-- Git installed and available in PATH
-- Desktop only (uses Node.js APIs)
+- Obsidian 1.7.2 or later
+- Git installed on your computer ([how to install](https://git-scm.com/downloads))
+- Desktop only — Git cannot run on mobile
 
 ---
 
 ## Commands
 
-| Command | Description |
-|---------|-------------|
-| Open Source Control | Open the source control sidebar |
-| Open Git Graph | Open the full commit graph |
-| Commit | Open source control to commit |
-| Push | Push to remote |
-| Pull | Pull from remote |
-| Fetch | Fetch from remote |
-| Backup: Stage All, Commit & Push | One-click vault backup |
-| Show File History | Show the graph filtered to the active file |
-| Initialize Git Repository | Init a new repo in the vault |
+Available from Obsidian's command palette (`Ctrl/Cmd + P`).
+
+| Command | What it does |
+| --- | --- |
+| Open source control | Opens the sidebar panel |
+| Open Git graph | Opens the full history timeline |
+| Commit | Jumps to the panel to write a commit |
+| Push | Uploads your commits |
+| Pull | Downloads commits made elsewhere |
+| Fetch | Checks for new commits without applying them |
+| Backup: stage all, commit & push | Snapshots and uploads the whole vault in one step |
+| Show file history | Shows the history of the note you have open |
+| Initialize Git repository | Sets up version control for a vault that has none |
 
 ## Settings
 
-| Setting | Default | Description |
-|---------|---------|-------------|
-| Commit template | _(empty)_ | Default commit message for backups |
-| Pull strategy | merge | merge, rebase, or ff-only |
-| Diff view mode | side-by-side | side-by-side or inline |
-| Auto-fetch | off | Periodically fetch from remote |
-| Auto-fetch interval | 300s | Seconds between auto-fetches |
-| Show status bar | on | Git status in the Obsidian status bar |
-| Show nested repositories | off | List folders that are Git repositories of their own (they cannot be staged) |
-| Debounce | 1000ms | Delay before refreshing after file changes |
+| Setting | Default | What it does |
+| --- | --- | --- |
+| Commit message template | _(empty)_ | Message used by the one-step backup |
+| Pull strategy | merge | How downloaded commits are combined with yours |
+| Default diff view | side by side | Side by side, or one annotated text |
+| Auto-fetch | off | Check for new commits in the background |
+| Auto-fetch interval | 300s | How often to check |
+| Show status bar | on | Branch and change count in Obsidian's status bar |
+| Show nested repositories | off | List folders that are repositories of their own. They cannot be committed together with the rest of the vault |
+| File watcher debounce | 1000ms | How long to wait after an edit before refreshing |
+
+---
+
+## Good to know
+
+The plugin runs the `git` command on your computer — the same one you would use
+in a terminal — and only inside your vault's folder. Nothing leaves your machine
+unless you press push, and then only to the backup location you set up
+yourself.
 
 ---
 

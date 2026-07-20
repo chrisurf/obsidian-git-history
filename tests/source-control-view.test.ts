@@ -139,13 +139,13 @@ describe("SourceControlView — Stage All", () => {
 
   it("exposes a Stage All button in the Changes section", async () => {
     const { view } = await mount(screenshotStatus());
-    expect(findButton(view.contentEl, "Stage All")).not.toBeNull();
+    expect(findButton(view.contentEl, "Stage all")).not.toBeNull();
   });
 
   it("stages everything when Stage All is clicked", async () => {
     const { view, calls } = await mount(screenshotStatus());
 
-    const button = findButton(view.contentEl, "Stage All");
+    const button = findButton(view.contentEl, "Stage all");
     button?.dispatchEvent(new MouseEvent("click", { bubbles: true }));
     await new Promise((r) => setTimeout(r, 0));
     flushFrames();
@@ -157,7 +157,7 @@ describe("SourceControlView — Stage All", () => {
     const { view, calls } = await mount(screenshotStatus());
 
     // Users click the svg, not the button box.
-    const icon = findButton(view.contentEl, "Stage All")?.querySelector("svg");
+    const icon = findButton(view.contentEl, "Stage all")?.querySelector("svg");
     icon?.dispatchEvent(new MouseEvent("click", { bubbles: true }));
     await new Promise((r) => setTimeout(r, 0));
     flushFrames();
@@ -170,7 +170,7 @@ describe("SourceControlView — Stage All", () => {
     const tree = view.contentEl.querySelector(".gs-sc-tree") as HTMLElement;
     expect(tree.style.display).not.toBe("none");
 
-    findButton(view.contentEl, "Stage All")?.dispatchEvent(
+    findButton(view.contentEl, "Stage all")?.dispatchEvent(
       new MouseEvent("click", { bubbles: true }),
     );
     await new Promise((r) => setTimeout(r, 0));
@@ -186,7 +186,7 @@ describe("SourceControlView — Stage All", () => {
       throw new Error("fatal: Unable to create index.lock: File exists.");
     };
 
-    findButton(view.contentEl, "Stage All")?.dispatchEvent(
+    findButton(view.contentEl, "Stage all")?.dispatchEvent(
       new MouseEvent("click", { bubbles: true }),
     );
     await new Promise((r) => setTimeout(r, 0));
@@ -279,7 +279,7 @@ describe("SourceControlView — loading state", () => {
     store.trigger("loading", true);
     expect(view.contentEl.classList.contains("gs-loading")).toBe(true);
 
-    findButton(view.contentEl, "Stage All")?.dispatchEvent(
+    findButton(view.contentEl, "Stage all")?.dispatchEvent(
       new MouseEvent("click", { bubbles: true }),
     );
     await new Promise((r) => setTimeout(r, 0));
@@ -295,7 +295,7 @@ describe("SourceControlView — nested repositories", () => {
 
   /** Folders render collapsed, so the rows only exist after Expand All. */
   const filenames = (view: { contentEl: HTMLElement }): string[] => {
-    findButton(view.contentEl, "Expand All")?.dispatchEvent(
+    findButton(view.contentEl, "Expand all")?.dispatchEvent(
       new MouseEvent("click", { bubbles: true }),
     );
     flushFrames();
@@ -330,13 +330,13 @@ describe("SourceControlView — nested repositories", () => {
       (el) => el.querySelector(".gs-tree-filename")?.textContent === "verification",
     );
     expect(row, "the nested repository row is missing").toBeDefined();
-    expect(row?.querySelector('button[aria-label="Stage Changes"]')).toBeNull();
+    expect(row?.querySelector('button[aria-label="Stage changes"]')).toBeNull();
   });
 
   it("stages the rest of the vault without mentioning what it skipped", async () => {
     const { view, calls } = await mount(screenshotStatus());
 
-    findButton(view.contentEl, "Stage All")?.dispatchEvent(
+    findButton(view.contentEl, "Stage all")?.dispatchEvent(
       new MouseEvent("click", { bubbles: true }),
     );
     await new Promise((r) => setTimeout(r, 0));
@@ -357,12 +357,12 @@ describe("SourceControlView — icons", () => {
   it("uses one discard icon for all three discard actions", async () => {
     const { view } = await mount(screenshotStatus());
     // Expand the tree so the folder-level action exists too.
-    findButton(view.contentEl, "Expand All")?.dispatchEvent(
+    findButton(view.contentEl, "Expand all")?.dispatchEvent(
       new MouseEvent("click", { bubbles: true }),
     );
     flushFrames();
 
-    const icons = ["Discard All", "Discard All in Folder", "Discard Changes"].map((label) => [
+    const icons = ["Discard all", "Discard all in folder", "Discard changes"].map((label) => [
       label,
       iconOf(view.contentEl, label),
     ]);
@@ -490,15 +490,19 @@ describe("SourceControlView — toolbar buttons drive the progress bar", () => {
       // The bar sits just above the active tab's accent underline, so the
       // label is what makes it readable as progress rather than decoration.
       const busyLabel = view.contentEl.querySelector(".gs-sc-busy-label") as HTMLElement;
-      expect(busyLabel.style.display, `${label} showed no running command`).not.toBe("none");
+      expect(busyLabel.classList.contains("gs-hidden"), `${label} showed no running command`).toBe(
+        false,
+      );
       expect(busyLabel.textContent).toMatch(/…$/);
 
       calls.release[key]?.();
       await new Promise((r) => setTimeout(r, SourceControlView.PROGRESS_MIN_MS + 50));
       expect(active(view), `the bar kept running after ${label} finished`).toBe(false);
-      expect((view.contentEl.querySelector(".gs-sc-busy-label") as HTMLElement).style.display).toBe(
-        "none",
-      );
+      expect(
+        (view.contentEl.querySelector(".gs-sc-busy-label") as HTMLElement).classList.contains(
+          "gs-hidden",
+        ),
+      ).toBe(true);
     });
   }
 });
@@ -510,7 +514,7 @@ describe("SourceControlView — Open File", () => {
     ) as HTMLElement | undefined;
 
   const expandAll = (view: { contentEl: HTMLElement }): void => {
-    findButton(view.contentEl, "Expand All")?.dispatchEvent(
+    findButton(view.contentEl, "Expand all")?.dispatchEvent(
       new MouseEvent("click", { bubbles: true }),
     );
     flushFrames();
@@ -533,7 +537,7 @@ describe("SourceControlView — Open File", () => {
     const labels = Array.from(rowFor(view, "Testing.md")!.querySelectorAll("button")).map((b) =>
       b.getAttribute("aria-label"),
     );
-    expect(labels).toEqual(["Open Changes", "Open File", "Discard Changes", "Stage Changes"]);
+    expect(labels).toEqual(["Open changes", "Open file", "Discard changes", "Stage changes"]);
   });
 
   it("opens the file as it currently is", async () => {
@@ -546,7 +550,7 @@ describe("SourceControlView — Open File", () => {
     expandAll(view);
 
     rowFor(view, "Testing.md")
-      ?.querySelector('button[aria-label="Open File"]')
+      ?.querySelector('button[aria-label="Open file"]')
       ?.dispatchEvent(new MouseEvent("click", { bubbles: true }));
     await Promise.resolve();
 
@@ -558,7 +562,7 @@ describe("SourceControlView — Open File", () => {
     const { view } = await mount(screenshotStatus());
     expandAll(view);
 
-    expect(rowFor(view, "workspace.json")?.querySelector('button[aria-label="Open File"]')).toBe(
+    expect(rowFor(view, "workspace.json")?.querySelector('button[aria-label="Open file"]')).toBe(
       null,
     );
   });

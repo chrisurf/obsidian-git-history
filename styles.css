@@ -7,7 +7,7 @@
   --gs-bg: var(--background-primary);
   --gs-bg2: var(--background-secondary);
   --gs-bg-hover: var(--background-modifier-hover);
-  --gs-bg-active: var(--background-modifier-active-hover, rgba(255, 255, 255, 0.06));
+  --gs-bg-active: var(--background-modifier-active-hover, rgb(255, 255, 255, 0.06));
   --gs-border: var(--background-modifier-border);
   --gs-text: var(--text-normal);
   --gs-text-muted: var(--text-muted);
@@ -78,7 +78,7 @@
   margin-top: 4px;
   padding: 2px 4px 2px 6px;
   border-radius: 4px;
-  background: rgba(88, 166, 255, 0.15);
+  background: rgb(88, 166, 255, 0.15);
   color: var(--gs-blue);
   font-size: 11px;
   max-width: 100%;
@@ -224,8 +224,7 @@
 /* Scroll area */
 .gs-graph-scroll-wrap {
   flex: 1;
-  overflow-y: auto;
-  overflow-x: auto;
+  overflow: auto;
   position: relative;
 }
 
@@ -265,8 +264,8 @@
 .gs-graph-row:hover {
   background: var(--gs-bg-hover);
 }
-.gs-row-selected {
-  background: var(--gs-bg-active) !important;
+.gs-row-selected.gs-row-selected {
+  background: var(--gs-bg-active);
   box-shadow: inset 2px 0 0 var(--gs-accent);
 }
 
@@ -372,17 +371,17 @@
 }
 
 .gs-ref-branch {
-  background: rgba(63, 185, 80, 0.2);
+  background: rgb(63, 185, 80, 0.2);
   color: var(--gs-green);
 }
 
 .gs-ref-remote {
-  background: rgba(88, 166, 255, 0.15);
+  background: rgb(88, 166, 255, 0.15);
   color: var(--gs-blue);
 }
 
 .gs-ref-tag {
-  background: rgba(240, 136, 62, 0.2);
+  background: rgb(240, 136, 62, 0.2);
   color: var(--gs-orange);
 }
 
@@ -410,12 +409,12 @@
      --background-secondary is nearly identical to the list background in some
      of them, which left the card looking like a hole rather than a panel. */
   background:
-    linear-gradient(0deg, rgba(88, 166, 255, 0.07), rgba(88, 166, 255, 0.07)), var(--gs-bg2);
+    linear-gradient(0deg, rgb(88, 166, 255, 0.07), rgb(88, 166, 255, 0.07)), var(--gs-bg2);
   border: 1px solid var(--background-modifier-border-hover, var(--gs-border));
   border-left: 3px solid var(--gs-accent);
   border-radius: 6px;
   padding: 12px 14px;
-  box-shadow: 0 2px 12px rgba(0, 0, 0, 0.35);
+  box-shadow: 0 2px 12px rgb(0, 0, 0, 0.35);
   max-width: 620px;
   /* Long subjects and pasted URLs must not push the card wider than the list. */
   overflow-wrap: anywhere;
@@ -655,12 +654,11 @@
   display: flex;
   gap: 4px;
 }
-
-.gs-icon-btn {
-  background: transparent !important;
-  border: none !important;
-  box-shadow: none !important;
-  outline: none !important;
+.gs-icon-btn.gs-icon-btn {
+  background: transparent;
+  border: none;
+  box-shadow: none;
+  outline: none;
   color: var(--gs-text-muted);
   cursor: pointer;
   padding: 4px 6px;
@@ -673,16 +671,16 @@
   width: 16px;
   height: 16px;
 }
-.gs-icon-btn:hover {
-  background: rgba(255, 255, 255, 0.08) !important;
+.gs-icon-btn.gs-icon-btn:hover {
+  background: rgb(255, 255, 255, 0.08);
   color: var(--gs-text);
 }
-.gs-icon-btn:focus,
-.gs-icon-btn:active {
-  background: transparent !important;
-  border: none !important;
-  box-shadow: none !important;
-  outline: none !important;
+.gs-icon-btn.gs-icon-btn:focus,
+.gs-icon-btn.gs-icon-btn:active {
+  background: transparent;
+  border: none;
+  box-shadow: none;
+  outline: none;
 }
 
 .gs-icon-btn-sm {
@@ -710,7 +708,7 @@
 }
 
 .gs-sc-section-header:hover {
-  background: rgba(255, 255, 255, 0.04);
+  background: rgb(255, 255, 255, 0.04);
 }
 
 .gs-section-left {
@@ -785,12 +783,11 @@
 .gs-sc-section-header:hover .gs-section-actions {
   opacity: 1;
 }
-
-.gs-section-actions .gs-icon-btn-sm {
-  background: transparent !important;
-  border: none !important;
-  box-shadow: none !important;
-  outline: none !important;
+.gs-section-actions .gs-icon-btn-sm.gs-icon-btn-sm {
+  background: transparent;
+  border: none;
+  box-shadow: none;
+  outline: none;
   color: var(--gs-text-muted);
   cursor: pointer;
   padding: 2px;
@@ -800,17 +797,16 @@
   width: 20px;
   height: 20px;
 }
-
-.gs-section-actions .gs-icon-btn-sm:hover {
-  background: rgba(255, 255, 255, 0.08) !important;
+.gs-section-actions .gs-icon-btn-sm.gs-icon-btn-sm:hover {
+  background: rgb(255, 255, 255, 0.08);
   color: var(--gs-text);
 }
-.gs-section-actions .gs-icon-btn-sm:focus,
-.gs-section-actions .gs-icon-btn-sm:active {
-  background: transparent !important;
-  border: none !important;
-  box-shadow: none !important;
-  outline: none !important;
+.gs-section-actions .gs-icon-btn-sm.gs-icon-btn-sm:focus,
+.gs-section-actions .gs-icon-btn-sm.gs-icon-btn-sm:active {
+  background: transparent;
+  border: none;
+  box-shadow: none;
+  outline: none;
 }
 
 /* Tree view – VS Code style */
@@ -827,7 +823,7 @@
 }
 
 .gs-tree-dir:hover {
-  background: rgba(255, 255, 255, 0.04);
+  background: rgb(255, 255, 255, 0.04);
 }
 .gs-tree-dir:hover .gs-tree-dir-actions {
   opacity: 1;
@@ -891,7 +887,7 @@
 }
 
 .gs-tree-file:hover {
-  background: rgba(255, 255, 255, 0.04);
+  background: rgb(255, 255, 255, 0.04);
 }
 .gs-tree-file:hover .gs-tree-file-actions {
   opacity: 1;
@@ -1070,12 +1066,11 @@
   transition: opacity 0.1s;
   flex-shrink: 0;
 }
-
-.gs-action-btn {
-  background: transparent !important;
-  border: none !important;
-  box-shadow: none !important;
-  outline: none !important;
+.gs-action-btn.gs-action-btn {
+  background: transparent;
+  border: none;
+  box-shadow: none;
+  outline: none;
   color: var(--gs-text-muted);
   cursor: pointer;
   padding: 2px;
@@ -1091,18 +1086,16 @@
   width: 14px;
   height: 14px;
 }
-
-.gs-action-btn:hover {
-  background: rgba(255, 255, 255, 0.08) !important;
+.gs-action-btn.gs-action-btn:hover {
+  background: rgb(255, 255, 255, 0.08);
   color: var(--gs-text);
 }
-
-.gs-action-btn:focus,
-.gs-action-btn:active {
-  background: transparent !important;
-  border: none !important;
-  box-shadow: none !important;
-  outline: none !important;
+.gs-action-btn.gs-action-btn:focus,
+.gs-action-btn.gs-action-btn:active {
+  background: transparent;
+  border: none;
+  box-shadow: none;
+  outline: none;
 }
 
 .gs-tree-badge {
@@ -1178,14 +1171,13 @@
 .gs-commit-btn-row {
   display: flex;
 }
-
-.gs-commit-main-btn {
+.gs-commit-main-btn.gs-commit-main-btn {
   flex: 1;
   padding: 5px 12px;
   border-radius: 4px 0 0 4px;
-  border: none !important;
-  box-shadow: none !important;
-  outline: none !important;
+  border: none;
+  box-shadow: none;
+  outline: none;
   background: var(--gs-green);
   color: #fff;
   cursor: pointer;
@@ -1197,14 +1189,13 @@
   justify-content: center;
   gap: 4px;
 }
-
-.gs-commit-main-btn:hover,
-.gs-commit-main-btn:focus,
-.gs-commit-main-btn:active {
+.gs-commit-main-btn.gs-commit-main-btn:hover,
+.gs-commit-main-btn.gs-commit-main-btn:focus,
+.gs-commit-main-btn.gs-commit-main-btn:active {
   opacity: 0.9;
-  border: none !important;
-  box-shadow: none !important;
-  outline: none !important;
+  border: none;
+  box-shadow: none;
+  outline: none;
 }
 
 .gs-commit-check-icon {
@@ -1214,14 +1205,13 @@
   width: 14px;
   height: 14px;
 }
-
-.gs-commit-dropdown-btn {
+.gs-commit-dropdown-btn.gs-commit-dropdown-btn {
   padding: 5px 6px;
   border-radius: 0 4px 4px 0;
-  border: none !important;
-  border-left: 1px solid rgba(255, 255, 255, 0.2) !important;
-  box-shadow: none !important;
-  outline: none !important;
+  border: none;
+  border-left: 1px solid rgb(255, 255, 255, 0.2);
+  box-shadow: none;
+  outline: none;
   background: var(--gs-green);
   color: #fff;
   cursor: pointer;
@@ -1233,14 +1223,14 @@
   width: 14px;
   height: 14px;
 }
-.gs-commit-dropdown-btn:hover,
-.gs-commit-dropdown-btn:focus,
-.gs-commit-dropdown-btn:active {
+.gs-commit-dropdown-btn.gs-commit-dropdown-btn:hover,
+.gs-commit-dropdown-btn.gs-commit-dropdown-btn:focus,
+.gs-commit-dropdown-btn.gs-commit-dropdown-btn:active {
   opacity: 0.9;
-  border: none !important;
-  border-left: 1px solid rgba(255, 255, 255, 0.2) !important;
-  box-shadow: none !important;
-  outline: none !important;
+  border: none;
+  border-left: 1px solid rgb(255, 255, 255, 0.2);
+  box-shadow: none;
+  outline: none;
 }
 
 /* --- Tab bar (Changes / Graph toggle) --- */
@@ -1250,8 +1240,7 @@
   flex-shrink: 0;
   padding: 0 12px;
 }
-
-.gs-sc-tab {
+.gs-sc-tab.gs-sc-tab {
   flex: 1;
   padding: 6px 0;
   font-size: 11px;
@@ -1259,10 +1248,10 @@
   text-transform: uppercase;
   letter-spacing: 0.04em;
   background: none;
-  border: none !important;
-  border-bottom: 2px solid transparent !important;
-  box-shadow: none !important;
-  outline: none !important;
+  border: none;
+  border-bottom: 2px solid transparent;
+  box-shadow: none;
+  outline: none;
   color: var(--gs-text-muted);
   cursor: pointer;
   transition:
@@ -1272,16 +1261,15 @@
 
 .gs-sc-tab:hover {
   color: var(--gs-text);
-  background: rgba(255, 255, 255, 0.08);
+  background: rgb(255, 255, 255, 0.08);
 }
-.gs-sc-tab:focus {
-  outline: none !important;
-  box-shadow: none !important;
+.gs-sc-tab.gs-sc-tab:focus {
+  outline: none;
+  box-shadow: none;
 }
-
-.gs-sc-tab-active {
+.gs-sc-tab-active.gs-sc-tab-active {
   color: var(--gs-accent);
-  border-bottom-color: var(--gs-accent) !important;
+  border-bottom-color: var(--gs-accent);
 }
 
 .gs-sc-changes-panel,
@@ -1471,11 +1459,11 @@
   gap: 8px;
   padding: 8px 10px;
   cursor: pointer;
-  border-bottom: 1px solid rgba(255, 255, 255, 0.04);
+  border-bottom: 1px solid rgb(255, 255, 255, 0.04);
 }
 
 .gs-sg-row:hover {
-  background: rgba(255, 255, 255, 0.04);
+  background: rgb(255, 255, 255, 0.04);
 }
 .gs-sg-row-selected {
   background: var(--gs-bg-active);
@@ -1506,13 +1494,13 @@
   font-weight: 700;
   color: #8b949e;
   flex-shrink: 0;
-  border: 1px solid rgba(255, 255, 255, 0.08);
+  border: 1px solid rgb(255, 255, 255, 0.08);
   line-height: 1;
 }
 
 .gs-sg-avatar-wc {
-  background: linear-gradient(135deg, rgba(63, 185, 80, 0.3), rgba(63, 185, 80, 0.15));
-  border-color: rgba(63, 185, 80, 0.3);
+  background: linear-gradient(135deg, rgb(63, 185, 80, 0.3), rgb(63, 185, 80, 0.15));
+  border-color: rgb(63, 185, 80, 0.3);
   color: var(--gs-green);
 }
 
@@ -1726,9 +1714,9 @@
   gap: 10px;
   padding: 12px 14px;
   background: #1e2030;
-  border: 1px solid rgba(255, 255, 255, 0.1);
+  border: 1px solid rgb(255, 255, 255, 0.1);
   border-radius: 8px;
-  box-shadow: 0 8px 32px rgba(0, 0, 0, 0.5);
+  box-shadow: 0 8px 32px rgb(0, 0, 0, 0.5);
   max-width: 420px;
   min-width: 280px;
   opacity: 0;
@@ -1751,7 +1739,7 @@
   font-weight: 700;
   color: #8b949e;
   flex-shrink: 0;
-  border: 1px solid rgba(255, 255, 255, 0.08);
+  border: 1px solid rgb(255, 255, 255, 0.08);
 }
 
 .gs-sg-tip-body {
@@ -1826,16 +1814,16 @@
   color: #e6edf3;
   font-size: 12px;
   margin-top: 4px;
-  border-top: 1px solid rgba(255, 255, 255, 0.06);
+  border-top: 1px solid rgb(255, 255, 255, 0.06);
   padding-top: 6px;
-  word-wrap: break-word;
+  overflow-wrap: break-word;
 }
 
 .gs-sg-tip-msg-body {
   color: #8b949e;
   font-size: 11px;
   white-space: pre-wrap;
-  word-wrap: break-word;
+  overflow-wrap: break-word;
 }
 
 /* ================================================================
@@ -1856,7 +1844,7 @@
   height: 100%;
   overflow: hidden;
   --diff-font:
-    "Cascadia Code", "Fira Code", "JetBrains Mono", Consolas, "Monaco", "Menlo", "Ubuntu Mono",
+    "Cascadia Code", "Fira Code", "JetBrains Mono", consolas, "Monaco", "Menlo", "Ubuntu Mono",
     "Courier New", monospace;
   --diff-bg: #1e1e1e;
   --diff-bg-header: #252526;
@@ -1866,17 +1854,17 @@
   --diff-text-muted: #858585;
   --diff-text-faint: #6a6a6a;
   --diff-linenum: #858585;
-  --diff-add-bg: rgba(35, 134, 54, 0.2);
-  --diff-add-gutter: rgba(35, 134, 54, 0.4);
+  --diff-add-bg: rgb(35, 134, 54, 0.2);
+  --diff-add-gutter: rgb(35, 134, 54, 0.4);
   --diff-add-sign: #3fb950;
-  --diff-del-bg: rgba(248, 81, 73, 0.18);
-  --diff-del-gutter: rgba(248, 81, 73, 0.35);
+  --diff-del-bg: rgb(248, 81, 73, 0.18);
+  --diff-del-gutter: rgb(248, 81, 73, 0.35);
   --diff-del-sign: #f85149;
-  --diff-hunk-bg: rgba(88, 166, 255, 0.06);
+  --diff-hunk-bg: rgb(88, 166, 255, 0.06);
   --diff-hunk-text: #569cd6;
-  --diff-empty-bg: rgba(50, 50, 50, 0.5);
-  --diff-scrollbar: rgba(121, 121, 121, 0.4);
-  --diff-selection: rgba(38, 79, 120, 0.6);
+  --diff-empty-bg: rgb(50, 50, 50, 0.5);
+  --diff-scrollbar: rgb(121, 121, 121, 0.4);
+  --diff-selection: rgb(38, 79, 120, 0.6);
 }
 
 .git-diff-toolbar {
@@ -1953,7 +1941,7 @@
   transition: all 0.15s;
 }
 .git-diff-mode-btn:hover {
-  background: rgba(255, 255, 255, 0.06);
+  background: rgb(255, 255, 255, 0.06);
   color: var(--diff-text);
 }
 .git-diff-mode-active {
@@ -2141,12 +2129,12 @@
 
 /* Character-level inline diff highlights */
 .git-diff-char-add {
-  background: rgba(35, 134, 54, 0.45);
+  background: rgb(35, 134, 54, 0.45);
   border-radius: 2px;
   padding: 0 1px;
 }
 .git-diff-char-del {
-  background: rgba(248, 81, 73, 0.4);
+  background: rgb(248, 81, 73, 0.4);
   border-radius: 2px;
   padding: 0 1px;
 }
@@ -2209,7 +2197,7 @@
   width: 80px;
   flex-shrink: 0;
   position: relative;
-  background: rgba(30, 30, 30, 0.8);
+  background: rgb(30, 30, 30, 0.8);
   border-left: 1px solid var(--diff-border);
   cursor: pointer;
   display: flex;
@@ -2226,8 +2214,8 @@
   position: absolute;
   left: 0;
   right: 0;
-  background: rgba(255, 255, 255, 0.08);
-  border: 1px solid rgba(255, 255, 255, 0.15);
+  background: rgb(255, 255, 255, 0.08);
+  border: 1px solid rgb(255, 255, 255, 0.15);
   border-radius: 2px;
   pointer-events: none;
   min-height: 20px;
@@ -2333,4 +2321,22 @@
   display: flex;
   gap: 8px;
   justify-content: flex-end;
+}
+
+/* ================================================================
+   UTILITIES
+   ================================================================ */
+
+/*
+ * Visibility toggled from code. Inline `style.display` is what
+ * obsidianmd/no-static-styles-assignment forbids, so the state lives in a
+ * class; it comes last in the file to win against the equally specific rules
+ * that give these elements their layout display value.
+ */
+.gs-hidden {
+  display: none;
+}
+
+.gs-tooltip-visible {
+  opacity: 1;
 }
