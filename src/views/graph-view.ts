@@ -44,6 +44,8 @@ export class GraphView extends ItemView {
   private filterText = "";
   private filteredIndices: number[] | null = null;
   private hasWorkingChanges = false;
+  private tooltipEl: HTMLElement | null = null;
+  private tooltipTimeout: ReturnType<typeof setTimeout> | null = null;
 
   constructor(leaf: WorkspaceLeaf, plugin: GitHistoryPlugin) {
     super(leaf);
@@ -407,6 +409,14 @@ export class GraphView extends ItemView {
 
     row.addEventListener("click", (e) => this.onRowClick(e, commit, row));
     row.addEventListener("contextmenu", (e) => this.showCommitMenu(e, commit));
+    row.addEventListener("mouseenter", () => {
+      if (this.tooltipTimeout) clearTimeout(this.tooltipTimeout);
+      this.tooltipTimeout = setTimeout(() => this.showCommitTooltip(commit, row), 400);
+    });
+    row.addEventListener("mouseleave", () => {
+      if (this.tooltipTimeout) { clearTimeout(this.tooltipTimeout); this.tooltipTimeout = null; }
+      this.hideCommitTooltip();
+    });
 
     this.loadFileCount(commit.hash, filesCell);
 
@@ -608,7 +618,95 @@ export class GraphView extends ItemView {
     });
   }
 
+  private el(tag: string, cls: string, text?: string): HTMLElement {
+    const e = document.createElement(tag);
+    e.className = cls;
+    if (text) e.textContent = text;
+    return e;
+  }
+
+  private showCommitTooltip(commit: CommitInfo, anchor: HTMLElement): void {
+    this.hideCommitTooltip();
+    const tip = this.el("div", "gs-sg-tooltip");
+
+    const initials = commit.author.split(" ").map(w => w[0] || "").join("").substring(0, 2).toUpperCase();
+    tip.appendChild(this.el("div", "gs-sg-tip-avatar", initials || "?"));
+
+    const body = this.el("div", "gs-sg-tip-body");
+    tip.appendChild(body);
+
+    const authorLine = this.el("div", "gs-sg-tip-author-line");
+    authorLine.appendChild(this.el("span", "gs-sg-tip-author", commit.author));
+    authorLine.appendChild(this.el("span", "gs-sg-tip-date-rel", formatRelativeDate(commit.date)));
+    body.appendChild(authorLine);
+
+    const dateStr = commit.date.toLocaleString("en-US", {
+      weekday: "long", year: "numeric", month: "long", day: "numeric",
+      hour: "numeric", minute: "2-digit", hour12: true,
+    });
+    body.appendChild(this.el("div", "gs-sg-tip-date-full", dateStr));
+
+    const shaLine = this.el("div", "gs-sg-tip-sha-line");
+    shaLine.appendChild(this.el("span", "gs-sg-tip-sha-icon", "◇"));
+    shaLine.appendChild(this.el("span", "gs-sg-tip-sha", commit.shortHash));
+    if (commit.parents.length > 0) {
+      shaLine.appendChild(this.el("span", "gs-sg-tip-parents-label",
+        ` (${commit.parents.length} parent${commit.parents.length > 1 ? "s" : ""})`));
+    }
+    body.appendChild(shaLine);
+
+    body.appendChild(this.el("div", "gs-sg-tip-email", commit.authorEmail));
+
+    const statsPlaceholder = this.el("div", "gs-sg-tip-stats");
+    body.appendChild(statsPlaceholder);
+    this.loadTooltipStats(commit.hash, statsPlaceholder);
+
+    const msgEl = this.el("div", "gs-sg-tip-msg", commit.message);
+    body.appendChild(msgEl);
+    if (commit.body) {
+      body.appendChild(this.el("div", "gs-sg-tip-msg-body", commit.body));
+    }
+
+    document.body.appendChild(tip);
+    this.tooltipEl = tip;
+
+    requestAnimationFrame(() => {
+      const rect = anchor.getBoundingClientRect();
+      const tipRect = tip.getBoundingClientRect();
+      let top = rect.top - tipRect.height - 6;
+      if (top < 8) top = rect.bottom + 6;
+      let left = rect.left + 20;
+      if (left + tipRect.width > window.innerWidth - 8) left = window.innerWidth - tipRect.width - 8;
+      tip.style.top = top + "px";
+      tip.style.left = left + "px";
+      tip.style.opacity = "1";
+    });
+  }
+
+  private async loadTooltipStats(hash: string, container: HTMLElement): Promise<void> {
+    try {
+      const files = await this.git.showCommitFiles(hash);
+      if (!this.tooltipEl || files.length === 0) return;
+      const totalAdd = files.reduce((s, f) => s + f.additions, 0);
+      const totalDel = files.reduce((s, f) => s + f.deletions, 0);
+      container.appendChild(this.el("span", "gs-sg-tip-stats-files",
+        `${files.length} file${files.length !== 1 ? "s" : ""} changed`));
+      if (totalAdd > 0) container.appendChild(this.el("span", "gs-stat-add", `  ${totalAdd} additions`));
+      if (totalDel > 0) container.appendChild(this.el("span", "gs-stat-del", `  ${totalDel} deletions`));
+    } catch {
+      // ignore
+    }
+  }
+
+  private hideCommitTooltip(): void {
+    if (this.tooltipEl) {
+      this.tooltipEl.remove();
+      this.tooltipEl = null;
+    }
+  }
+
   async onClose(): Promise<void> {
     this.hidePopup();
+    this.hideCommitTooltip();
   }
 }

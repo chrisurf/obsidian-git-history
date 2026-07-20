@@ -722,9 +722,9 @@ export class SourceControlView extends ItemView {
       meta.setText(`${commit.shortHash} · ${commit.author} · ${formatRelativeDate(commit.date)}`);
       this.loadChangesBar(commit.hash, metaLine);
 
-      row.addEventListener("mouseenter", (e) => {
+      row.addEventListener("mouseenter", () => {
         if (this.tooltipTimeout) clearTimeout(this.tooltipTimeout);
-        this.tooltipTimeout = setTimeout(() => this.showCommitTooltip(commit, e), 400);
+        this.tooltipTimeout = setTimeout(() => this.showCommitTooltip(commit, row), 400);
       });
       row.addEventListener("mouseleave", () => {
         if (this.tooltipTimeout) { clearTimeout(this.tooltipTimeout); this.tooltipTimeout = null; }
@@ -857,7 +857,7 @@ export class SourceControlView extends ItemView {
     return e;
   }
 
-  private showCommitTooltip(commit: CommitInfo, e: MouseEvent): void {
+  private showCommitTooltip(commit: CommitInfo, anchor: HTMLElement): void {
     this.hideCommitTooltip();
     const tip = this.el("div", "gs-sg-tooltip");
 
@@ -903,7 +903,7 @@ export class SourceControlView extends ItemView {
     this.tooltipEl = tip;
 
     requestAnimationFrame(() => {
-      const rect = (e.currentTarget as HTMLElement).getBoundingClientRect();
+      const rect = anchor.getBoundingClientRect();
       const tipRect = tip.getBoundingClientRect();
       let top = rect.top - tipRect.height - 6;
       if (top < 8) top = rect.bottom + 6;
