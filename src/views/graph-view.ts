@@ -454,6 +454,7 @@ export class GraphView extends ItemView {
     this.selectedHash = commit.hash;
     this.renderVisible();
     await this.showPopup(commit, row);
+    this.plugin.showCommitChangesInSidebar(commit);
   }
 
   private async showPopup(commit: CommitInfo, anchor: HTMLElement): Promise<void> {

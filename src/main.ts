@@ -15,6 +15,7 @@ import {
   DIFF_VIEW_TYPE,
   GitHistorySettings,
   DEFAULT_SETTINGS,
+  CommitInfo,
 } from "./types";
 import { GitService } from "./git/git-service";
 import { RepoStore } from "./store/repo-store";
@@ -190,6 +191,24 @@ export default class GitHistoryPlugin extends Plugin {
     if (leaf) {
       await leaf.setViewState({ type: SOURCE_CONTROL_VIEW_TYPE, active: true });
       this.app.workspace.revealLeaf(leaf);
+    }
+  }
+
+  async showCommitChangesInSidebar(commit: CommitInfo): Promise<void> {
+    let leaf: WorkspaceLeaf | undefined;
+    const existing = this.app.workspace.getLeavesOfType(SOURCE_CONTROL_VIEW_TYPE);
+    if (existing.length > 0) {
+      leaf = existing[0];
+    } else {
+      leaf = this.app.workspace.getRightLeaf(false) ?? undefined;
+      if (leaf) {
+        await leaf.setViewState({ type: SOURCE_CONTROL_VIEW_TYPE, active: true });
+      }
+    }
+    if (leaf) {
+      this.app.workspace.revealLeaf(leaf);
+      const view = leaf.view as SourceControlView;
+      view.showCommitChanges(commit);
     }
   }
 

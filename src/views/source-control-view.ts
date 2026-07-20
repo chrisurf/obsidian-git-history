@@ -15,6 +15,7 @@ interface FileTreeNode {
 }
 
 type SidebarTab = "changes" | "graph";
+type GraphSubTab = "graph" | "commit-changes";
 
 export class SourceControlView extends ItemView {
   private plugin: GitHistoryPlugin;
@@ -34,6 +35,12 @@ export class SourceControlView extends ItemView {
   private focusHandler: (() => void) | null = null;
   private tooltipEl: HTMLElement | null = null;
   private tooltipTimeout: ReturnType<typeof setTimeout> | null = null;
+
+  private graphSubTab: GraphSubTab = "graph";
+  private graphSubTabBtns: Record<string, HTMLElement> = {};
+  private graphSubGraphPanel: HTMLElement | null = null;
+  private graphSubChangesPanel: HTMLElement | null = null;
+  private selectedCommitForChanges: CommitInfo | null = null;
 
   constructor(leaf: WorkspaceLeaf, plugin: GitHistoryPlugin) {
     super(leaf);
@@ -616,7 +623,19 @@ export class SourceControlView extends ItemView {
      Sidebar compact graph
      ============================================================ */
   private buildSidebarGraph(panel: HTMLElement): void {
-    const toolbar = panel.createDiv("gs-sg-toolbar");
+    const subTabBar = panel.createDiv("gs-sg-subtabbar");
+    const graphSubBtn = subTabBar.createEl("button", { cls: "gs-sg-subtab gs-sg-subtab-active", text: "Graph" });
+    const changesSubBtn = subTabBar.createEl("button", { cls: "gs-sg-subtab", text: "Changes" });
+    this.graphSubTabBtns["graph"] = graphSubBtn;
+    this.graphSubTabBtns["commit-changes"] = changesSubBtn;
+    graphSubBtn.addEventListener("click", () => this.switchGraphSubTab("graph"));
+    changesSubBtn.addEventListener("click", () => this.switchGraphSubTab("commit-changes"));
+
+    this.graphSubGraphPanel = panel.createDiv("gs-sg-subpanel");
+    this.graphSubChangesPanel = panel.createDiv("gs-sg-subpanel");
+    this.graphSubChangesPanel.style.display = "none";
+
+    const toolbar = this.graphSubGraphPanel.createDiv("gs-sg-toolbar");
     const searchWrap = toolbar.createDiv("gs-sg-search-wrap");
     const searchIcon = searchWrap.createSpan("gs-sg-search-icon");
     setIcon(searchIcon, "search");
@@ -641,7 +660,103 @@ export class SourceControlView extends ItemView {
     expandBtn.setAttribute("aria-label", "Open full graph");
     expandBtn.addEventListener("click", () => this.plugin.openGraphView());
 
-    this.graphListEl = panel.createDiv("gs-sg-list");
+    this.graphListEl = this.graphSubGraphPanel.createDiv("gs-sg-list");
+
+    this.graphSubChangesPanel.createDiv("gs-sg-changes-empty").setText("Click a commit in the Git Graph to see its changes here.");
+  }
+
+  private switchGraphSubTab(tab: GraphSubTab): void {
+    this.graphSubTab = tab;
+    for (const [key, btn] of Object.entries(this.graphSubTabBtns)) {
+      btn.toggleClass("gs-sg-subtab-active", key === tab);
+    }
+    if (this.graphSubGraphPanel) this.graphSubGraphPanel.style.display = tab === "graph" ? "" : "none";
+    if (this.graphSubChangesPanel) this.graphSubChangesPanel.style.display = tab === "commit-changes" ? "" : "none";
+  }
+
+  showCommitChanges(commit: CommitInfo): void {
+    this.selectedCommitForChanges = commit;
+    this.switchTab("graph");
+    this.switchGraphSubTab("commit-changes");
+    this.renderCommitChangesPanel();
+  }
+
+  private async renderCommitChangesPanel(): Promise<void> {
+    if (!this.graphSubChangesPanel || !this.selectedCommitForChanges) return;
+    this.graphSubChangesPanel.empty();
+
+    const commit = this.selectedCommitForChanges;
+
+    const header = this.graphSubChangesPanel.createDiv("gs-sg-changes-header");
+    const avatarEl = header.createDiv("gs-sg-avatar");
+    const initials = commit.author.split(" ").map(w => w[0] || "").join("").substring(0, 2).toUpperCase();
+    if (initials) {
+      avatarEl.setText(initials);
+    } else {
+      setIcon(avatarEl, "git-commit-horizontal");
+    }
+
+    const headerInfo = header.createDiv("gs-sg-changes-header-info");
+    headerInfo.createDiv("gs-sg-changes-msg").setText(commit.message);
+    const metaEl = headerInfo.createDiv("gs-sg-changes-meta");
+    metaEl.setText(`${commit.shortHash} · ${commit.author} · ${formatRelativeDate(commit.date)}`);
+
+    const actionsEl = this.graphSubChangesPanel.createDiv("gs-sg-changes-actions");
+    const copyBtn = actionsEl.createEl("button", { cls: "gs-sg-detail-btn", text: "Copy SHA" });
+    copyBtn.addEventListener("click", () => {
+      navigator.clipboard.writeText(commit.hash);
+      new Notice("SHA copied");
+    });
+    const viewBtn = actionsEl.createEl("button", { cls: "gs-sg-detail-btn", text: "View Changes" });
+    viewBtn.addEventListener("click", async () => {
+      try {
+        const files = await this.git.showCommitFiles(commit.hash);
+        if (files.length > 0) this.plugin.openDiff(files[0].path, commit.hash);
+      } catch { new Notice("Could not load changes"); }
+    });
+
+    const filesContainer = this.graphSubChangesPanel.createDiv("gs-sg-changes-files");
+    const loadingEl = filesContainer.createDiv("gs-sg-changes-loading");
+    loadingEl.setText("Loading files...");
+
+    try {
+      const files = await this.git.showCommitFiles(commit.hash);
+      filesContainer.empty();
+
+      if (files.length === 0) {
+        filesContainer.createDiv("gs-sg-changes-empty").setText("No files changed");
+        return;
+      }
+
+      const totalAdd = files.reduce((s, f) => s + f.additions, 0);
+      const totalDel = files.reduce((s, f) => s + f.deletions, 0);
+
+      const summaryEl = filesContainer.createDiv("gs-sg-changes-summary");
+      summaryEl.createSpan().setText(`${files.length} FILES CHANGED`);
+      if (totalAdd > 0) summaryEl.createSpan("gs-stat-add").setText(` +${totalAdd}`);
+      if (totalDel > 0) summaryEl.createSpan("gs-stat-del").setText(` -${totalDel}`);
+
+      for (const f of files) {
+        const fileRow = filesContainer.createDiv("gs-sg-changes-file-row");
+
+        const fileIcon = fileRow.createSpan("gs-sg-changes-file-icon");
+        setIcon(fileIcon, "file");
+
+        const fileName = fileRow.createSpan("gs-sg-changes-file-name");
+        fileName.setText(f.path);
+
+        const fileStats = fileRow.createSpan("gs-sg-changes-file-stats");
+        if (f.additions > 0) fileStats.createSpan("gs-stat-add").setText(`+${f.additions}`);
+        if (f.deletions > 0) fileStats.createSpan("gs-stat-del").setText(` -${f.deletions}`);
+
+        fileRow.addEventListener("click", () => {
+          this.plugin.openDiff(f.path, commit.hash);
+        });
+      }
+    } catch {
+      filesContainer.empty();
+      filesContainer.createDiv("gs-sg-changes-empty").setText("Could not load changes");
+    }
   }
 
   private rebuildSidebarGraph(): void {

@@ -836,6 +836,140 @@
   overflow-y: auto;
 }
 
+/* --- Sidebar graph sub-tabs --- */
+.gs-sg-subtabbar {
+  display: flex;
+  gap: 0;
+  border-bottom: 1px solid var(--gs-border);
+  flex-shrink: 0;
+  background: var(--gs-bg2);
+}
+.gs-sg-subtab {
+  flex: 1;
+  padding: 6px 12px;
+  font-size: 12px;
+  font-weight: 500;
+  text-transform: uppercase;
+  letter-spacing: 0.5px;
+  color: var(--gs-text-muted);
+  background: none;
+  border: none;
+  border-bottom: 2px solid transparent;
+  cursor: pointer;
+  transition: all 0.15s;
+  text-align: center;
+}
+.gs-sg-subtab:hover {
+  color: var(--gs-text);
+  background: var(--gs-bg-hover);
+}
+.gs-sg-subtab-active {
+  color: var(--gs-text);
+  border-bottom-color: var(--gs-accent);
+}
+
+.gs-sg-subpanel {
+  display: flex;
+  flex-direction: column;
+  flex: 1;
+  overflow: hidden;
+  min-height: 0;
+}
+
+/* --- Sidebar commit changes panel --- */
+.gs-sg-changes-header {
+  display: flex;
+  gap: 8px;
+  padding: 10px 10px 6px;
+  align-items: flex-start;
+  border-bottom: 1px solid var(--gs-border);
+}
+.gs-sg-changes-header-info {
+  flex: 1;
+  min-width: 0;
+}
+.gs-sg-changes-msg {
+  font-size: 13px;
+  font-weight: 600;
+  color: var(--gs-text);
+  margin-bottom: 2px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  display: -webkit-box;
+  -webkit-line-clamp: 2;
+  -webkit-box-orient: vertical;
+}
+.gs-sg-changes-meta {
+  font-size: 11px;
+  color: var(--gs-text-faint);
+}
+.gs-sg-changes-actions {
+  display: flex;
+  gap: 6px;
+  padding: 6px 10px;
+  border-bottom: 1px solid var(--gs-border);
+}
+.gs-sg-changes-files {
+  flex: 1;
+  overflow-y: auto;
+  padding: 4px 0;
+}
+.gs-sg-changes-summary {
+  padding: 6px 10px;
+  font-size: 11px;
+  font-weight: 600;
+  color: var(--gs-text-muted);
+  letter-spacing: 0.3px;
+  border-bottom: 1px solid var(--gs-border);
+}
+.gs-sg-changes-file-row {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  padding: 4px 10px;
+  cursor: pointer;
+  font-size: 12px;
+  color: var(--gs-text);
+  transition: background 0.1s;
+}
+.gs-sg-changes-file-row:hover {
+  background: var(--gs-bg-hover);
+}
+.gs-sg-changes-file-icon {
+  flex-shrink: 0;
+  color: var(--gs-text-faint);
+  width: 14px;
+  height: 14px;
+}
+.gs-sg-changes-file-icon svg {
+  width: 14px;
+  height: 14px;
+}
+.gs-sg-changes-file-name {
+  flex: 1;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.gs-sg-changes-file-stats {
+  flex-shrink: 0;
+  font-size: 11px;
+  white-space: nowrap;
+}
+.gs-sg-changes-empty {
+  padding: 20px 10px;
+  text-align: center;
+  color: var(--gs-text-faint);
+  font-size: 12px;
+}
+.gs-sg-changes-loading {
+  padding: 20px 10px;
+  text-align: center;
+  color: var(--gs-text-faint);
+  font-size: 12px;
+}
+
 /* --- Sidebar compact graph --- */
 .gs-sg-toolbar {
   display: flex;
