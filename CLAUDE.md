@@ -17,10 +17,32 @@ Obsidian plugin for Git management: interactive commit graph, source control pan
 
 - `npm run build` — production build (outputs `main.js`)
 - `npm run dev` — watch mode for development
-- `npm run validate` — full pipeline: typecheck + lint + format:check + build
+- `npm run validate` — full pipeline: typecheck + lint + format:check + test + build
+- `npm test` / `npm run test:watch` — Vitest
 - `npm run lint` / `npm run lint:fix` — ESLint
 - `npm run format` / `npm run format:check` — Prettier
 - `npm run typecheck` — `tsc --noEmit`
+
+## Testing
+
+Vitest, with two environments:
+
+- **`happy-dom`** for view tests. `vitest.config.ts` aliases the `obsidian`
+  import to `tests/mocks/obsidian.ts`, and `tests/setup.ts` installs the DOM
+  helpers Obsidian adds to `Element.prototype` (`createDiv`, `setText`,
+  `addClass`, …). Extend the mock when a view starts using more of the API.
+- **`node`** for the git and layout code, via a `// @vitest-environment node`
+  docblock. The git tests build a throwaway repository with real `git` calls.
+
+`tests/setup.ts` replaces `requestAnimationFrame` with a queue that tests flush
+via `flushFrames()`, so throttled rendering is deterministic.
+
+Tests are not covered by `tsc --noEmit` (tsconfig only includes `src/`) or by
+ESLint, but Prettier does check them.
+
+The graph view tests assert virtualization invariants — bounded row count,
+unique row positions, element reuse, no per-row git process — because those
+break silently and are the reason the rendering is fast.
 
 ## Architecture
 

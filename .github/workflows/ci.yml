@@ -33,7 +33,10 @@ jobs:
         run: npx tsc --noEmit
 
       - name: Prettier
-        run: npx prettier --check "src/**/*.ts" "styles.css"
+        run: npx prettier --check "src/**/*.ts" "tests/**/*.ts" "styles.css"
+
+      - name: Tests
+        run: npm test
 
       - name: Build
         run: npm run build
