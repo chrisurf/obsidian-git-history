@@ -664,9 +664,9 @@ export class SourceControlView extends ItemView {
     const hasWC = this.store.status.length > 0;
     if (hasWC) {
       const wcRow = this.graphListEl.createDiv("gs-sg-row gs-sg-row-wc");
-      const dotCol = wcRow.createDiv("gs-sg-dot-col");
-      const dot = dotCol.createSpan("gs-sg-wc-dot");
-      dot.setText("●");
+      const avatarCol = wcRow.createDiv("gs-sg-avatar-col");
+      const wcAvatar = avatarCol.createDiv("gs-sg-avatar gs-sg-avatar-wc");
+      setIcon(wcAvatar, "pen-line");
 
       const info = wcRow.createDiv("gs-sg-info");
       info.createSpan("gs-sg-msg").setText("Working Changes");
@@ -693,14 +693,14 @@ export class SourceControlView extends ItemView {
       const row = this.graphListEl.createDiv("gs-sg-row");
       if (commit.hash === this.graphSelectedHash) row.addClass("gs-sg-row-selected");
 
-      const dotCol = row.createDiv("gs-sg-dot-col");
-      const COLORS = ["#4fc1ff","#3fb950","#d2a8ff","#f0883e","#f778ba","#58a6ff","#7ee787","#ffa657","#ff7b72","#79c0ff","#bb8eff","#56d364"];
-      const color = COLORS[node.color % COLORS.length];
-      const isMerge = commit.parents.length > 1;
-
-      const dot = dotCol.createSpan("gs-sg-dot");
-      dot.setText(isMerge ? "◎" : "●");
-      dot.style.color = color;
+      const avatarCol = row.createDiv("gs-sg-avatar-col");
+      const avatar = avatarCol.createDiv("gs-sg-avatar");
+      const initials = commit.author.split(" ").map(w => w[0] || "").join("").substring(0, 2).toUpperCase();
+      if (initials) {
+        avatar.setText(initials);
+      } else {
+        setIcon(avatar, "git-commit-horizontal");
+      }
 
       const info = row.createDiv("gs-sg-info");
 
@@ -824,69 +824,81 @@ export class SourceControlView extends ItemView {
     }
   }
 
+  private el(tag: string, cls: string, text?: string): HTMLElement {
+    const e = document.createElement(tag);
+    e.className = cls;
+    if (text) e.textContent = text;
+    return e;
+  }
+
   private showCommitTooltip(commit: CommitInfo, e: MouseEvent): void {
     this.hideCommitTooltip();
-    const tip = document.createElement("div");
-    tip.className = "gs-sg-tooltip";
+    const tip = this.el("div", "gs-sg-tooltip");
 
-    const initials = commit.author.split(" ").map(w => w[0]).join("").substring(0, 2).toUpperCase();
-    const avatar = tip.createDiv("gs-sg-tip-avatar");
-    avatar.setText(initials);
+    const initials = commit.author.split(" ").map(w => w[0] || "").join("").substring(0, 2).toUpperCase();
+    tip.appendChild(this.el("div", "gs-sg-tip-avatar", initials || "?"));
 
-    const body = tip.createDiv("gs-sg-tip-body");
+    const body = this.el("div", "gs-sg-tip-body");
+    tip.appendChild(body);
 
-    const authorLine = body.createDiv("gs-sg-tip-author-line");
-    authorLine.createSpan("gs-sg-tip-author").setText(commit.author);
-    authorLine.createSpan("gs-sg-tip-date-rel").setText(formatRelativeDate(commit.date));
+    const authorLine = this.el("div", "gs-sg-tip-author-line");
+    authorLine.appendChild(this.el("span", "gs-sg-tip-author", commit.author));
+    authorLine.appendChild(this.el("span", "gs-sg-tip-date-rel", formatRelativeDate(commit.date)));
+    body.appendChild(authorLine);
 
-    const dateLine = body.createDiv("gs-sg-tip-date-full");
-    dateLine.setText(commit.date.toLocaleString("en-US", {
+    const dateStr = commit.date.toLocaleString("en-US", {
       weekday: "long", year: "numeric", month: "long", day: "numeric",
       hour: "numeric", minute: "2-digit", hour12: true,
-    }));
+    });
+    body.appendChild(this.el("div", "gs-sg-tip-date-full", dateStr));
 
-    const shaLine = body.createDiv("gs-sg-tip-sha-line");
-    shaLine.createSpan("gs-sg-tip-sha-icon").setText("◇");
-    shaLine.createSpan("gs-sg-tip-sha").setText(commit.shortHash);
+    const shaLine = this.el("div", "gs-sg-tip-sha-line");
+    shaLine.appendChild(this.el("span", "gs-sg-tip-sha-icon", "◇"));
+    shaLine.appendChild(this.el("span", "gs-sg-tip-sha", commit.shortHash));
     if (commit.parents.length > 0) {
-      shaLine.createSpan("gs-sg-tip-parents-label").setText(` (${commit.parents.length} parent${commit.parents.length > 1 ? "s" : ""})`);
+      shaLine.appendChild(this.el("span", "gs-sg-tip-parents-label",
+        ` (${commit.parents.length} parent${commit.parents.length > 1 ? "s" : ""})`));
     }
+    body.appendChild(shaLine);
 
-    const emailLine = body.createDiv("gs-sg-tip-email");
-    emailLine.setText(`${commit.authorEmail}`);
+    body.appendChild(this.el("div", "gs-sg-tip-email", commit.authorEmail));
 
-    this.loadTooltipStats(commit.hash, body);
+    const statsPlaceholder = this.el("div", "gs-sg-tip-stats");
+    body.appendChild(statsPlaceholder);
+    this.loadTooltipStats(commit.hash, statsPlaceholder);
 
-    const msgEl = body.createDiv("gs-sg-tip-msg");
-    msgEl.setText(commit.message);
+    const msgEl = this.el("div", "gs-sg-tip-msg", commit.message);
+    body.appendChild(msgEl);
     if (commit.body) {
-      body.createDiv("gs-sg-tip-msg-body").setText(commit.body);
+      body.appendChild(this.el("div", "gs-sg-tip-msg-body", commit.body));
     }
 
     document.body.appendChild(tip);
     this.tooltipEl = tip;
 
-    const rect = (e.currentTarget as HTMLElement).getBoundingClientRect();
-    const tipRect = tip.getBoundingClientRect();
-    let top = rect.top - tipRect.height - 6;
-    if (top < 8) top = rect.bottom + 6;
-    let left = rect.left + 20;
-    if (left + tipRect.width > window.innerWidth - 8) left = window.innerWidth - tipRect.width - 8;
-    tip.style.top = top + "px";
-    tip.style.left = left + "px";
-    tip.style.opacity = "1";
+    requestAnimationFrame(() => {
+      const rect = (e.currentTarget as HTMLElement).getBoundingClientRect();
+      const tipRect = tip.getBoundingClientRect();
+      let top = rect.top - tipRect.height - 6;
+      if (top < 8) top = rect.bottom + 6;
+      let left = rect.left + 20;
+      if (left + tipRect.width > window.innerWidth - 8) left = window.innerWidth - tipRect.width - 8;
+      tip.style.top = top + "px";
+      tip.style.left = left + "px";
+      tip.style.opacity = "1";
+    });
   }
 
-  private async loadTooltipStats(hash: string, body: HTMLElement): Promise<void> {
+  private async loadTooltipStats(hash: string, container: HTMLElement): Promise<void> {
     try {
       const files = await this.git.showCommitFiles(hash);
       if (!this.tooltipEl || files.length === 0) return;
       const totalAdd = files.reduce((s, f) => s + f.additions, 0);
       const totalDel = files.reduce((s, f) => s + f.deletions, 0);
-      const statsEl = body.createDiv("gs-sg-tip-stats");
-      statsEl.createSpan("gs-sg-tip-stats-files").setText(`${files.length} file${files.length !== 1 ? "s" : ""} changed`);
-      if (totalAdd > 0) statsEl.createSpan("gs-stat-add").setText(`  ${totalAdd} additions`);
-      if (totalDel > 0) statsEl.createSpan("gs-stat-del").setText(`  ${totalDel} deletions`);
+      container.appendChild(this.el("span", "gs-sg-tip-stats-files",
+        `${files.length} file${files.length !== 1 ? "s" : ""} changed`));
+      if (totalAdd > 0) container.appendChild(this.el("span", "gs-stat-add", `  ${totalAdd} additions`));
+      if (totalDel > 0) container.appendChild(this.el("span", "gs-stat-del", `  ${totalDel} deletions`));
     } catch {
       // ignore
     }
