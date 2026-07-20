@@ -1,9 +1,13 @@
 export const SOURCE_CONTROL_VIEW_TYPE = "git-history-source-control";
-export const HISTORY_VIEW_TYPE = "git-history-history";
 export const GRAPH_VIEW_TYPE = "git-history-graph";
 export const DIFF_VIEW_TYPE = "git-history-diff";
 
-export type FileStatusCode = "M" | "A" | "D" | "R" | "C" | "U" | "?" | "!";
+/**
+ * Status letters git can report per side. "." is porcelain v2's "unchanged"
+ * and "T" a type change (file <-> symlink), both of which the parser passes
+ * through unmodified.
+ */
+export type FileStatusCode = "M" | "T" | "A" | "D" | "R" | "C" | "U" | "?" | "!" | ".";
 
 export interface FileStatus {
   path: string;
@@ -11,6 +15,18 @@ export interface FileStatus {
   indexStatus: FileStatusCode | " ";
   workingStatus: FileStatusCode | " ";
   staged: boolean;
+  /**
+   * Untracked entry that git reports as a directory rather than a file, i.e. a
+   * nested repository. `git add` refuses these (or silently turns them into a
+   * gitlink), so staging has to leave them alone.
+   */
+  embeddedRepo?: boolean;
+}
+
+export interface CommitStats {
+  filesChanged: number;
+  additions: number;
+  deletions: number;
 }
 
 export interface CommitInfo {
@@ -23,6 +39,13 @@ export interface CommitInfo {
   authorEmail: string;
   date: Date;
   refs: RefInfo[];
+  /**
+   * Aggregated diff stats collected in the same `git log` call.
+   * Undefined when git emits no stat block for the commit (merge commits
+   * without --diff-merges, empty commits) — callers fall back to a lazy
+   * per-commit lookup for those.
+   */
+  stats?: CommitStats;
 }
 
 export interface RefInfo {
@@ -109,6 +132,7 @@ export interface GitHistorySettings {
   treeView: boolean;
   ignoredPaths: string[];
   debounceMs: number;
+  showNestedRepos: boolean;
 }
 
 export const DEFAULT_SETTINGS: GitHistorySettings = {
@@ -121,4 +145,5 @@ export const DEFAULT_SETTINGS: GitHistorySettings = {
   treeView: false,
   ignoredPaths: [],
   debounceMs: 1000,
+  showNestedRepos: false,
 };

@@ -2,7 +2,6 @@ import * as fs from "fs";
 import { Plugin, WorkspaceLeaf, Notice, PluginSettingTab, App, Setting } from "obsidian";
 import {
   SOURCE_CONTROL_VIEW_TYPE,
-  HISTORY_VIEW_TYPE,
   GRAPH_VIEW_TYPE,
   DIFF_VIEW_TYPE,
   GitHistorySettings,
@@ -12,10 +11,12 @@ import {
 import { GitService } from "./git/git-service";
 import { RepoStore } from "./store/repo-store";
 import { SourceControlView } from "./views/source-control-view";
-import { HistoryView } from "./views/history-view";
 import { GraphView } from "./views/graph-view";
 import { DiffView } from "./views/diff-view";
 import { StatusBarController } from "./components/status-bar";
+
+/** View type of the removed history panel, kept only to clean up old workspaces. */
+const LEGACY_HISTORY_VIEW_TYPE = "git-history-history";
 
 export default class GitHistoryPlugin extends Plugin {
   settings: GitHistorySettings = DEFAULT_SETTINGS;
@@ -34,6 +35,7 @@ export default class GitHistoryPlugin extends Plugin {
     const basePath = adapter.getBasePath?.() ?? adapter.basePath ?? "";
     this.git = new GitService(basePath);
     this.store = new RepoStore(this.git);
+    this.store.showNestedRepos = this.settings.showNestedRepos;
 
     const isRepo = await this.git.isRepo();
     if (!isRepo) {
@@ -43,9 +45,13 @@ export default class GitHistoryPlugin extends Plugin {
     }
 
     this.registerView(SOURCE_CONTROL_VIEW_TYPE, (leaf) => new SourceControlView(leaf, this));
-    this.registerView(HISTORY_VIEW_TYPE, (leaf) => new HistoryView(leaf, this));
     this.registerView(GRAPH_VIEW_TYPE, (leaf) => new GraphView(leaf, this));
     this.registerView(DIFF_VIEW_TYPE, (leaf) => new DiffView(leaf, this));
+
+    // The standalone history panel was replaced by the Graph tab. A workspace
+    // saved by an older version still restores its leaf, which would now open
+    // as an empty pane nobody can close from inside the plugin.
+    this.app.workspace.detachLeavesOfType(LEGACY_HISTORY_VIEW_TYPE);
 
     this.addRibbonIcon("git-branch", "Git History", () => {
       this.openSourceControlView();
@@ -73,12 +79,6 @@ export default class GitHistoryPlugin extends Plugin {
     });
 
     this.addCommand({
-      id: "open-history",
-      name: "Open History",
-      callback: () => this.openHistoryView(),
-    });
-
-    this.addCommand({
       id: "open-graph",
       name: "Open Git Graph",
       callback: () => this.openGraphView(),
@@ -95,7 +95,9 @@ export default class GitHistoryPlugin extends Plugin {
       name: "Push",
       callback: async () => {
         try {
-          await this.git.push({ setUpstream: true, remote: "origin", branch: this.store.branch });
+          await this.store.runTask("Pushing", () =>
+            this.git.push({ setUpstream: true, remote: "origin", branch: this.store.branch }),
+          );
           await this.store.refresh();
           new Notice("Pushed successfully");
         } catch (e: unknown) {
@@ -109,7 +111,9 @@ export default class GitHistoryPlugin extends Plugin {
       name: "Pull",
       callback: async () => {
         try {
-          await this.git.pull({ strategy: this.settings.pullStrategy });
+          await this.store.runTask("Pulling", () =>
+            this.git.pull({ strategy: this.settings.pullStrategy }),
+          );
           await this.store.refresh();
           new Notice("Pulled successfully");
         } catch (e: unknown) {
@@ -123,7 +127,7 @@ export default class GitHistoryPlugin extends Plugin {
       name: "Fetch",
       callback: async () => {
         try {
-          await this.git.fetch();
+          await this.store.runTask("Fetching", () => this.git.fetch());
           await this.store.refresh();
           new Notice("Fetched");
         } catch (e: unknown) {
@@ -137,17 +141,30 @@ export default class GitHistoryPlugin extends Plugin {
       name: "Backup: Stage All, Commit & Push",
       callback: async () => {
         try {
-          await this.git.stageAll();
-          const msg =
-            this.settings.commitTemplate ||
-            `vault backup ${new Date().toISOString().split("T")[0]}`;
-          await this.git.commit(msg);
-          await this.git.push({ setUpstream: true, remote: "origin", branch: this.store.branch });
+          await this.store.runTask("Backing up", async () => {
+            await this.git.stageAll();
+            const msg =
+              this.settings.commitTemplate ||
+              `vault backup ${new Date().toISOString().split("T")[0]}`;
+            await this.git.commit(msg);
+            await this.git.push({ setUpstream: true, remote: "origin", branch: this.store.branch });
+          });
           await this.store.refresh();
           new Notice("Backup complete");
         } catch (e: unknown) {
           new Notice(`Backup failed: ${e instanceof Error ? e.message : String(e)}`);
         }
+      },
+    });
+
+    this.addCommand({
+      id: "show-file-history",
+      name: "Show File History",
+      checkCallback: (checking) => {
+        const file = this.app.workspace.getActiveFile();
+        if (!file) return false;
+        if (checking) return true;
+        this.openFileHistory(file.path);
       },
     });
 
@@ -162,17 +179,6 @@ export default class GitHistoryPlugin extends Plugin {
         } catch (e: unknown) {
           new Notice(`Init failed: ${e instanceof Error ? e.message : String(e)}`);
         }
-      },
-    });
-
-    this.addCommand({
-      id: "show-file-history",
-      name: "Show File History",
-      checkCallback: (checking) => {
-        const file = this.app.workspace.getActiveFile();
-        if (!file) return false;
-        if (checking) return true;
-        this.openFileHistory(file.path);
       },
     });
   }
@@ -208,19 +214,6 @@ export default class GitHistoryPlugin extends Plugin {
     }
   }
 
-  async openHistoryView(): Promise<void> {
-    const existing = this.app.workspace.getLeavesOfType(HISTORY_VIEW_TYPE);
-    if (existing.length > 0) {
-      this.app.workspace.revealLeaf(existing[0]);
-      return;
-    }
-    const leaf = this.app.workspace.getRightLeaf(false);
-    if (leaf) {
-      await leaf.setViewState({ type: HISTORY_VIEW_TYPE, active: true });
-      this.app.workspace.revealLeaf(leaf);
-    }
-  }
-
   async openGraphView(): Promise<void> {
     const existing = this.app.workspace.getLeavesOfType(GRAPH_VIEW_TYPE);
     if (existing.length > 0) {
@@ -234,28 +227,21 @@ export default class GitHistoryPlugin extends Plugin {
     }
   }
 
-  async openDiff(path: string, ref?: string): Promise<void> {
+  /** Opens the graph narrowed to one file — the history of that note. */
+  async openFileHistory(path: string): Promise<void> {
+    await this.openGraphView();
+    const leaf = this.app.workspace.getLeavesOfType(GRAPH_VIEW_TYPE)[0];
+    if (leaf) (leaf.view as GraphView).setPathFilter(path);
+  }
+
+  async openDiff(path: string, ref?: string, staged = false): Promise<void> {
     const leaf = this.app.workspace.getLeaf("tab");
     if (leaf) {
       await leaf.setViewState({ type: DIFF_VIEW_TYPE, active: true });
       const view = leaf.view as DiffView;
-      view.setFile(path, ref);
+      view.setFile(path, ref, staged);
       this.app.workspace.revealLeaf(leaf);
     }
-  }
-
-  async openFileHistory(path: string): Promise<void> {
-    const existing = this.app.workspace.getLeavesOfType(HISTORY_VIEW_TYPE);
-    let leaf: WorkspaceLeaf;
-    if (existing.length > 0) {
-      leaf = existing[0];
-    } else {
-      leaf = this.app.workspace.getRightLeaf(false) as WorkspaceLeaf;
-      await leaf.setViewState({ type: HISTORY_VIEW_TYPE, active: true });
-    }
-    const view = leaf.view as HistoryView;
-    view.setFilterPath(path);
-    this.app.workspace.revealLeaf(leaf);
   }
 
   private setupAutoRefresh(): void {
@@ -385,6 +371,20 @@ class GitHistorySettingTab extends PluginSettingTab {
         }
       }),
     );
+
+    new Setting(containerEl)
+      .setName("Show nested repositories")
+      .setDesc(
+        "Folders inside the vault that are Git repositories of their own cannot be staged, " +
+          "so they are hidden from the changes list. Turn this on to list them anyway.",
+      )
+      .addToggle((t) =>
+        t.setValue(this.plugin.settings.showNestedRepos).onChange(async (v) => {
+          this.plugin.settings.showNestedRepos = v;
+          this.plugin.store.showNestedRepos = v;
+          await this.plugin.saveSettings();
+        }),
+      );
 
     new Setting(containerEl)
       .setName("File watcher debounce (ms)")

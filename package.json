@@ -1,22 +1,27 @@
 {
   "name": "obsidian-git-history",
   "version": "1.0.0",
-  "description": "Git History for Obsidian – Full Git management with commit graph",
+  "description": "Git History for Obsidian – Full Git management with an intuitive UI and commit graph",
   "main": "main.js",
   "scripts": {
     "dev": "node esbuild.config.mjs",
     "build": "node esbuild.config.mjs production",
     "lint": "eslint src/",
     "lint:fix": "eslint src/ --fix",
-    "format": "prettier --write \"src/**/*.ts\" \"styles.css\"",
-    "format:check": "prettier --check \"src/**/*.ts\" \"styles.css\"",
+    "format": "prettier --write \"src/**/*.ts\" \"tests/**/*.ts\" \"styles.css\"",
+    "format:check": "prettier --check \"src/**/*.ts\" \"tests/**/*.ts\" \"styles.css\"",
     "typecheck": "tsc --noEmit",
-    "validate": "npm run typecheck && npm run lint && npm run format:check && npm run build",
+    "test": "vitest run",
+    "test:watch": "vitest",
+    "validate": "npm run typecheck && npm run lint && npm run format:check && npm run test && npm run build",
     "prepare": "husky"
   },
   "lint-staged": {
     "src/**/*.ts": [
       "eslint --fix",
+      "prettier --write"
+    ],
+    "tests/**/*.ts": [
       "prettier --write"
     ],
     "styles.css": [
@@ -41,9 +46,10 @@
     "@semantic-release/git": "^10.0.1",
     "@semantic-release/github": "^12.0.9",
     "@types/node": "^20.11.0",
-    "esbuild": "^0.20.0",
+    "esbuild": "^0.28.1",
     "eslint": "^10.7.0",
     "eslint-config-prettier": "^10.1.8",
+    "happy-dom": "^20.11.0",
     "husky": "^9.1.7",
     "lint-staged": "^17.1.0",
     "obsidian": "^1.7.2",
@@ -51,6 +57,7 @@
     "semantic-release": "^25.0.8",
     "tslib": "^2.6.0",
     "typescript": "^5.3.0",
-    "typescript-eslint": "^8.64.0"
+    "typescript-eslint": "^8.64.0",
+    "vitest": "^4.1.10"
   }
 }

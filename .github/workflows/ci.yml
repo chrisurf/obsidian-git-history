@@ -24,6 +24,25 @@ jobs:
         with:
           node-version: 22
           cache: npm
+      # A lockfile that lists a platform-specific package without the optional
+      # flag makes `npm ci` abort with EBADPLATFORM on every other platform —
+      # which reads like a random dependency error rather than a broken tree.
+      - name: Validate package-lock.json
+        run: |
+          node -e "
+            const lock = require('./package-lock.json');
+            const bad = Object.entries(lock.packages)
+              .filter(([, p]) => (p.os || p.cpu) && !p.optional)
+              .map(([name]) => name);
+            if (bad.length) {
+              console.error('Platform-specific packages missing \"optional\": true:');
+              for (const name of bad) console.error('  ' + name);
+              console.error('Regenerate the lockfile with: rm -rf node_modules package-lock.json && npm install');
+              process.exit(1);
+            }
+            console.log('package-lock.json installable on every platform');
+          "
+
       - run: npm ci
 
       - name: ESLint
@@ -33,7 +52,10 @@ jobs:
         run: npx tsc --noEmit
 
       - name: Prettier
-        run: npx prettier --check "src/**/*.ts" "styles.css"
+        run: npx prettier --check "src/**/*.ts" "tests/**/*.ts" "styles.css"
+
+      - name: Tests
+        run: npm test
 
       - name: Build
         run: npm run build

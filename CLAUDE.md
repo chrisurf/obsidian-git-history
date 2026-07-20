@@ -2,7 +2,7 @@
 
 ## Project Overview
 
-Obsidian plugin providing full Git management: GitKraken-style commit graph, source control panel, diff viewer, and history browser. Desktop-only (requires Node.js/Electron for Git operations).
+Obsidian plugin for Git management: interactive commit graph, source control panel, and diff viewer. Desktop-only (requires Node.js/Electron for Git operations).
 
 ## Tech Stack
 
@@ -17,10 +17,32 @@ Obsidian plugin providing full Git management: GitKraken-style commit graph, sou
 
 - `npm run build` — production build (outputs `main.js`)
 - `npm run dev` — watch mode for development
-- `npm run validate` — full pipeline: typecheck + lint + format:check + build
+- `npm run validate` — full pipeline: typecheck + lint + format:check + test + build
+- `npm test` / `npm run test:watch` — Vitest
 - `npm run lint` / `npm run lint:fix` — ESLint
 - `npm run format` / `npm run format:check` — Prettier
 - `npm run typecheck` — `tsc --noEmit`
+
+## Testing
+
+Vitest, with two environments:
+
+- **`happy-dom`** for view tests. `vitest.config.ts` aliases the `obsidian`
+  import to `tests/mocks/obsidian.ts`, and `tests/setup.ts` installs the DOM
+  helpers Obsidian adds to `Element.prototype` (`createDiv`, `setText`,
+  `addClass`, …). Extend the mock when a view starts using more of the API.
+- **`node`** for the git and layout code, via a `// @vitest-environment node`
+  docblock. The git tests build a throwaway repository with real `git` calls.
+
+`tests/setup.ts` replaces `requestAnimationFrame` with a queue that tests flush
+via `flushFrames()`, so throttled rendering is deterministic.
+
+Tests are not covered by `tsc --noEmit` (tsconfig only includes `src/`) or by
+ESLint, but Prettier does check them.
+
+The graph view tests assert virtualization invariants — bounded row count,
+unique row positions, element reuse, no per-row git process — because those
+break silently and are the reason the rendering is fast.
 
 ## Architecture
 
@@ -40,7 +62,6 @@ src/
 └── views/
     ├── source-control-view.ts  # Main source control sidebar
     ├── graph-view.ts           # Full-page commit graph
-    ├── history-view.ts         # Commit history list
     └── diff-view.ts            # Side-by-side/unified diff viewer
 ```
 
@@ -66,6 +87,12 @@ src/
 
 - **CI** (`.github/workflows/ci.yml`): Runs on feature branches and PRs to main — eslint, typecheck, prettier, build, manifest validation, commitlint
 - **Release** (`.github/workflows/release.yml`): Runs on push to main — semantic-release creates GitHub release with `main.js`, `manifest.json`, `styles.css`
+
+## Verifying UI changes
+
+happy-dom does no layout or paint, so a DOM test cannot tell you a change
+*looks* right. For visual work, serve a small HTML harness that links the real
+`styles.css`, open it in a browser and look at it.
 
 ## Important Notes
 

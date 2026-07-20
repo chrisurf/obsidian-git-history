@@ -44,16 +44,17 @@ Stage, commit, push, pull, and browse your entire commit history — without eve
 - **Changes bar** with additions/deletions per commit
 - Click a commit to expand details inline
 
+### File History
+
+- View the full commit history for any single file, inside the commit graph
+- Follows the file across renames
+- Open from the command palette or the context menu in Source Control
+
 ### Diff Viewer
 
 - **Side-by-side** and **inline** diff modes
 - Syntax-highlighted additions and deletions
 - Navigate diffs from the file tree or commit history
-
-### File History
-
-- View the full commit history for any single file
-- Open from the command palette or context menu
 
 ---
 
@@ -83,14 +84,13 @@ Copy `main.js`, `manifest.json`, and `styles.css` into your vault's `.obsidian/p
 | Command | Description |
 |---------|-------------|
 | Open Source Control | Open the source control sidebar |
-| Open History | Open the commit history view |
 | Open Git Graph | Open the full commit graph |
 | Commit | Open source control to commit |
 | Push | Push to remote |
 | Pull | Pull from remote |
 | Fetch | Fetch from remote |
 | Backup: Stage All, Commit & Push | One-click vault backup |
-| Show File History | Show history for the active file |
+| Show File History | Show the graph filtered to the active file |
 | Initialize Git Repository | Init a new repo in the vault |
 
 ## Settings
@@ -103,6 +103,7 @@ Copy `main.js`, `manifest.json`, and `styles.css` into your vault's `.obsidian/p
 | Auto-fetch | off | Periodically fetch from remote |
 | Auto-fetch interval | 300s | Seconds between auto-fetches |
 | Show status bar | on | Git status in the Obsidian status bar |
+| Show nested repositories | off | List folders that are Git repositories of their own (they cannot be staged) |
 | Debounce | 1000ms | Delay before refreshing after file changes |
 
 ---

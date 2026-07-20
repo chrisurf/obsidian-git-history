@@ -22,6 +22,7 @@
   --gs-orange: #f0883e;
   --gs-mono: var(--font-monospace);
   --gs-graph-col-width: 60px;
+  --gs-ref-col-width: 140px;
 }
 
 /* ================================================================
@@ -66,6 +67,54 @@
   border: 1px solid var(--gs-border);
   border-radius: 4px;
   padding: 3px 8px;
+}
+
+/* File-history chip — shown next to the search box while the graph is
+   narrowed to a single file. */
+.gs-path-chip {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  margin-top: 4px;
+  padding: 2px 4px 2px 6px;
+  border-radius: 4px;
+  background: rgba(88, 166, 255, 0.15);
+  color: var(--gs-blue);
+  font-size: 11px;
+  max-width: 100%;
+  width: fit-content;
+}
+
+.gs-path-chip-icon {
+  display: flex;
+  flex-shrink: 0;
+}
+.gs-path-chip-icon svg {
+  width: 12px;
+  height: 12px;
+}
+
+.gs-path-chip-name {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.gs-path-chip-clear {
+  background: none;
+  border: none;
+  padding: 0;
+  cursor: pointer;
+  color: inherit;
+  display: flex;
+  flex-shrink: 0;
+}
+.gs-path-chip-clear svg {
+  width: 12px;
+  height: 12px;
+}
+.gs-path-chip-clear:hover {
+  color: var(--gs-text);
 }
 
 .gs-search-icon {
@@ -135,7 +184,7 @@
   flex-shrink: 0;
 }
 .gs-col-ref {
-  width: 140px;
+  width: var(--gs-ref-col-width);
 }
 .gs-col-graph {
   width: var(--gs-graph-col-width);
@@ -218,6 +267,7 @@
 }
 .gs-row-selected {
   background: var(--gs-bg-active) !important;
+  box-shadow: inset 2px 0 0 var(--gs-accent);
 }
 
 .gs-row-wc {
@@ -238,7 +288,7 @@
 }
 
 .gs-cell-ref {
-  width: 140px;
+  width: var(--gs-ref-col-width);
   display: flex;
   gap: 3px;
   overflow: hidden;
@@ -348,18 +398,27 @@
 }
 
 /* Commit popup */
+/* Expanded commit card. The rows below it move down by its height, so it never
+   covers them — but it starts after the branch and graph columns so the lane
+   stays visible and stretches across the gap. */
 .gs-commit-popup {
   position: absolute;
-  left: 0;
-  right: 0;
-  z-index: 100;
-  background: var(--gs-bg2);
-  border: 1px solid var(--gs-border);
+  left: calc(var(--gs-ref-col-width) + var(--gs-graph-col-width));
+  right: 8px;
+  z-index: 3;
+  /* The accent wash guarantees the card reads as raised in every theme —
+     --background-secondary is nearly identical to the list background in some
+     of them, which left the card looking like a hole rather than a panel. */
+  background:
+    linear-gradient(0deg, rgba(88, 166, 255, 0.07), rgba(88, 166, 255, 0.07)), var(--gs-bg2);
+  border: 1px solid var(--background-modifier-border-hover, var(--gs-border));
+  border-left: 3px solid var(--gs-accent);
   border-radius: 6px;
-  margin: 0 8px;
-  padding: 12px;
-  box-shadow: 0 4px 16px rgba(0, 0, 0, 0.3);
-  max-width: 600px;
+  padding: 12px 14px;
+  box-shadow: 0 2px 12px rgba(0, 0, 0, 0.35);
+  max-width: 620px;
+  /* Long subjects and pasted URLs must not push the card wider than the list. */
+  overflow-wrap: anywhere;
 }
 
 .gs-popup-header {
@@ -392,6 +451,7 @@
   gap: 8px;
   align-items: baseline;
   flex-wrap: wrap;
+  margin-top: 6px;
 }
 
 .gs-popup-author-name {
@@ -408,6 +468,10 @@
 }
 
 .gs-popup-meta {
+  display: flex;
+  gap: 8px;
+  align-items: baseline;
+  flex-wrap: wrap;
   font-size: 11px;
   color: var(--gs-text-muted);
   margin-top: 4px;
@@ -421,14 +485,17 @@
   color: var(--gs-text-faint);
 }
 .gs-popup-stats {
+  display: flex;
+  gap: 6px;
   color: var(--gs-text-muted);
 }
 
 .gs-popup-msg {
-  margin-top: 10px;
-  font-size: 13px;
+  white-space: pre-wrap;
+  font-size: 14px;
+  line-height: 1.35;
   color: var(--gs-text);
-  font-weight: 500;
+  font-weight: 600;
 }
 
 .gs-popup-body {
@@ -439,7 +506,7 @@
 }
 
 .gs-popup-actions {
-  margin-top: 10px;
+  margin-top: 12px;
   display: flex;
   gap: 6px;
 }
@@ -470,9 +537,101 @@
   font-size: 13px;
 }
 
+/*
+ * Background refreshes (file watcher, window focus, auto-fetch) toggle this on
+ * the whole view. It must stay a visual hint only — disabling pointer events
+ * here made every button in the panel dead while a `git status` was in flight,
+ * which on an active vault is most of the time.
+ */
 .gs-loading {
-  opacity: 0.6;
-  pointer-events: none;
+  opacity: 0.85;
+}
+
+/* Progress bar between the header and the tabs. The track always occupies its
+   row so the panel never shifts when a command starts. It sits a few pixels
+   above the active tab's accent underline, so the visible track and the
+   rounded, glowing segment are what separate the two. */
+.gs-progress {
+  height: 4px;
+  margin: 2px 8px 3px;
+  border-radius: 2px;
+  flex-shrink: 0;
+  overflow: hidden;
+  background: transparent;
+}
+
+.gs-progress-bar {
+  height: 100%;
+  width: 35%;
+  border-radius: 2px;
+  background: var(--gs-accent);
+  opacity: 0;
+}
+
+.gs-progress-active {
+  background: var(--background-modifier-border);
+}
+
+.gs-progress-active .gs-progress-bar {
+  box-shadow: 0 0 6px var(--gs-accent);
+}
+
+/* Name of the running command, next to the panel title. */
+.gs-sc-header-left {
+  display: flex;
+  align-items: baseline;
+  gap: 8px;
+  min-width: 0;
+}
+
+.gs-sc-busy-label {
+  font-size: 10px;
+  font-weight: 600;
+  letter-spacing: 0.04em;
+  color: var(--gs-accent);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.gs-progress-active .gs-progress-bar {
+  opacity: 1;
+  /* Indeterminate on purpose: git reports no usable progress for push, pull or
+     fetch, and an invented percentage is worse than none. */
+  /* Back and forth inside the track, at a constant speed. A one-way sweep
+     starts and ends outside the clip, so the segment spends a third of every
+     cycle invisible or crawling at an edge — which reads as standing still. */
+  animation: gs-progress-slide 0.7s linear infinite alternate;
+}
+
+/* 185% of the segment's own width is the width of the track minus the segment,
+   so it travels edge to edge and never leaves it. */
+@keyframes gs-progress-slide {
+  0% {
+    transform: translateX(0);
+  }
+  100% {
+    transform: translateX(185%);
+  }
+}
+
+@keyframes gs-progress-pulse {
+  0%,
+  100% {
+    opacity: 1;
+  }
+  50% {
+    opacity: 0.3;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  /* No travel, but it still has to read as active — a motionless bar is
+     indistinguishable from a decorative line. */
+  .gs-progress-active .gs-progress-bar {
+    width: 100%;
+    animation: gs-progress-pulse 1.6s ease-in-out infinite;
+  }
 }
 
 /* Header */
@@ -747,6 +906,12 @@
   height: 16px;
 }
 
+/* Nested repositories are listed for information only — git cannot stage them. */
+.gs-tree-file-embedded .gs-tree-filename {
+  font-style: italic;
+  opacity: 0.7;
+}
+
 /* Folder icon color */
 .gs-tree-folder-icon {
   display: flex;
@@ -965,6 +1130,10 @@
   color: var(--gs-purple);
 }
 .gs-badge-C {
+  color: var(--gs-yellow);
+}
+/* Type change — a file replaced by a symlink or vice versa. */
+.gs-badge-T {
   color: var(--gs-yellow);
 }
 
@@ -1667,155 +1836,6 @@
   font-size: 11px;
   white-space: pre-wrap;
   word-wrap: break-word;
-}
-
-/* ================================================================
-   HISTORY VIEW
-   ================================================================ */
-
-.git-history-history-view {
-  display: flex;
-  flex-direction: column;
-  height: 100%;
-  font-size: 13px;
-}
-
-.git-history-toolbar {
-  display: flex;
-  align-items: center;
-  padding: 6px 8px;
-  border-bottom: 1px solid var(--gs-border);
-  gap: 4px;
-  flex-shrink: 0;
-}
-
-.git-history-list {
-  flex: 1;
-  overflow-y: auto;
-}
-
-.git-history-row {
-  display: flex;
-  gap: 10px;
-  padding: 6px 10px;
-  cursor: pointer;
-  border-bottom: 1px solid rgba(255, 255, 255, 0.04);
-}
-
-.git-history-row:hover {
-  background: var(--gs-bg-hover);
-}
-
-.git-history-indicator {
-  display: flex;
-  flex-direction: column;
-  align-items: center;
-  width: 12px;
-  flex-shrink: 0;
-  padding-top: 5px;
-}
-
-.git-history-dot {
-  width: 8px;
-  height: 8px;
-  border-radius: 50%;
-  background: var(--gs-text-faint);
-}
-
-.git-history-dot-head {
-  background: var(--gs-accent);
-  box-shadow:
-    0 0 0 2px var(--gs-bg),
-    0 0 0 3px var(--gs-accent);
-}
-
-.git-history-content {
-  flex: 1;
-  min-width: 0;
-}
-
-.git-history-top {
-  display: flex;
-  gap: 5px;
-  align-items: center;
-  flex-wrap: wrap;
-}
-
-.git-history-message {
-  font-size: 13px;
-  color: var(--gs-text);
-  overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
-}
-
-.git-history-bottom {
-  display: flex;
-  gap: 8px;
-  align-items: center;
-  margin-top: 3px;
-  font-size: 11px;
-  color: var(--gs-text-faint);
-}
-
-.git-history-avatar {
-  background: var(--gs-border);
-  border-radius: 50%;
-  width: 16px;
-  height: 16px;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  font-size: 8px;
-  font-weight: 700;
-  flex-shrink: 0;
-}
-
-.git-history-empty {
-  text-align: center;
-  color: var(--gs-text-faint);
-  padding: 20px;
-}
-
-.git-history-load-more {
-  width: 100%;
-  padding: 6px;
-  border: none;
-  background: var(--gs-bg2);
-  color: var(--gs-text-faint);
-  cursor: pointer;
-  font-size: 12px;
-}
-
-.git-history-load-more:hover {
-  background: var(--gs-bg-hover);
-}
-
-/* Ref pills shared (used in history + graph) */
-.git-graph-ref {
-  font-size: 10px;
-  padding: 0 5px;
-  border-radius: 3px;
-  font-weight: 600;
-  line-height: 16px;
-  flex-shrink: 0;
-}
-
-.git-graph-ref-head {
-  background: var(--gs-accent);
-  color: var(--gs-accent-text);
-}
-.git-graph-ref-branch {
-  background: rgba(63, 185, 80, 0.2);
-  color: var(--gs-green);
-}
-.git-graph-ref-remote {
-  background: rgba(88, 166, 255, 0.15);
-  color: var(--gs-blue);
-}
-.git-graph-ref-tag {
-  background: rgba(240, 136, 62, 0.2);
-  color: var(--gs-orange);
 }
 
 /* ================================================================

@@ -1,5 +1,5 @@
-import { ItemView, WorkspaceLeaf, setIcon, Menu, Notice } from "obsidian";
-import { SOURCE_CONTROL_VIEW_TYPE, FileStatus, GraphNode, CommitInfo } from "../types";
+import { ItemView, WorkspaceLeaf, setIcon, Menu, Notice, TFile } from "obsidian";
+import { SOURCE_CONTROL_VIEW_TYPE, FileStatus, GraphNode, CommitInfo, CommitStats } from "../types";
 import { RepoStore } from "../store/repo-store";
 import { GitService } from "../git/git-service";
 import { computeGraphLayout, formatRelativeDate } from "../utils/graph-layout";
@@ -30,11 +30,28 @@ export class SourceControlView extends ItemView {
   private tabBtns: Record<string, HTMLElement> = {};
 
   private graphNodes: GraphNode[] = [];
+  /** Lazily resolved stats for commits git omits from --shortstat. */
+  private statsFallback = new Map<string, CommitStats>();
   private graphListEl: HTMLElement | null = null;
+  private sgWcRow: HTMLElement | null = null;
+  private sgWcMeta: HTMLElement | null = null;
   private graphSelectedHash: string | null = null;
   private focusHandler: (() => void) | null = null;
   private tooltipEl: HTMLElement | null = null;
   private tooltipTimeout: ReturnType<typeof setTimeout> | null = null;
+  private progressEl: HTMLElement | null = null;
+  private busyLabelEl: HTMLElement | null = null;
+  private progressHideTimer: number | null = null;
+  private progressShownAt = 0;
+
+  /**
+   * Shortest time the progress bar stays up once it appeared. A fetch against a
+   * warm remote returns in well under 100ms, and a thin line that appears for
+   * that long is not something anyone notices — it has to outlast a glance and,
+   * above all, one full sweep of the 0.8s animation. Cut it short and the bar
+   * looks stationary, because the segment never leaves the left edge.
+   */
+  static readonly PROGRESS_MIN_MS = 900;
 
   private graphSubTabBtns: Record<string, HTMLElement> = {};
   private graphSubGraphPanel: HTMLElement | null = null;
@@ -64,6 +81,7 @@ export class SourceControlView extends ItemView {
     contentEl.addClass("gs-sc-view");
 
     this.buildHeader(contentEl);
+    this.buildProgressBar(contentEl);
     this.buildTabBar(contentEl);
 
     this.changesPanel = contentEl.createDiv("gs-sc-changes-panel");
@@ -78,7 +96,8 @@ export class SourceControlView extends ItemView {
     this.registerEvent(
       this.store.on("status-changed", () => {
         this.renderFiles();
-        if (this.activeTab === "graph") this.rebuildSidebarGraph();
+        // Commits are unchanged, so only the working changes row needs updating.
+        if (this.activeTab === "graph") this.syncSidebarWorkingRow();
       }),
     );
     this.registerEvent(this.store.on("branch-changed", () => this.updateBranch()));
@@ -86,6 +105,11 @@ export class SourceControlView extends ItemView {
       this.store.on("log-changed", () => {
         if (this.activeTab === "graph") this.rebuildSidebarGraph();
       }),
+    );
+    this.registerEvent(
+      this.store.on("busy-changed", ((...args: unknown[]) => {
+        this.setProgress(args[0] as boolean, args[1] as string | null);
+      }) as (...data: unknown[]) => unknown),
     );
     this.registerEvent(
       this.store.on("loading", ((...args: unknown[]) => {
@@ -99,6 +123,52 @@ export class SourceControlView extends ItemView {
     await this.store.refresh();
     this.renderFiles();
     await this.store.refreshBranches();
+  }
+
+  /**
+   * A two-pixel bar between the header and the tabs. It always occupies its
+   * row so the panel does not shift by 2px whenever a command runs; only the
+   * moving segment appears.
+   */
+  private buildProgressBar(el: HTMLElement): void {
+    this.progressEl = el.createDiv("gs-progress");
+    this.progressEl.setAttribute("role", "progressbar");
+    this.progressEl.createDiv("gs-progress-bar");
+  }
+
+  private setProgress(active: boolean, label: string | null): void {
+    const el = this.progressEl;
+    if (!el) return;
+    if (this.progressHideTimer) {
+      window.clearTimeout(this.progressHideTimer);
+      this.progressHideTimer = null;
+    }
+
+    if (active) {
+      this.progressShownAt = Date.now();
+      el.addClass("gs-progress-active");
+      el.setAttribute("aria-label", label ?? "Working");
+      el.setAttribute("aria-busy", "true");
+      if (this.busyLabelEl) {
+        this.busyLabelEl.setText(`${label ?? "Working"}…`);
+        this.busyLabelEl.style.display = "";
+      }
+      return;
+    }
+
+    // A command that finishes in 40ms would otherwise flash once and read as a
+    // rendering glitch rather than as feedback.
+    const shownFor = Date.now() - this.progressShownAt;
+    const wait = Math.max(0, SourceControlView.PROGRESS_MIN_MS - shownFor);
+    const hide = (): void => {
+      el.removeClass("gs-progress-active");
+      el.setAttribute("aria-busy", "false");
+      el.removeAttribute("aria-label");
+      if (this.busyLabelEl) this.busyLabelEl.style.display = "none";
+      this.progressHideTimer = null;
+    };
+    if (wait === 0) hide();
+    else this.progressHideTimer = window.setTimeout(hide, wait);
   }
 
   private buildTabBar(el: HTMLElement): void {
@@ -134,7 +204,13 @@ export class SourceControlView extends ItemView {
 
   private buildHeader(el: HTMLElement): void {
     const bar = el.createDiv("gs-sc-header");
-    bar.createSpan("gs-sc-header-title").setText("SOURCE CONTROL");
+    const titleWrap = bar.createDiv("gs-sc-header-left");
+    titleWrap.createSpan("gs-sc-header-title").setText("SOURCE CONTROL");
+    // The bar alone sits a few pixels above the active tab's accent underline
+    // and reads as part of it. The name of the running command is the part
+    // that is actually noticed.
+    this.busyLabelEl = titleWrap.createSpan("gs-sc-busy-label");
+    this.busyLabelEl.style.display = "none";
 
     const actions = bar.createDiv("gs-sc-header-actions");
     for (const [icon, label, fn] of [
@@ -151,7 +227,9 @@ export class SourceControlView extends ItemView {
         "Pull",
         async () => {
           try {
-            await this.git.pull({ strategy: this.plugin.settings.pullStrategy });
+            await this.store.runTask("Pulling", () =>
+              this.git.pull({ strategy: this.plugin.settings.pullStrategy }),
+            );
             await this.store.refresh();
             new Notice("Pulled");
           } catch (e: unknown) {
@@ -164,7 +242,9 @@ export class SourceControlView extends ItemView {
         "Push",
         async () => {
           try {
-            await this.git.push({ setUpstream: true, remote: "origin", branch: this.store.branch });
+            await this.store.runTask("Pushing", () =>
+              this.git.push({ setUpstream: true, remote: "origin", branch: this.store.branch }),
+            );
             await this.store.refresh();
             new Notice("Pushed");
           } catch (e: unknown) {
@@ -177,7 +257,7 @@ export class SourceControlView extends ItemView {
         "Fetch",
         async () => {
           try {
-            await this.git.fetch();
+            await this.store.runTask("Fetching", () => this.git.fetch());
             await this.store.refresh();
             new Notice("Fetched");
           } catch (e: unknown) {
@@ -190,7 +270,7 @@ export class SourceControlView extends ItemView {
         "Stash",
         async () => {
           try {
-            await this.git.stashSave();
+            await this.store.runTask("Stashing", () => this.git.stashSave());
             await this.store.refresh();
             new Notice("Stashed");
           } catch (e: unknown) {
@@ -258,7 +338,9 @@ export class SourceControlView extends ItemView {
         i.onClick(async () => {
           try {
             const msg = isAmend?.value?.trim() || "";
-            await this.git.commit(msg || "amend", { amend: true });
+            await this.store.runTask("Amending", () =>
+              this.git.commit(msg || "amend", { amend: true }),
+            );
             if (isAmend) isAmend.value = "";
             await this.store.refresh();
             new Notice("Amended");
@@ -279,7 +361,7 @@ export class SourceControlView extends ItemView {
         .setIcon("archive-restore")
         .onClick(async () => {
           try {
-            await this.git.stashPop();
+            await this.store.runTask("Popping stash", () => this.git.stashPop());
             await this.store.refresh();
             new Notice("Stash popped");
           } catch (e: unknown) {
@@ -302,12 +384,6 @@ export class SourceControlView extends ItemView {
         .setIcon("git-branch")
         .onClick(() => this.plugin.openGraphView()),
     );
-    menu.addItem((i) =>
-      i
-        .setTitle("Open History")
-        .setIcon("history")
-        .onClick(() => this.plugin.openHistoryView()),
-    );
     menu.showAtMouseEvent(event);
   }
 
@@ -321,7 +397,7 @@ export class SourceControlView extends ItemView {
         if (!b.current) {
           i.onClick(async () => {
             try {
-              await this.git.checkout(b.name);
+              await this.store.runTask(`Switching to ${b.name}`, () => this.git.checkout(b.name));
               await this.store.refresh();
               new Notice(`Switched to ${b.name}`);
             } catch (e: unknown) {
@@ -340,7 +416,7 @@ export class SourceControlView extends ItemView {
           const name = prompt("New branch name:");
           if (name) {
             try {
-              await this.git.createBranch(name);
+              await this.store.runTask("Creating branch", () => this.git.createBranch(name));
               await this.store.refresh();
               new Notice(`Branch '${name}' created and checked out`);
             } catch (e: unknown) {
@@ -379,11 +455,13 @@ export class SourceControlView extends ItemView {
     }
 
     try {
-      await this.git.commit(msg);
+      await this.store.runTask("Committing", () => this.git.commit(msg));
       if (this.commitInput) this.commitInput.value = "";
       new Notice("Committed");
       if (andPush) {
-        await this.git.push({ setUpstream: true, remote: "origin", branch: this.store.branch });
+        await this.store.runTask("Pushing", () =>
+          this.git.push({ setUpstream: true, remote: "origin", branch: this.store.branch }),
+        );
         new Notice("Pushed");
       }
       await this.store.refresh();
@@ -435,7 +513,11 @@ export class SourceControlView extends ItemView {
       btn.setAttribute("aria-label", "Unstage All");
       btn.addEventListener("click", async (e) => {
         e.stopPropagation();
-        await this.git.unstageAll();
+        try {
+          await this.git.unstageAll();
+        } catch (err) {
+          new Notice(`Unstage all failed: ${err instanceof Error ? err.message : String(err)}`);
+        }
         await this.store.refresh();
       });
     } else if (group !== "conflict") {
@@ -444,17 +526,32 @@ export class SourceControlView extends ItemView {
       btn.setAttribute("aria-label", "Stage All");
       btn.addEventListener("click", async (e) => {
         e.stopPropagation();
-        await this.git.stageAll();
+        try {
+          const { skipped } = await this.git.stageAll();
+          // Only worth a notice when the user can actually see the entries the
+          // message is about; otherwise they were deliberately hidden.
+          if (skipped.length > 0 && this.store.showNestedRepos) {
+            new Notice(
+              `Skipped ${skipped.length} nested Git ${skipped.length === 1 ? "repository" : "repositories"}: ${skipped.join(", ")}`,
+            );
+          }
+        } catch (err) {
+          new Notice(`Stage all failed: ${err instanceof Error ? err.message : String(err)}`);
+        }
         await this.store.refresh();
       });
     }
     if (group === "changed") {
       const btn = headerActions.createEl("button", { cls: "gs-icon-btn gs-icon-btn-sm" });
-      setIcon(btn, "rotate-ccw");
+      setIcon(btn, "undo");
       btn.setAttribute("aria-label", "Discard All");
       btn.addEventListener("click", async (e) => {
         e.stopPropagation();
-        await this.git.discardAll();
+        try {
+          await this.git.discardAll();
+        } catch (err) {
+          new Notice(`Discard all failed: ${err instanceof Error ? err.message : String(err)}`);
+        }
         await this.store.refresh();
       });
     }
@@ -501,16 +598,26 @@ export class SourceControlView extends ItemView {
     return paths;
   }
 
-  private collectFilePaths(node: FileTreeNode): string[] {
-    const paths: string[] = [];
+  private collectFiles(node: FileTreeNode): FileStatus[] {
+    const files: FileStatus[] = [];
     for (const child of node.children) {
       if (child.isDir) {
-        paths.push(...this.collectFilePaths(child));
-      } else if (child.file) {
-        paths.push(child.file.path);
+        files.push(...this.collectFiles(child));
+      } else if (child.file && !child.file.embeddedRepo) {
+        // `git add` cannot index a nested repository, and one of them in the
+        // list makes the whole call fail.
+        files.push(child.file);
       }
     }
-    return paths;
+    return files;
+  }
+
+  /**
+   * Pathspecs for a git command. A rename is one entry with two paths, and
+   * leaving the old one out would stage or unstage only half of it.
+   */
+  private pathspecs(files: FileStatus[]): string[] {
+    return files.flatMap((f) => (f.originalPath ? [f.path, f.originalPath] : [f.path]));
   }
 
   private buildFileTree(files: FileStatus[], _group: string): FileTreeNode[] {
@@ -581,7 +688,7 @@ export class SourceControlView extends ItemView {
             discardBtn.setAttribute("aria-label", "Discard All in Folder");
             discardBtn.addEventListener("click", async (e) => {
               e.stopPropagation();
-              await this.git.discard(this.collectFilePaths(node));
+              await this.git.discard(this.pathspecs(this.collectFiles(node)));
               await this.store.refresh();
             });
           }
@@ -590,7 +697,7 @@ export class SourceControlView extends ItemView {
           stageBtn.setAttribute("aria-label", "Stage All in Folder");
           stageBtn.addEventListener("click", async (e) => {
             e.stopPropagation();
-            await this.git.stage(this.collectFilePaths(node));
+            await this.git.stage(this.pathspecs(this.collectFiles(node)));
             await this.store.refresh();
           });
         }
@@ -601,7 +708,7 @@ export class SourceControlView extends ItemView {
           unstageBtn.setAttribute("aria-label", "Unstage All in Folder");
           unstageBtn.addEventListener("click", async (e) => {
             e.stopPropagation();
-            await this.git.unstage(this.collectFilePaths(node));
+            await this.git.unstage(this.pathspecs(this.collectFiles(node)));
             await this.store.refresh();
           });
         }
@@ -644,11 +751,18 @@ export class SourceControlView extends ItemView {
       svg: "image",
       gif: "image",
     };
-    setIcon(fileIcon, iconMap[ext] || "file");
+    setIcon(fileIcon, file.embeddedRepo ? "git-branch" : iconMap[ext] || "file");
     fileIcon.addClass(`gs-ext-${ext || "default"}`);
 
     const nameEl = row.createSpan("gs-tree-filename");
     nameEl.setText(file.path.split("/").pop() || file.path);
+    if (file.embeddedRepo) {
+      row.addClass("gs-tree-file-embedded");
+      row.setAttribute(
+        "aria-label",
+        "Nested Git repository — cannot be staged. Add it as a submodule or ignore it.",
+      );
+    }
 
     const rightSide = row.createDiv("gs-tree-file-right");
 
@@ -664,6 +778,7 @@ export class SourceControlView extends ItemView {
         e.stopPropagation();
         this.plugin.openDiff(file.path);
       });
+      this.addOpenFileButton(actions, file);
     }
 
     if (group === "changed" && file.workingStatus !== "?") {
@@ -672,18 +787,18 @@ export class SourceControlView extends ItemView {
       discardBtn.setAttribute("aria-label", "Discard Changes");
       discardBtn.addEventListener("click", async (e) => {
         e.stopPropagation();
-        await this.git.discard([file.path]);
+        await this.git.discard(this.pathspecs([file]));
         await this.store.refresh();
       });
     }
 
-    if (group !== "staged" && group !== "conflict") {
+    if (group !== "staged" && group !== "conflict" && !file.embeddedRepo) {
       const stageBtn = actions.createEl("button", { cls: "gs-action-btn" });
       setIcon(stageBtn, "plus");
       stageBtn.setAttribute("aria-label", "Stage Changes");
       stageBtn.addEventListener("click", async (e) => {
         e.stopPropagation();
-        await this.git.stage([file.path]);
+        await this.git.stage(this.pathspecs([file]));
         await this.store.refresh();
       });
     }
@@ -694,15 +809,16 @@ export class SourceControlView extends ItemView {
       openBtn.setAttribute("aria-label", "Open Changes");
       openBtn.addEventListener("click", (e) => {
         e.stopPropagation();
-        this.plugin.openDiff(file.path);
+        this.plugin.openDiff(file.path, undefined, true);
       });
+      this.addOpenFileButton(actions, file);
 
       const unstageBtn = actions.createEl("button", { cls: "gs-action-btn" });
       setIcon(unstageBtn, "minus");
       unstageBtn.setAttribute("aria-label", "Unstage Changes");
       unstageBtn.addEventListener("click", async (e) => {
         e.stopPropagation();
-        await this.git.unstage([file.path]);
+        await this.git.unstage(this.pathspecs([file]));
         await this.store.refresh();
       });
     }
@@ -713,7 +829,10 @@ export class SourceControlView extends ItemView {
     badge.setText(displayChar);
     badge.addClass(`gs-badge-${displayChar}`);
 
-    row.addEventListener("click", () => this.plugin.openDiff(file.path));
+    // A file can appear in both sections at once; each row opens its own half.
+    row.addEventListener("click", () =>
+      this.plugin.openDiff(file.path, undefined, group === "staged"),
+    );
     row.addEventListener("contextmenu", (e) => {
       const menu = new Menu();
       menu.addItem((i) =>
@@ -724,9 +843,15 @@ export class SourceControlView extends ItemView {
       );
       menu.addItem((i) =>
         i
+          .setTitle("File History")
+          .setIcon("history")
+          .onClick(() => this.plugin.openFileHistory(file.path)),
+      );
+      menu.addItem((i) =>
+        i
           .setTitle("Open Diff")
           .setIcon("file-diff")
-          .onClick(() => this.plugin.openDiff(file.path)),
+          .onClick(() => this.plugin.openDiff(file.path, undefined, group === "staged")),
       );
       menu.addSeparator();
       menu.addItem((i) =>
@@ -742,6 +867,30 @@ export class SourceControlView extends ItemView {
     });
 
     this.loadFileStats(file, statsEl, group);
+  }
+
+  /**
+   * Opens the note itself, next to the button that opens its diff. Only offered
+   * for paths the vault actually holds: a deleted file has nothing to show, and
+   * `.obsidian/*` config files are not part of the vault index.
+   */
+  private addOpenFileButton(actions: HTMLElement, file: FileStatus): void {
+    const target = this.vaultFile(file.path);
+    if (!target) return;
+
+    const btn = actions.createEl("button", { cls: "gs-action-btn" });
+    setIcon(btn, "file");
+    btn.setAttribute("aria-label", "Open File");
+    btn.addEventListener("click", async (e) => {
+      e.stopPropagation();
+      const current = this.vaultFile(file.path);
+      if (current) await this.app.workspace.getLeaf(false).openFile(current);
+    });
+  }
+
+  private vaultFile(path: string): TFile | null {
+    const found = this.app.vault.getAbstractFileByPath(path);
+    return found instanceof TFile ? found : null;
   }
 
   private async loadFileStats(file: FileStatus, el: HTMLElement, group: string): Promise<void> {
@@ -920,6 +1069,45 @@ export class SourceControlView extends ItemView {
     this.renderSidebarGraphList();
   }
 
+  /**
+   * Creates or updates the working changes row in place. A status change only
+   * affects this one row, so it must not drag the whole commit list — and with
+   * the vault watcher firing on every edit, it was doing exactly that.
+   */
+  private syncSidebarWorkingRow(): void {
+    if (!this.graphListEl) return;
+
+    if (this.store.status.length === 0) {
+      this.sgWcRow?.remove();
+      this.sgWcRow = null;
+      this.sgWcMeta = null;
+      return;
+    }
+
+    if (!this.sgWcRow) {
+      const row = createDiv("gs-sg-row gs-sg-row-wc");
+      const avatarCol = row.createDiv("gs-sg-avatar-col");
+      setIcon(avatarCol.createDiv("gs-sg-avatar gs-sg-avatar-wc"), "pen-line");
+
+      const info = row.createDiv("gs-sg-info");
+      info.createSpan("gs-sg-msg").setText("Working Changes");
+      this.sgWcMeta = info.createDiv("gs-sg-meta-line").createSpan("gs-sg-meta");
+      row.addEventListener("click", () => this.switchTab("changes"));
+
+      this.sgWcRow = row;
+    }
+
+    const total =
+      this.store.changedFiles.length +
+      this.store.untrackedFiles.length +
+      this.store.stagedFiles.length;
+    this.sgWcMeta?.setText(`${total} file${total !== 1 ? "s" : ""} · You`);
+
+    if (this.graphListEl.firstChild !== this.sgWcRow) {
+      this.graphListEl.prepend(this.sgWcRow);
+    }
+  }
+
   private sidebarGraphFilter = "";
 
   private filterSidebarGraph(text: string): void {
@@ -931,26 +1119,8 @@ export class SourceControlView extends ItemView {
     if (!this.graphListEl) return;
     this.graphListEl.empty();
 
-    const hasWC = this.store.status.length > 0;
-    if (hasWC) {
-      const wcRow = this.graphListEl.createDiv("gs-sg-row gs-sg-row-wc");
-      const avatarCol = wcRow.createDiv("gs-sg-avatar-col");
-      const wcAvatar = avatarCol.createDiv("gs-sg-avatar gs-sg-avatar-wc");
-      setIcon(wcAvatar, "pen-line");
-
-      const info = wcRow.createDiv("gs-sg-info");
-      info.createSpan("gs-sg-msg").setText("Working Changes");
-      const metaLine = info.createDiv("gs-sg-meta-line");
-      const totalChanges =
-        this.store.changedFiles.length +
-        this.store.untrackedFiles.length +
-        this.store.stagedFiles.length;
-      metaLine
-        .createSpan("gs-sg-meta")
-        .setText(`${totalChanges} file${totalChanges !== 1 ? "s" : ""} · You`);
-
-      wcRow.addEventListener("click", () => this.switchTab("changes"));
-    }
+    this.syncSidebarWorkingRow();
+    const hasWC = this.sgWcRow !== null;
 
     for (let i = 0; i < this.graphNodes.length; i++) {
       const node = this.graphNodes[i];
@@ -1001,7 +1171,7 @@ export class SourceControlView extends ItemView {
       const metaLine = info.createDiv("gs-sg-meta-line");
       const meta = metaLine.createSpan("gs-sg-meta");
       meta.setText(`${commit.shortHash} · ${commit.author} · ${formatRelativeDate(commit.date)}`);
-      this.loadChangesBar(commit.hash, metaLine);
+      this.renderChangesBar(commit, metaLine);
 
       row.addEventListener("mouseenter", () => {
         if (this.tooltipTimeout) clearTimeout(this.tooltipTimeout);
@@ -1144,28 +1314,51 @@ export class SourceControlView extends ItemView {
     }
   }
 
-  private async loadChangesBar(hash: string, container: HTMLElement): Promise<void> {
-    try {
-      const files = await this.git.showCommitFiles(hash);
-      if (files.length === 0) return;
-      const totalAdd = files.reduce((s, f) => s + f.additions, 0);
-      const totalDel = files.reduce((s, f) => s + f.deletions, 0);
-      const total = totalAdd + totalDel;
-      if (total === 0) return;
-
-      const wrap = container.createDiv("gs-sg-changes-bar-wrap");
-      const icon = wrap.createSpan("gs-sg-changes-icon");
-      setIcon(icon, "file");
-      wrap.createSpan("gs-sg-changes-count").setText(String(files.length));
-      const bar = wrap.createDiv("gs-sg-changes-bar");
-      const addPct = Math.round((totalAdd / total) * 100);
-      const addSegment = bar.createDiv("gs-sg-changes-add");
-      addSegment.style.width = addPct + "%";
-      const delSegment = bar.createDiv("gs-sg-changes-del");
-      delSegment.style.width = 100 - addPct + "%";
-    } catch {
-      // ignore
+  /**
+   * Renders the changes bar for a commit. Stats arrive with the commit log, so
+   * this is synchronous and costs no git process — the list renders one row per
+   * commit, and a lookup per row meant hundreds of processes per rebuild.
+   * Only commits git emits no stat block for fall back, cached per hash.
+   */
+  private renderChangesBar(commit: CommitInfo, container: HTMLElement): void {
+    const stats = commit.stats ?? this.statsFallback.get(commit.hash);
+    if (stats) {
+      this.paintChangesBar(stats, container);
+      return;
     }
+    if (this.statsFallback.has(commit.hash)) return;
+
+    container.dataset.hash = commit.hash;
+    void this.git
+      .showCommitFiles(commit.hash)
+      .then((files) => {
+        const resolved: CommitStats = {
+          filesChanged: files.length,
+          additions: files.reduce((s, f) => s + f.additions, 0),
+          deletions: files.reduce((s, f) => s + f.deletions, 0),
+        };
+        this.statsFallback.set(commit.hash, resolved);
+        if (container.isConnected && container.dataset.hash === commit.hash) {
+          this.paintChangesBar(resolved, container);
+        }
+      })
+      .catch(() => {
+        // leave the bar empty for commits we cannot stat
+      });
+  }
+
+  private paintChangesBar(stats: CommitStats, container: HTMLElement): void {
+    const total = stats.additions + stats.deletions;
+    if (stats.filesChanged === 0 || total === 0) return;
+
+    const wrap = container.createDiv("gs-sg-changes-bar-wrap");
+    const icon = wrap.createSpan("gs-sg-changes-icon");
+    setIcon(icon, "file");
+    wrap.createSpan("gs-sg-changes-count").setText(String(stats.filesChanged));
+    const bar = wrap.createDiv("gs-sg-changes-bar");
+    const addPct = Math.round((stats.additions / total) * 100);
+    bar.createDiv("gs-sg-changes-add").style.width = addPct + "%";
+    bar.createDiv("gs-sg-changes-del").style.width = 100 - addPct + "%";
   }
 
   private el(tag: string, cls: string, text?: string): HTMLElement {
@@ -1280,6 +1473,7 @@ export class SourceControlView extends ItemView {
 
   async onClose(): Promise<void> {
     if (this.focusHandler) window.removeEventListener("focus", this.focusHandler);
+    if (this.progressHideTimer) window.clearTimeout(this.progressHideTimer);
     this.hideCommitTooltip();
   }
 }

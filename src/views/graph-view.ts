@@ -1,15 +1,47 @@
 import { ItemView, WorkspaceLeaf, setIcon, Menu, Modal, Notice } from "obsidian";
-import { GRAPH_VIEW_TYPE, CommitInfo, GraphNode, GraphEdge } from "../types";
+import { GRAPH_VIEW_TYPE, CommitInfo, CommitStats, GraphNode, GraphEdge } from "../types";
 import { RepoStore } from "../store/repo-store";
 import { GitService } from "../git/git-service";
 import { computeGraphLayout, formatRelativeDate } from "../utils/graph-layout";
 import type GitHistoryPlugin from "../main";
 
 const ROW_HEIGHT = 32;
+/** Height reserved for the expanded card before it can be measured. */
+const CARD_ESTIMATED_HEIGHT = 130;
+/** Breathing room between the card and the rows around it. */
+const CARD_GAP = 8;
 const COL_WIDTH = 14;
 const GRAPH_COL_MIN_WIDTH = 60;
 const NODE_RADIUS = 4;
 const OVERSCAN = 15;
+const SVG_NS = "http://www.w3.org/2000/svg";
+/** Rows per edge bucket — keeps edge lookup proportional to the viewport, not the graph. */
+const EDGE_CHUNK = 64;
+/** First paint renders this many commits, the full set follows in the background. */
+const INITIAL_LOG_COUNT = 150;
+const FULL_LOG_COUNT = 500;
+
+/** A pooled row. Cells are created once and rebound as rows scroll in and out. */
+interface RowHandle {
+  el: HTMLElement;
+  refCell: HTMLElement;
+  msgSpan: HTMLElement;
+  authorCell: HTMLElement;
+  filesCell: HTMLElement;
+  dateCell: HTMLElement;
+  hashCell: HTMLElement;
+  commit: CommitInfo | null;
+  key: string;
+}
+
+/** An edge with its row positions already resolved, ready to draw. */
+interface RenderEdge {
+  fromVis: number;
+  toVis: number;
+  fromCol: number;
+  toCol: number;
+  color: number;
+}
 
 const COLORS = [
   "#0ea5e9",
@@ -36,16 +68,37 @@ export class GraphView extends ItemView {
   private svgLayer: SVGSVGElement | null = null;
   private spacerEl: HTMLElement | null = null;
   private popupEl: HTMLElement | null = null;
+  /** Visual row the expanded card belongs to, and the gap it opens below it. */
+  private expandedVisRow: number | null = null;
+  private expandedHeight = 0;
 
   private nodes: GraphNode[] = [];
   private edges: GraphEdge[] = [];
   private maxColumns = 0;
   private selectedHash: string | null = null;
   private filterText = "";
+  /** When set, the log is restricted to one file's history (`git log --follow`). */
+  private pathFilter: string | null = null;
+  private pathChipEl: HTMLElement | null = null;
   private filteredIndices: number[] | null = null;
   private hasWorkingChanges = false;
   private tooltipEl: HTMLElement | null = null;
-  private tooltipTimeout: ReturnType<typeof setTimeout> | null = null;
+  private tooltipTimeout: number | null = null;
+  private renderHandle: number | null = null;
+  /** Lazily resolved stats for commits git omits from --shortstat (merges, empty commits). */
+  private statsFallback = new Map<string, CommitStats>();
+
+  private mountedRows = new Map<number, RowHandle>();
+  private rowPool: RowHandle[] = [];
+  private wcRow: { el: HTMLElement; filesCell: HTMLElement; key: string } | null = null;
+  /** Bumped whenever commits or the filter change, to force a rebind of mounted rows. */
+  private generation = 0;
+
+  private edgeChunks = new Map<number, RenderEdge[]>();
+  private pathPool: SVGPathElement[] = [];
+  private circlePool: SVGCircleElement[] = [];
+  private wcRing: SVGCircleElement | null = null;
+  private wcDot: SVGCircleElement | null = null;
 
   constructor(leaf: WorkspaceLeaf, plugin: GitHistoryPlugin) {
     super(leaf);
@@ -74,7 +127,7 @@ export class GraphView extends ItemView {
 
     const scrollWrap = contentEl.createDiv("gs-graph-scroll-wrap");
     this.scrollEl = scrollWrap;
-    this.scrollEl.addEventListener("scroll", () => this.renderVisible());
+    this.scrollEl.addEventListener("scroll", () => this.scheduleRender());
 
     const inner = this.scrollEl.createDiv("gs-graph-inner");
 
@@ -85,18 +138,68 @@ export class GraphView extends ItemView {
     this.tableBody = inner.createDiv("gs-graph-tbody");
     this.spacerEl = inner.createDiv("gs-graph-spacer");
 
-    this.popupEl = contentEl.createDiv("gs-commit-popup");
+    // Inside the scrolled content, not next to it: showPopup() positions the
+    // popup in scroll-content coordinates (row offset + scrollTop), which only
+    // lines up when the containing block is .gs-graph-inner. As a child of
+    // contentEl it landed a header's height too high, over unrelated rows, and
+    // stayed put while the list scrolled underneath it.
+    this.popupEl = inner.createDiv("gs-commit-popup");
     this.popupEl.style.display = "none";
 
     this.registerEvent(this.store.on("log-changed", () => this.rebuildGraph()));
     this.registerEvent(
       this.store.on("status-changed", () => {
-        this.hasWorkingChanges = this.store.status.length > 0;
-        this.rebuildGraph();
+        // The graph layout depends only on the commit list, so a status change
+        // never needs computeGraphLayout() — it only affects the working
+        // changes row. Vault edits fire this constantly while typing.
+        const had = this.hasWorkingChanges;
+        this.hasWorkingChanges = this.pathFilter
+          ? this.store.status.some((f) => f.path === this.pathFilter)
+          : this.store.status.length > 0;
+        if (had !== this.hasWorkingChanges) this.updateLayout();
+        this.scheduleRender();
       }),
     );
 
-    await Promise.all([this.store.refreshLog({ all: true, maxCount: 500 }), this.store.refresh()]);
+    // Paint a first screenful quickly, then fill in the rest in the background.
+    await this.reloadLog(INITIAL_LOG_COUNT);
+    await Promise.all([this.reloadLog(FULL_LOG_COUNT), this.store.refresh()]);
+  }
+
+  /** Every log reload goes through here so the path filter is never dropped. */
+  private reloadLog(maxCount = FULL_LOG_COUNT, all = true): Promise<void> {
+    return this.store.refreshLog({
+      all: this.pathFilter ? false : all,
+      maxCount,
+      file: this.pathFilter ?? undefined,
+    });
+  }
+
+  /**
+   * Narrows the graph to a single file, the "file history" of that note. Pass
+   * null to go back to the full repository log.
+   */
+  setPathFilter(path: string | null): void {
+    this.pathFilter = path;
+    this.syncPathChip();
+    this.reloadLog();
+    this.store.refresh();
+  }
+
+  private syncPathChip(): void {
+    const chip = this.pathChipEl;
+    if (!chip) return;
+    chip.empty();
+    chip.style.display = this.pathFilter ? "" : "none";
+    if (!this.pathFilter) return;
+
+    const icon = chip.createSpan("gs-path-chip-icon");
+    setIcon(icon, "file-clock");
+    chip.createSpan("gs-path-chip-name").setText(this.pathFilter);
+    const clear = chip.createEl("button", { cls: "gs-path-chip-clear" });
+    setIcon(clear, "x");
+    clear.setAttribute("aria-label", "Show all commits");
+    clear.addEventListener("click", () => this.setPathFilter(null));
   }
 
   private buildToolbar(el: HTMLElement): void {
@@ -115,6 +218,9 @@ export class GraphView extends ItemView {
       this.applyFilter();
     });
 
+    this.pathChipEl = left.createDiv("gs-path-chip");
+    this.syncPathChip();
+
     const right = bar.createDiv("gs-toolbar-right");
 
     const allBtn = right.createEl("button", { cls: "gs-tbtn" });
@@ -131,20 +237,20 @@ export class GraphView extends ItemView {
       showAll = !showAll;
       branchFilterBtn.toggleClass("gs-tbtn-active", !showAll);
       allBtn.toggleClass("gs-tbtn-active", showAll);
-      this.store.refreshLog({ all: showAll, maxCount: 500 });
+      this.reloadLog(FULL_LOG_COUNT, showAll);
     });
     allBtn.addEventListener("click", () => {
       showAll = true;
       allBtn.addClass("gs-tbtn-active");
       branchFilterBtn.removeClass("gs-tbtn-active");
-      this.store.refreshLog({ all: true, maxCount: 500 });
+      this.reloadLog(FULL_LOG_COUNT);
     });
 
     const refreshBtn = right.createEl("button", { cls: "gs-tbtn" });
     setIcon(refreshBtn, "refresh-cw");
     refreshBtn.setAttribute("aria-label", "Refresh");
     refreshBtn.addEventListener("click", () => {
-      this.store.refreshLog({ all: showAll, maxCount: 500 });
+      this.reloadLog(FULL_LOG_COUNT, showAll);
       this.store.refresh();
     });
   }
@@ -180,8 +286,9 @@ export class GraphView extends ItemView {
         }
       }
     }
+    this.generation++;
     this.updateLayout();
-    this.renderVisible();
+    this.scheduleRender();
   }
 
   private rebuildGraph(): void {
@@ -190,8 +297,9 @@ export class GraphView extends ItemView {
     this.edges = result.edges;
     this.maxColumns = result.maxColumns;
     this.filteredIndices = null;
+    this.generation++;
     this.updateLayout();
-    this.renderVisible();
+    this.scheduleRender();
   }
 
   private getVisibleRows(): number[] {
@@ -202,10 +310,27 @@ export class GraphView extends ItemView {
     return this.hasWorkingChanges ? 1 : 0;
   }
 
+  /**
+   * Y position of a visual row. The expanded commit card is not an overlay —
+   * it pushes everything below it down, so the rows stay readable and the lane
+   * stretches across the gap instead of running behind the card.
+   */
+  private yOf(visRow: number): number {
+    const gap =
+      this.expandedVisRow !== null && visRow > this.expandedVisRow ? this.expandedHeight : 0;
+    return visRow * ROW_HEIGHT + gap;
+  }
+
+  /** Height of the whole list including the open card. */
+  private contentHeight(totalRows: number): number {
+    return totalRows * ROW_HEIGHT + this.expandedHeight;
+  }
+
   private updateLayout(): void {
     const rows = this.getVisibleRows();
-    const totalRows = rows.length + this.getRowOffset();
-    const totalHeight = totalRows * ROW_HEIGHT;
+    const offset = this.getRowOffset();
+    const totalRows = rows.length + offset;
+    const totalHeight = this.contentHeight(totalRows);
     if (this.spacerEl) this.spacerEl.style.height = totalHeight + "px";
 
     const graphWidth = Math.max(GRAPH_COL_MIN_WIDTH, (this.maxColumns + 1) * COL_WIDTH + 20);
@@ -214,6 +339,49 @@ export class GraphView extends ItemView {
       this.svgLayer.setAttribute("height", String(totalHeight));
     }
     this.contentEl.style.setProperty("--gs-graph-col-width", graphWidth + "px");
+
+    this.buildEdgeIndex(rows, offset);
+  }
+
+  /**
+   * Buckets edges by row range so a render only walks the edges near the
+   * viewport instead of the whole graph. Rebuilt whenever row positions change.
+   */
+  private buildEdgeIndex(visibleRows: number[], offset: number): void {
+    this.edgeChunks.clear();
+
+    const visRowOf = new Map<number, number>();
+    for (let i = 0; i < visibleRows.length; i++) visRowOf.set(visibleRows[i], i + offset);
+
+    for (const edge of this.edges) {
+      const fromVis = visRowOf.get(edge.fromRow);
+      const toVis = visRowOf.get(edge.toRow);
+      if (fromVis === undefined || toVis === undefined) continue;
+
+      const renderEdge: RenderEdge = {
+        fromVis,
+        toVis,
+        fromCol: edge.fromCol,
+        toCol: edge.toCol,
+        color: edge.color,
+      };
+      const first = Math.floor(Math.min(fromVis, toVis) / EDGE_CHUNK);
+      const last = Math.floor(Math.max(fromVis, toVis) / EDGE_CHUNK);
+      for (let chunk = first; chunk <= last; chunk++) {
+        const bucket = this.edgeChunks.get(chunk);
+        if (bucket) bucket.push(renderEdge);
+        else this.edgeChunks.set(chunk, [renderEdge]);
+      }
+    }
+  }
+
+  /** Coalesces scroll bursts (~120/s on a trackpad) into one render per frame. */
+  private scheduleRender(): void {
+    if (this.renderHandle !== null) return;
+    this.renderHandle = requestAnimationFrame(() => {
+      this.renderHandle = null;
+      this.renderVisible();
+    });
   }
 
   private renderVisible(): void {
@@ -224,100 +392,155 @@ export class GraphView extends ItemView {
     const scrollTop = this.scrollEl.scrollTop;
     const viewHeight = this.scrollEl.clientHeight;
 
-    const startVisRow = Math.max(0, Math.floor(scrollTop / ROW_HEIGHT) - OVERSCAN);
+    // Below the open card every row sits `expandedHeight` lower, so the scroll
+    // offset has to be mapped back to row indices before slicing the window.
+    const gapAbove = (y: number): number =>
+      this.expandedVisRow !== null && y > this.yOf(this.expandedVisRow + 1)
+        ? this.expandedHeight
+        : 0;
+    const top = scrollTop - gapAbove(scrollTop);
+    const bottom = scrollTop + viewHeight - gapAbove(scrollTop + viewHeight);
+
+    const startVisRow = Math.max(0, Math.floor(top / ROW_HEIGHT) - OVERSCAN);
     const endVisRow = Math.min(
       visibleRows.length + offset - 1,
-      Math.ceil((scrollTop + viewHeight) / ROW_HEIGHT) + OVERSCAN,
+      Math.ceil(bottom / ROW_HEIGHT) + OVERSCAN,
     );
 
     this.renderSvg(visibleRows, startVisRow, endVisRow, offset);
     this.renderRows(visibleRows, startVisRow, endVisRow, offset);
   }
 
+  private takePath(index: number): SVGPathElement {
+    let path = this.pathPool[index];
+    if (!path) {
+      path = document.createElementNS(SVG_NS, "path");
+      path.setAttribute("fill", "none");
+      path.setAttribute("stroke-width", "2");
+      this.pathPool[index] = path;
+      this.svgLayer!.appendChild(path);
+    }
+    path.style.display = "";
+    return path;
+  }
+
+  private takeCircle(index: number): SVGCircleElement {
+    let circle = this.circlePool[index];
+    if (!circle) {
+      circle = document.createElementNS(SVG_NS, "circle");
+      this.circlePool[index] = circle;
+      this.svgLayer!.appendChild(circle);
+    }
+    circle.style.display = "";
+    return circle;
+  }
+
   private renderSvg(visibleRows: number[], startVis: number, endVis: number, offset: number): void {
     if (!this.svgLayer) return;
-    while (this.svgLayer.firstChild) this.svgLayer.removeChild(this.svgLayer.firstChild);
 
     const graphWidth = Math.max(GRAPH_COL_MIN_WIDTH, (this.maxColumns + 1) * COL_WIDTH + 20);
-    const totalHeight = (visibleRows.length + offset) * ROW_HEIGHT;
+    const totalHeight = this.contentHeight(visibleRows.length + offset);
     this.svgLayer.setAttribute("viewBox", `0 0 ${graphWidth} ${totalHeight}`);
     this.svgLayer.setAttribute("width", String(graphWidth));
 
-    const visRowMap = new Map<number, number>();
-    visibleRows.forEach((origIdx, visIdx) => visRowMap.set(origIdx, visIdx + offset));
+    // Edges: walk only the buckets overlapping the viewport.
+    let pathCount = 0;
+    const drawn = new Set<RenderEdge>();
+    const firstChunk = Math.floor(Math.max(0, startVis - 5) / EDGE_CHUNK);
+    const lastChunk = Math.floor((endVis + 5) / EDGE_CHUNK);
 
-    for (const edge of this.edges) {
-      const fromVis = visRowMap.get(edge.fromRow);
-      const toVis = visRowMap.get(edge.toRow);
-      if (fromVis === undefined || toVis === undefined) continue;
+    for (let chunk = firstChunk; chunk <= lastChunk; chunk++) {
+      const bucket = this.edgeChunks.get(chunk);
+      if (!bucket) continue;
+      for (const edge of bucket) {
+        if (drawn.has(edge)) continue;
+        drawn.add(edge);
 
-      const minVis = Math.min(fromVis, toVis);
-      const maxVis = Math.max(fromVis, toVis);
-      if (maxVis < startVis - 5 || minVis > endVis + 5) continue;
+        const minVis = Math.min(edge.fromVis, edge.toVis);
+        const maxVis = Math.max(edge.fromVis, edge.toVis);
+        if (maxVis < startVis - 5 || minVis > endVis + 5) continue;
 
-      const x1 = edge.fromCol * COL_WIDTH + 10;
-      const y1 = fromVis * ROW_HEIGHT + ROW_HEIGHT / 2;
-      const x2 = edge.toCol * COL_WIDTH + 10;
-      const y2 = toVis * ROW_HEIGHT + ROW_HEIGHT / 2;
+        const x1 = edge.fromCol * COL_WIDTH + 10;
+        const y1 = this.yOf(edge.fromVis) + ROW_HEIGHT / 2;
+        const x2 = edge.toCol * COL_WIDTH + 10;
+        const y2 = this.yOf(edge.toVis) + ROW_HEIGHT / 2;
 
-      const path = document.createElementNS("http://www.w3.org/2000/svg", "path");
-      const color = COLORS[edge.color % COLORS.length];
-
-      if (x1 === x2) {
-        path.setAttribute("d", `M${x1},${y1} L${x2},${y2}`);
-      } else {
-        const cy1 = y1 + Math.min(ROW_HEIGHT * 1.5, Math.abs(y2 - y1) * 0.4);
-        const cy2 = y2 - Math.min(ROW_HEIGHT * 1.5, Math.abs(y2 - y1) * 0.4);
-        path.setAttribute("d", `M${x1},${y1} C${x1},${cy1} ${x2},${cy2} ${x2},${y2}`);
+        const path = this.takePath(pathCount++);
+        if (x1 === x2) {
+          path.setAttribute("d", `M${x1},${y1} L${x2},${y2}`);
+        } else {
+          const cy1 = y1 + Math.min(ROW_HEIGHT * 1.5, Math.abs(y2 - y1) * 0.4);
+          const cy2 = y2 - Math.min(ROW_HEIGHT * 1.5, Math.abs(y2 - y1) * 0.4);
+          path.setAttribute("d", `M${x1},${y1} C${x1},${cy1} ${x2},${cy2} ${x2},${y2}`);
+        }
+        path.setAttribute("stroke", COLORS[edge.color % COLORS.length]);
       }
-      path.setAttribute("stroke", color);
-      path.setAttribute("stroke-width", "2");
-      path.setAttribute("fill", "none");
-      this.svgLayer!.appendChild(path);
     }
+    for (let i = pathCount; i < this.pathPool.length; i++) this.pathPool[i].style.display = "none";
 
-    for (let vi = 0; vi < visibleRows.length; vi++) {
-      const visRow = vi + offset;
-      if (visRow < startVis - 2 || visRow > endVis + 2) continue;
-      const origIdx = visibleRows[vi];
-      if (origIdx >= this.nodes.length) continue;
+    // Nodes: index straight into the visible range instead of scanning all rows.
+    let circleCount = 0;
+    const firstNode = Math.max(offset, startVis - 2);
+    const lastNode = Math.min(visibleRows.length + offset - 1, endVis + 2);
+
+    for (let visRow = firstNode; visRow <= lastNode; visRow++) {
+      const origIdx = visibleRows[visRow - offset];
+      if (origIdx === undefined || origIdx >= this.nodes.length) continue;
       const node = this.nodes[origIdx];
-      const x = node.column * COL_WIDTH + 10;
-      const y = visRow * ROW_HEIGHT + ROW_HEIGHT / 2;
       const color = COLORS[node.color % COLORS.length];
       const isMerge = node.commit.parents.length > 1;
 
-      const circle = document.createElementNS("http://www.w3.org/2000/svg", "circle");
-      circle.setAttribute("cx", String(x));
-      circle.setAttribute("cy", String(y));
+      const circle = this.takeCircle(circleCount++);
+      circle.setAttribute("cx", String(node.column * COL_WIDTH + 10));
+      circle.setAttribute("cy", String(this.yOf(visRow) + ROW_HEIGHT / 2));
       circle.setAttribute("r", String(isMerge ? NODE_RADIUS + 1 : NODE_RADIUS));
       circle.setAttribute("fill", isMerge ? "var(--background-primary, #1e1e2e)" : color);
       circle.setAttribute("stroke", color);
       circle.setAttribute("stroke-width", isMerge ? "2" : "0");
-      this.svgLayer!.appendChild(circle);
+    }
+    for (let i = circleCount; i < this.circlePool.length; i++) {
+      this.circlePool[i].style.display = "none";
     }
 
-    if (this.hasWorkingChanges && startVis === 0) {
-      const cx = 10;
-      const cy = ROW_HEIGHT / 2;
-      const ring = document.createElementNS("http://www.w3.org/2000/svg", "circle");
-      ring.setAttribute("cx", String(cx));
-      ring.setAttribute("cy", String(cy));
-      ring.setAttribute("r", String(NODE_RADIUS + 2));
-      ring.setAttribute("fill", "none");
-      ring.setAttribute("stroke", "#22c55e");
-      ring.setAttribute("stroke-width", "2");
-      ring.setAttribute("stroke-dasharray", "3 2");
-      this.svgLayer!.appendChild(ring);
-      const dot = document.createElementNS("http://www.w3.org/2000/svg", "circle");
-      dot.setAttribute("cx", String(cx));
-      dot.setAttribute("cy", String(cy));
-      dot.setAttribute("r", "2");
-      dot.setAttribute("fill", "#22c55e");
-      this.svgLayer!.appendChild(dot);
-    }
+    this.renderWorkingChangesNode(startVis);
   }
 
+  /** The dashed working-changes marker lives outside the pool to keep its dash pattern. */
+  private renderWorkingChangesNode(startVis: number): void {
+    const show = this.hasWorkingChanges && startVis === 0;
+    if (!show) {
+      if (this.wcRing) this.wcRing.style.display = "none";
+      if (this.wcDot) this.wcDot.style.display = "none";
+      return;
+    }
+
+    if (!this.wcRing) {
+      this.wcRing = document.createElementNS(SVG_NS, "circle");
+      this.wcRing.setAttribute("cx", "10");
+      this.wcRing.setAttribute("cy", String(ROW_HEIGHT / 2));
+      this.wcRing.setAttribute("r", String(NODE_RADIUS + 2));
+      this.wcRing.setAttribute("fill", "none");
+      this.wcRing.setAttribute("stroke", "#22c55e");
+      this.wcRing.setAttribute("stroke-width", "2");
+      this.wcRing.setAttribute("stroke-dasharray", "3 2");
+      this.svgLayer!.appendChild(this.wcRing);
+
+      this.wcDot = document.createElementNS(SVG_NS, "circle");
+      this.wcDot.setAttribute("cx", "10");
+      this.wcDot.setAttribute("cy", String(ROW_HEIGHT / 2));
+      this.wcDot.setAttribute("r", "2");
+      this.wcDot.setAttribute("fill", "#22c55e");
+      this.svgLayer!.appendChild(this.wcDot);
+    }
+    this.wcRing.style.display = "";
+    this.wcDot!.style.display = "";
+  }
+
+  /**
+   * Mounts only the rows entering the viewport and rebinds the ones whose
+   * content actually changed. Rows leaving the viewport go back into a pool,
+   * so scrolling allocates no DOM and re-parses no icons.
+   */
   private renderRows(
     visibleRows: number[],
     startVis: number,
@@ -325,135 +548,216 @@ export class GraphView extends ItemView {
     offset: number,
   ): void {
     if (!this.tableBody) return;
-    this.tableBody.empty();
 
-    if (this.hasWorkingChanges && startVis === 0) {
-      const wcRow = this.createWorkingChangesRow();
-      wcRow.style.top = "0px";
-      wcRow.style.height = ROW_HEIGHT + "px";
-      this.tableBody.appendChild(wcRow);
-    }
+    this.syncWorkingChangesRow(startVis);
 
-    for (let vi = 0; vi < visibleRows.length; vi++) {
-      const visRow = vi + offset;
-      if (visRow < startVis || visRow > endVis) continue;
-      const origIdx = visibleRows[vi];
-      if (origIdx >= this.nodes.length) continue;
+    // Rows below `offset` belong to the working changes row, so they must be
+    // released when it appears — otherwise a commit row would sit underneath it.
+    const firstRow = Math.max(startVis, offset);
 
-      const node = this.nodes[origIdx];
-      const commit = node.commit;
-      const row = this.createCommitRow(commit, node);
-      row.style.top = visRow * ROW_HEIGHT + "px";
-      row.style.height = ROW_HEIGHT + "px";
-      this.tableBody.appendChild(row);
-    }
-  }
-
-  private createWorkingChangesRow(): HTMLElement {
-    const row = createDiv("gs-graph-row gs-row-wc");
-    row.createDiv("gs-cell gs-cell-ref");
-    row.createDiv("gs-cell gs-cell-graph");
-
-    const msgCell = row.createDiv("gs-cell gs-cell-msg");
-    msgCell.createSpan("gs-wc-label").setText("Working Changes");
-
-    const authorCell = row.createDiv("gs-cell gs-cell-author");
-    authorCell.setText("You");
-
-    const filesCell = row.createDiv("gs-cell gs-cell-files");
-    const changed = this.store.changedFiles.length + this.store.untrackedFiles.length;
-    const staged = this.store.stagedFiles.length;
-    const statsEl = filesCell.createSpan("gs-file-stats");
-    if (staged > 0) statsEl.createSpan("gs-stat-staged").setText(`+${staged}`);
-    if (changed > 0)
-      statsEl.createSpan("gs-stat-changed").setText(`${staged > 0 ? " / " : ""}${changed}`);
-
-    row.createDiv("gs-cell gs-cell-date");
-    row.createDiv("gs-cell gs-cell-hash");
-
-    row.addEventListener("click", () => this.plugin.openSourceControlView());
-    return row;
-  }
-
-  private createCommitRow(commit: CommitInfo, _node: GraphNode): HTMLElement {
-    const row = createDiv("gs-graph-row");
-    if (commit.hash === this.selectedHash) row.addClass("gs-row-selected");
-
-    const refCell = row.createDiv("gs-cell gs-cell-ref");
-    for (const ref of commit.refs) {
-      const pill = refCell.createSpan("gs-ref-pill");
-      if (ref.type === "head") {
-        pill.addClass("gs-ref-head");
-        const icon = pill.createSpan("gs-ref-icon");
-        setIcon(icon, "check");
-      } else if (ref.type === "remote") {
-        pill.addClass("gs-ref-remote");
-        const icon = pill.createSpan("gs-ref-icon");
-        setIcon(icon, "cloud");
-      } else if (ref.type === "tag") {
-        pill.addClass("gs-ref-tag");
-        const icon = pill.createSpan("gs-ref-icon");
-        setIcon(icon, "tag");
-      } else {
-        pill.addClass("gs-ref-branch");
-        const icon = pill.createSpan("gs-ref-icon");
-        setIcon(icon, "git-branch");
+    for (const [visRow, handle] of this.mountedRows) {
+      if (visRow < firstRow || visRow > endVis) {
+        handle.el.remove();
+        handle.commit = null;
+        handle.key = "";
+        this.mountedRows.delete(visRow);
+        this.rowPool.push(handle);
       }
-      pill.createSpan("gs-ref-name").setText(ref.name);
     }
 
-    row.createDiv("gs-cell gs-cell-graph");
+    for (let visRow = firstRow; visRow <= endVis; visRow++) {
+      const origIdx = visibleRows[visRow - offset];
+      if (origIdx === undefined || origIdx >= this.nodes.length) continue;
 
-    const msgCell = row.createDiv("gs-cell gs-cell-msg");
-    msgCell.createSpan("gs-commit-msg").setText(commit.message);
+      const commit = this.nodes[origIdx].commit;
+      const selected = commit.hash === this.selectedHash;
+      const key = `${this.generation}:${commit.hash}:${selected ? 1 : 0}`;
 
-    const authorCell = row.createDiv("gs-cell gs-cell-author");
-    authorCell.setText(commit.author);
+      let handle = this.mountedRows.get(visRow);
+      if (!handle) {
+        handle = this.rowPool.pop() ?? this.createRowShell();
+        this.mountedRows.set(visRow, handle);
+        this.tableBody.appendChild(handle.el);
+      }
+      // Recycled rows used to keep the position they were mounted at, which was
+      // safe while a visual row always sat at the same y. Opening a card moves
+      // everything below it, so the position is written whenever it changed —
+      // the comparison keeps the write out of the common case.
+      const top = this.yOf(visRow) + "px";
+      if (handle.el.style.top !== top) handle.el.style.top = top;
+      if (handle.key !== key) {
+        this.bindRow(handle, commit, selected);
+        handle.key = key;
+      }
+    }
+  }
 
-    const filesCell = row.createDiv("gs-cell gs-cell-files");
+  /** Builds the row skeleton once; listeners read the currently bound commit. */
+  private createRowShell(): RowHandle {
+    const el = createDiv("gs-graph-row");
+    el.style.height = ROW_HEIGHT + "px";
 
-    const dateCell = row.createDiv("gs-cell gs-cell-date");
-    dateCell.setText(formatRelativeDate(commit.date));
+    const refCell = el.createDiv("gs-cell gs-cell-ref");
+    el.createDiv("gs-cell gs-cell-graph");
+    const msgSpan = el.createDiv("gs-cell gs-cell-msg").createSpan("gs-commit-msg");
+    const authorCell = el.createDiv("gs-cell gs-cell-author");
+    const filesCell = el.createDiv("gs-cell gs-cell-files");
+    const dateCell = el.createDiv("gs-cell gs-cell-date");
+    const hashCell = el.createDiv("gs-cell gs-cell-hash");
 
-    const hashCell = row.createDiv("gs-cell gs-cell-hash");
-    hashCell.setText(commit.shortHash);
+    const handle: RowHandle = {
+      el,
+      refCell,
+      msgSpan,
+      authorCell,
+      filesCell,
+      dateCell,
+      hashCell,
+      commit: null,
+      key: "",
+    };
 
-    row.addEventListener("click", (e) => this.onRowClick(e, commit, row));
-    row.addEventListener("contextmenu", (e) => this.showCommitMenu(e, commit));
-    row.addEventListener("mouseenter", () => {
-      if (this.tooltipTimeout) clearTimeout(this.tooltipTimeout);
-      this.tooltipTimeout = setTimeout(() => this.showCommitTooltip(commit, row), 400);
+    el.addEventListener("click", (e) => {
+      if (handle.commit) this.onRowClick(e, handle.commit, el);
     });
-    row.addEventListener("mouseleave", () => {
-      if (this.tooltipTimeout) {
-        clearTimeout(this.tooltipTimeout);
+    el.addEventListener("contextmenu", (e) => {
+      if (handle.commit) this.showCommitMenu(e, handle.commit);
+    });
+    el.addEventListener("mouseenter", () => {
+      if (this.tooltipTimeout !== null) window.clearTimeout(this.tooltipTimeout);
+      this.tooltipTimeout = window.setTimeout(() => {
+        if (handle.commit) this.showCommitTooltip(handle.commit, el);
+      }, 400);
+    });
+    el.addEventListener("mouseleave", () => {
+      if (this.tooltipTimeout !== null) {
+        window.clearTimeout(this.tooltipTimeout);
         this.tooltipTimeout = null;
       }
       this.hideCommitTooltip();
     });
 
-    this.loadFileCount(commit.hash, filesCell);
-
-    return row;
+    return handle;
   }
 
-  private async loadFileCount(hash: string, cell: HTMLElement): Promise<void> {
-    try {
-      const files = await this.git.showCommitFiles(hash);
-      const icon = cell.createSpan("gs-files-icon");
-      setIcon(icon, "file");
-      cell.createSpan("gs-files-count").setText(String(files.length));
-      const totalAdd = files.reduce((s, f) => s + f.additions, 0);
-      const totalDel = files.reduce((s, f) => s + f.deletions, 0);
-      const total = totalAdd + totalDel;
-      if (total > 0) {
-        const bar = cell.createDiv("gs-sg-changes-bar");
-        const addPct = Math.round((totalAdd / total) * 100);
-        bar.createDiv("gs-sg-changes-add").style.width = addPct + "%";
-        bar.createDiv("gs-sg-changes-del").style.width = 100 - addPct + "%";
+  private bindRow(handle: RowHandle, commit: CommitInfo, selected: boolean): void {
+    handle.commit = commit;
+    handle.el.toggleClass("gs-row-selected", selected);
+
+    handle.refCell.empty();
+    for (const ref of commit.refs) {
+      const pill = handle.refCell.createSpan("gs-ref-pill");
+      const icon = pill.createSpan("gs-ref-icon");
+      if (ref.type === "head") {
+        pill.addClass("gs-ref-head");
+        setIcon(icon, "check");
+      } else if (ref.type === "remote") {
+        pill.addClass("gs-ref-remote");
+        setIcon(icon, "cloud");
+      } else if (ref.type === "tag") {
+        pill.addClass("gs-ref-tag");
+        setIcon(icon, "tag");
+      } else {
+        pill.addClass("gs-ref-branch");
+        setIcon(icon, "git-branch");
       }
-    } catch {
-      // ignore
+      pill.createSpan("gs-ref-name").setText(ref.name);
+    }
+
+    handle.msgSpan.setText(commit.message);
+    handle.authorCell.setText(commit.author);
+    handle.dateCell.setText(formatRelativeDate(commit.date));
+    handle.hashCell.setText(commit.shortHash);
+
+    handle.filesCell.empty();
+    this.renderFileStats(commit, handle.filesCell);
+  }
+
+  private syncWorkingChangesRow(startVis: number): void {
+    if (!this.tableBody) return;
+    const show = this.hasWorkingChanges && startVis === 0;
+
+    if (!show) {
+      this.wcRow?.el.remove();
+      return;
+    }
+
+    if (!this.wcRow) {
+      const el = createDiv("gs-graph-row gs-row-wc");
+      el.style.height = ROW_HEIGHT + "px";
+      el.style.top = "0px";
+      el.createDiv("gs-cell gs-cell-ref");
+      el.createDiv("gs-cell gs-cell-graph");
+      el.createDiv("gs-cell gs-cell-msg").createSpan("gs-wc-label").setText("Working Changes");
+      el.createDiv("gs-cell gs-cell-author").setText("You");
+      const filesCell = el.createDiv("gs-cell gs-cell-files");
+      el.createDiv("gs-cell gs-cell-date");
+      el.createDiv("gs-cell gs-cell-hash");
+      el.addEventListener("click", () => this.plugin.openSourceControlView());
+
+      this.wcRow = { el, filesCell, key: "" };
+    }
+
+    const changed = this.store.changedFiles.length + this.store.untrackedFiles.length;
+    const staged = this.store.stagedFiles.length;
+    const key = `${staged}/${changed}`;
+    if (this.wcRow.key !== key) {
+      this.wcRow.filesCell.empty();
+      const statsEl = this.wcRow.filesCell.createSpan("gs-file-stats");
+      if (staged > 0) statsEl.createSpan("gs-stat-staged").setText(`+${staged}`);
+      if (changed > 0)
+        statsEl.createSpan("gs-stat-changed").setText(`${staged > 0 ? " / " : ""}${changed}`);
+      this.wcRow.key = key;
+    }
+
+    if (!this.wcRow.el.isConnected) this.tableBody.appendChild(this.wcRow.el);
+  }
+
+  /**
+   * Renders the file/changes column. Stats normally arrive with the commit log,
+   * so this is synchronous and costs no git process. Only commits git omits
+   * from --shortstat fall back to a one-off lookup, cached per hash.
+   */
+  private renderFileStats(commit: CommitInfo, cell: HTMLElement): void {
+    cell.dataset.hash = commit.hash;
+
+    const stats = commit.stats ?? this.statsFallback.get(commit.hash);
+    if (stats) {
+      this.paintFileStats(stats, cell);
+      return;
+    }
+    if (this.statsFallback.has(commit.hash)) return;
+
+    void this.git
+      .showCommitFiles(commit.hash)
+      .then((files) => {
+        const resolved: CommitStats = {
+          filesChanged: files.length,
+          additions: files.reduce((s, f) => s + f.additions, 0),
+          deletions: files.reduce((s, f) => s + f.deletions, 0),
+        };
+        this.statsFallback.set(commit.hash, resolved);
+        // The row may have scrolled away or been rebound to another commit.
+        if (cell.isConnected && cell.dataset.hash === commit.hash) {
+          this.paintFileStats(resolved, cell);
+        }
+      })
+      .catch(() => {
+        // leave the column empty for commits we cannot stat
+      });
+  }
+
+  private paintFileStats(stats: CommitStats, cell: HTMLElement): void {
+    const icon = cell.createSpan("gs-files-icon");
+    setIcon(icon, "file");
+    cell.createSpan("gs-files-count").setText(String(stats.filesChanged));
+
+    const total = stats.additions + stats.deletions;
+    if (total > 0) {
+      const bar = cell.createDiv("gs-sg-changes-bar");
+      const addPct = Math.round((stats.additions / total) * 100);
+      bar.createDiv("gs-sg-changes-add").style.width = addPct + "%";
+      bar.createDiv("gs-sg-changes-del").style.width = 100 - addPct + "%";
     }
   }
 
@@ -466,55 +770,57 @@ export class GraphView extends ItemView {
     }
 
     this.selectedHash = commit.hash;
-    this.renderVisible();
+    this.expandedVisRow = parseInt(row.style.top || "0", 10) / ROW_HEIGHT;
     await this.showPopup(commit, row);
     this.plugin.showCommitChangesInSidebar(commit);
   }
 
-  private async showPopup(commit: CommitInfo, anchor: HTMLElement): Promise<void> {
+  private async showPopup(commit: CommitInfo, _anchor: HTMLElement): Promise<void> {
     if (!this.popupEl || !this.scrollEl) return;
     this.popupEl.empty();
     this.popupEl.style.display = "block";
 
+    // Subject first: it is what the row was clicked for. The identifiers come
+    // after it, not before.
     const header = this.popupEl.createDiv("gs-popup-header");
     const avatar = header.createDiv("gs-popup-avatar");
-    const initials = commit.author
-      .split(" ")
-      .map((w) => w[0] || "")
-      .join("")
-      .substring(0, 2)
-      .toUpperCase();
-    avatar.setText(initials);
+    avatar.setText(
+      commit.author
+        .split(" ")
+        .map((w) => w[0] || "")
+        .join("")
+        .substring(0, 2)
+        .toUpperCase(),
+    );
 
     const info = header.createDiv("gs-popup-info");
+    info.createDiv("gs-popup-msg").setText(commit.message);
+
     const authorLine = info.createDiv("gs-popup-author-line");
     authorLine.createSpan("gs-popup-author-name").setText(commit.author);
     authorLine.createSpan("gs-popup-time").setText(formatRelativeDate(commit.date));
-    authorLine.createSpan("gs-popup-fulldate").setText(`(${commit.date.toLocaleString()})`);
+    authorLine.createSpan("gs-popup-fulldate").setText(commit.date.toLocaleString());
 
     const metaLine = info.createDiv("gs-popup-meta");
-    const parentLabel = metaLine.createSpan("gs-popup-parent-label");
-    parentLabel.setText(`◆ ${commit.shortHash}`);
+    metaLine.createSpan("gs-popup-parent-label").setText(commit.shortHash);
     if (commit.parents.length > 0) {
       metaLine
         .createSpan("gs-popup-parent-hash")
-        .setText(` ← ${commit.parents.map((p) => p.substring(0, 7)).join(", ")}`);
+        .setText(`← ${commit.parents.map((p) => p.substring(0, 7)).join(", ")}`);
     }
 
     try {
       const files = await this.git.showCommitFiles(commit.hash);
-      const totalAdd = files.reduce((s, f) => s + f.additions, 0);
-      const totalDel = files.reduce((s, f) => s + f.deletions, 0);
+      const totalAdd = files.reduce((sum, f) => sum + f.additions, 0);
+      const totalDel = files.reduce((sum, f) => sum + f.deletions, 0);
       const statsLine = metaLine.createSpan("gs-popup-stats");
-      statsLine.setText(` (${files.length} file${files.length !== 1 ? "s" : ""} changed)`);
-      if (totalAdd > 0) statsLine.createSpan("gs-stat-add").setText(` ${totalAdd} additions`);
-      if (totalDel > 0) statsLine.createSpan("gs-stat-del").setText(` ${totalDel} deletions`);
+      statsLine.setText(`${files.length} file${files.length !== 1 ? "s" : ""} changed`);
+      if (totalAdd > 0) statsLine.createSpan("gs-stat-add").setText(`+${totalAdd}`);
+      if (totalDel > 0) statsLine.createSpan("gs-stat-del").setText(`-${totalDel}`);
     } catch {
-      // ignore
+      // The card is still useful without the stats.
     }
 
-    const msgDiv = this.popupEl.createDiv("gs-popup-msg");
-    msgDiv.setText(commit.message);
     if (commit.body) {
       this.popupEl.createDiv("gs-popup-body").setText(commit.body);
     }
@@ -554,15 +860,31 @@ export class GraphView extends ItemView {
       }
     });
 
-    const anchorRect = anchor.getBoundingClientRect();
-    const scrollRect = this.scrollEl.getBoundingClientRect();
+    this.placeCard();
+  }
+
+  /**
+   * Reserves the room the card needs and puts it in the gap. The height has to
+   * be measured after the content exists — a commit with a long body is taller
+   * than a one-liner — and the estimate is the fallback for the frame before
+   * layout has happened.
+   */
+  private placeCard(): void {
+    if (!this.popupEl || this.expandedVisRow === null) return;
+    const measured = this.popupEl.offsetHeight;
+    this.expandedHeight = (measured > 0 ? measured : CARD_ESTIMATED_HEIGHT) + CARD_GAP;
     this.popupEl.style.left = "0";
     this.popupEl.style.right = "0";
-    this.popupEl.style.top = anchorRect.bottom - scrollRect.top + this.scrollEl.scrollTop + "px";
+    this.popupEl.style.top = this.expandedVisRow * ROW_HEIGHT + ROW_HEIGHT + "px";
+    this.updateLayout();
+    this.renderVisible();
   }
 
   private hidePopup(): void {
     if (this.popupEl) this.popupEl.style.display = "none";
+    this.expandedVisRow = null;
+    this.expandedHeight = 0;
+    this.updateLayout();
   }
 
   private showCommitMenu(event: MouseEvent, commit: CommitInfo): void {
@@ -731,7 +1053,7 @@ export class GraphView extends ItemView {
 
     const statsPlaceholder = this.el("div", "gs-sg-tip-stats");
     body.appendChild(statsPlaceholder);
-    this.loadTooltipStats(commit.hash, statsPlaceholder);
+    this.loadTooltipStats(commit, statsPlaceholder);
 
     const msgEl = this.el("div", "gs-sg-tip-msg", commit.message);
     body.appendChild(msgEl);
@@ -756,23 +1078,32 @@ export class GraphView extends ItemView {
     });
   }
 
-  private async loadTooltipStats(hash: string, container: HTMLElement): Promise<void> {
+  private async loadTooltipStats(commit: CommitInfo, container: HTMLElement): Promise<void> {
     try {
-      const files = await this.git.showCommitFiles(hash);
-      if (!this.tooltipEl || files.length === 0) return;
-      const totalAdd = files.reduce((s, f) => s + f.additions, 0);
-      const totalDel = files.reduce((s, f) => s + f.deletions, 0);
+      let stats = commit.stats ?? this.statsFallback.get(commit.hash);
+      if (!stats) {
+        const files = await this.git.showCommitFiles(commit.hash);
+        stats = {
+          filesChanged: files.length,
+          additions: files.reduce((s, f) => s + f.additions, 0),
+          deletions: files.reduce((s, f) => s + f.deletions, 0),
+        };
+        this.statsFallback.set(commit.hash, stats);
+        if (!this.tooltipEl) return;
+      }
+      if (stats.filesChanged === 0) return;
+
       container.appendChild(
         this.el(
           "span",
           "gs-sg-tip-stats-files",
-          `${files.length} file${files.length !== 1 ? "s" : ""} changed`,
+          `${stats.filesChanged} file${stats.filesChanged !== 1 ? "s" : ""} changed`,
         ),
       );
-      if (totalAdd > 0)
-        container.appendChild(this.el("span", "gs-stat-add", `  ${totalAdd} additions`));
-      if (totalDel > 0)
-        container.appendChild(this.el("span", "gs-stat-del", `  ${totalDel} deletions`));
+      if (stats.additions > 0)
+        container.appendChild(this.el("span", "gs-stat-add", `  ${stats.additions} additions`));
+      if (stats.deletions > 0)
+        container.appendChild(this.el("span", "gs-stat-del", `  ${stats.deletions} deletions`));
     } catch {
       // ignore
     }
@@ -786,6 +1117,23 @@ export class GraphView extends ItemView {
   }
 
   async onClose(): Promise<void> {
+    if (this.renderHandle !== null) {
+      cancelAnimationFrame(this.renderHandle);
+      this.renderHandle = null;
+    }
+    if (this.tooltipTimeout !== null) {
+      window.clearTimeout(this.tooltipTimeout);
+      this.tooltipTimeout = null;
+    }
+    this.mountedRows.clear();
+    this.rowPool = [];
+    this.wcRow = null;
+    this.edgeChunks.clear();
+    this.pathPool = [];
+    this.circlePool = [];
+    this.wcRing = null;
+    this.wcDot = null;
+    this.statsFallback.clear();
     this.hidePopup();
     this.hideCommitTooltip();
   }
