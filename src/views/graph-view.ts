@@ -10,6 +10,34 @@ const COL_WIDTH = 14;
 const GRAPH_COL_MIN_WIDTH = 60;
 const NODE_RADIUS = 4;
 const OVERSCAN = 15;
+const SVG_NS = "http://www.w3.org/2000/svg";
+/** Rows per edge bucket — keeps edge lookup proportional to the viewport, not the graph. */
+const EDGE_CHUNK = 64;
+/** First paint renders this many commits, the full set follows in the background. */
+const INITIAL_LOG_COUNT = 150;
+const FULL_LOG_COUNT = 500;
+
+/** A pooled row. Cells are created once and rebound as rows scroll in and out. */
+interface RowHandle {
+  el: HTMLElement;
+  refCell: HTMLElement;
+  msgSpan: HTMLElement;
+  authorCell: HTMLElement;
+  filesCell: HTMLElement;
+  dateCell: HTMLElement;
+  hashCell: HTMLElement;
+  commit: CommitInfo | null;
+  key: string;
+}
+
+/** An edge with its row positions already resolved, ready to draw. */
+interface RenderEdge {
+  fromVis: number;
+  toVis: number;
+  fromCol: number;
+  toCol: number;
+  color: number;
+}
 
 const COLORS = [
   "#0ea5e9",
@@ -45,10 +73,22 @@ export class GraphView extends ItemView {
   private filteredIndices: number[] | null = null;
   private hasWorkingChanges = false;
   private tooltipEl: HTMLElement | null = null;
-  private tooltipTimeout: ReturnType<typeof setTimeout> | null = null;
+  private tooltipTimeout: number | null = null;
   private renderHandle: number | null = null;
   /** Lazily resolved stats for commits git omits from --shortstat (merges, empty commits). */
   private statsFallback = new Map<string, CommitStats>();
+
+  private mountedRows = new Map<number, RowHandle>();
+  private rowPool: RowHandle[] = [];
+  private wcRow: { el: HTMLElement; filesCell: HTMLElement; key: string } | null = null;
+  /** Bumped whenever commits or the filter change, to force a rebind of mounted rows. */
+  private generation = 0;
+
+  private edgeChunks = new Map<number, RenderEdge[]>();
+  private pathPool: SVGPathElement[] = [];
+  private circlePool: SVGCircleElement[] = [];
+  private wcRing: SVGCircleElement | null = null;
+  private wcDot: SVGCircleElement | null = null;
 
   constructor(leaf: WorkspaceLeaf, plugin: GitHistoryPlugin) {
     super(leaf);
@@ -104,7 +144,12 @@ export class GraphView extends ItemView {
       }),
     );
 
-    await Promise.all([this.store.refreshLog({ all: true, maxCount: 500 }), this.store.refresh()]);
+    // Paint a first screenful quickly, then fill in the rest in the background.
+    await this.store.refreshLog({ all: true, maxCount: INITIAL_LOG_COUNT });
+    await Promise.all([
+      this.store.refreshLog({ all: true, maxCount: FULL_LOG_COUNT }),
+      this.store.refresh(),
+    ]);
   }
 
   private buildToolbar(el: HTMLElement): void {
@@ -139,20 +184,20 @@ export class GraphView extends ItemView {
       showAll = !showAll;
       branchFilterBtn.toggleClass("gs-tbtn-active", !showAll);
       allBtn.toggleClass("gs-tbtn-active", showAll);
-      this.store.refreshLog({ all: showAll, maxCount: 500 });
+      this.store.refreshLog({ all: showAll, maxCount: FULL_LOG_COUNT });
     });
     allBtn.addEventListener("click", () => {
       showAll = true;
       allBtn.addClass("gs-tbtn-active");
       branchFilterBtn.removeClass("gs-tbtn-active");
-      this.store.refreshLog({ all: true, maxCount: 500 });
+      this.store.refreshLog({ all: true, maxCount: FULL_LOG_COUNT });
     });
 
     const refreshBtn = right.createEl("button", { cls: "gs-tbtn" });
     setIcon(refreshBtn, "refresh-cw");
     refreshBtn.setAttribute("aria-label", "Refresh");
     refreshBtn.addEventListener("click", () => {
-      this.store.refreshLog({ all: showAll, maxCount: 500 });
+      this.store.refreshLog({ all: showAll, maxCount: FULL_LOG_COUNT });
       this.store.refresh();
     });
   }
@@ -188,6 +233,7 @@ export class GraphView extends ItemView {
         }
       }
     }
+    this.generation++;
     this.updateLayout();
     this.scheduleRender();
   }
@@ -198,6 +244,7 @@ export class GraphView extends ItemView {
     this.edges = result.edges;
     this.maxColumns = result.maxColumns;
     this.filteredIndices = null;
+    this.generation++;
     this.updateLayout();
     this.scheduleRender();
   }
@@ -212,7 +259,8 @@ export class GraphView extends ItemView {
 
   private updateLayout(): void {
     const rows = this.getVisibleRows();
-    const totalRows = rows.length + this.getRowOffset();
+    const offset = this.getRowOffset();
+    const totalRows = rows.length + offset;
     const totalHeight = totalRows * ROW_HEIGHT;
     if (this.spacerEl) this.spacerEl.style.height = totalHeight + "px";
 
@@ -222,6 +270,40 @@ export class GraphView extends ItemView {
       this.svgLayer.setAttribute("height", String(totalHeight));
     }
     this.contentEl.style.setProperty("--gs-graph-col-width", graphWidth + "px");
+
+    this.buildEdgeIndex(rows, offset);
+  }
+
+  /**
+   * Buckets edges by row range so a render only walks the edges near the
+   * viewport instead of the whole graph. Rebuilt whenever row positions change.
+   */
+  private buildEdgeIndex(visibleRows: number[], offset: number): void {
+    this.edgeChunks.clear();
+
+    const visRowOf = new Map<number, number>();
+    for (let i = 0; i < visibleRows.length; i++) visRowOf.set(visibleRows[i], i + offset);
+
+    for (const edge of this.edges) {
+      const fromVis = visRowOf.get(edge.fromRow);
+      const toVis = visRowOf.get(edge.toRow);
+      if (fromVis === undefined || toVis === undefined) continue;
+
+      const renderEdge: RenderEdge = {
+        fromVis,
+        toVis,
+        fromCol: edge.fromCol,
+        toCol: edge.toCol,
+        color: edge.color,
+      };
+      const first = Math.floor(Math.min(fromVis, toVis) / EDGE_CHUNK);
+      const last = Math.floor(Math.max(fromVis, toVis) / EDGE_CHUNK);
+      for (let chunk = first; chunk <= last; chunk++) {
+        const bucket = this.edgeChunks.get(chunk);
+        if (bucket) bucket.push(renderEdge);
+        else this.edgeChunks.set(chunk, [renderEdge]);
+      }
+    }
   }
 
   /** Coalesces scroll bursts (~120/s on a trackpad) into one render per frame. */
@@ -251,90 +333,136 @@ export class GraphView extends ItemView {
     this.renderRows(visibleRows, startVisRow, endVisRow, offset);
   }
 
+  private takePath(index: number): SVGPathElement {
+    let path = this.pathPool[index];
+    if (!path) {
+      path = document.createElementNS(SVG_NS, "path");
+      path.setAttribute("fill", "none");
+      path.setAttribute("stroke-width", "2");
+      this.pathPool[index] = path;
+      this.svgLayer!.appendChild(path);
+    }
+    path.style.display = "";
+    return path;
+  }
+
+  private takeCircle(index: number): SVGCircleElement {
+    let circle = this.circlePool[index];
+    if (!circle) {
+      circle = document.createElementNS(SVG_NS, "circle");
+      this.circlePool[index] = circle;
+      this.svgLayer!.appendChild(circle);
+    }
+    circle.style.display = "";
+    return circle;
+  }
+
   private renderSvg(visibleRows: number[], startVis: number, endVis: number, offset: number): void {
     if (!this.svgLayer) return;
-    while (this.svgLayer.firstChild) this.svgLayer.removeChild(this.svgLayer.firstChild);
 
     const graphWidth = Math.max(GRAPH_COL_MIN_WIDTH, (this.maxColumns + 1) * COL_WIDTH + 20);
     const totalHeight = (visibleRows.length + offset) * ROW_HEIGHT;
     this.svgLayer.setAttribute("viewBox", `0 0 ${graphWidth} ${totalHeight}`);
     this.svgLayer.setAttribute("width", String(graphWidth));
 
-    const visRowMap = new Map<number, number>();
-    visibleRows.forEach((origIdx, visIdx) => visRowMap.set(origIdx, visIdx + offset));
+    // Edges: walk only the buckets overlapping the viewport.
+    let pathCount = 0;
+    const drawn = new Set<RenderEdge>();
+    const firstChunk = Math.floor(Math.max(0, startVis - 5) / EDGE_CHUNK);
+    const lastChunk = Math.floor((endVis + 5) / EDGE_CHUNK);
 
-    for (const edge of this.edges) {
-      const fromVis = visRowMap.get(edge.fromRow);
-      const toVis = visRowMap.get(edge.toRow);
-      if (fromVis === undefined || toVis === undefined) continue;
+    for (let chunk = firstChunk; chunk <= lastChunk; chunk++) {
+      const bucket = this.edgeChunks.get(chunk);
+      if (!bucket) continue;
+      for (const edge of bucket) {
+        if (drawn.has(edge)) continue;
+        drawn.add(edge);
 
-      const minVis = Math.min(fromVis, toVis);
-      const maxVis = Math.max(fromVis, toVis);
-      if (maxVis < startVis - 5 || minVis > endVis + 5) continue;
+        const minVis = Math.min(edge.fromVis, edge.toVis);
+        const maxVis = Math.max(edge.fromVis, edge.toVis);
+        if (maxVis < startVis - 5 || minVis > endVis + 5) continue;
 
-      const x1 = edge.fromCol * COL_WIDTH + 10;
-      const y1 = fromVis * ROW_HEIGHT + ROW_HEIGHT / 2;
-      const x2 = edge.toCol * COL_WIDTH + 10;
-      const y2 = toVis * ROW_HEIGHT + ROW_HEIGHT / 2;
+        const x1 = edge.fromCol * COL_WIDTH + 10;
+        const y1 = edge.fromVis * ROW_HEIGHT + ROW_HEIGHT / 2;
+        const x2 = edge.toCol * COL_WIDTH + 10;
+        const y2 = edge.toVis * ROW_HEIGHT + ROW_HEIGHT / 2;
 
-      const path = document.createElementNS("http://www.w3.org/2000/svg", "path");
-      const color = COLORS[edge.color % COLORS.length];
-
-      if (x1 === x2) {
-        path.setAttribute("d", `M${x1},${y1} L${x2},${y2}`);
-      } else {
-        const cy1 = y1 + Math.min(ROW_HEIGHT * 1.5, Math.abs(y2 - y1) * 0.4);
-        const cy2 = y2 - Math.min(ROW_HEIGHT * 1.5, Math.abs(y2 - y1) * 0.4);
-        path.setAttribute("d", `M${x1},${y1} C${x1},${cy1} ${x2},${cy2} ${x2},${y2}`);
+        const path = this.takePath(pathCount++);
+        if (x1 === x2) {
+          path.setAttribute("d", `M${x1},${y1} L${x2},${y2}`);
+        } else {
+          const cy1 = y1 + Math.min(ROW_HEIGHT * 1.5, Math.abs(y2 - y1) * 0.4);
+          const cy2 = y2 - Math.min(ROW_HEIGHT * 1.5, Math.abs(y2 - y1) * 0.4);
+          path.setAttribute("d", `M${x1},${y1} C${x1},${cy1} ${x2},${cy2} ${x2},${y2}`);
+        }
+        path.setAttribute("stroke", COLORS[edge.color % COLORS.length]);
       }
-      path.setAttribute("stroke", color);
-      path.setAttribute("stroke-width", "2");
-      path.setAttribute("fill", "none");
-      this.svgLayer!.appendChild(path);
     }
+    for (let i = pathCount; i < this.pathPool.length; i++) this.pathPool[i].style.display = "none";
 
-    for (let vi = 0; vi < visibleRows.length; vi++) {
-      const visRow = vi + offset;
-      if (visRow < startVis - 2 || visRow > endVis + 2) continue;
-      const origIdx = visibleRows[vi];
-      if (origIdx >= this.nodes.length) continue;
+    // Nodes: index straight into the visible range instead of scanning all rows.
+    let circleCount = 0;
+    const firstNode = Math.max(offset, startVis - 2);
+    const lastNode = Math.min(visibleRows.length + offset - 1, endVis + 2);
+
+    for (let visRow = firstNode; visRow <= lastNode; visRow++) {
+      const origIdx = visibleRows[visRow - offset];
+      if (origIdx === undefined || origIdx >= this.nodes.length) continue;
       const node = this.nodes[origIdx];
-      const x = node.column * COL_WIDTH + 10;
-      const y = visRow * ROW_HEIGHT + ROW_HEIGHT / 2;
       const color = COLORS[node.color % COLORS.length];
       const isMerge = node.commit.parents.length > 1;
 
-      const circle = document.createElementNS("http://www.w3.org/2000/svg", "circle");
-      circle.setAttribute("cx", String(x));
-      circle.setAttribute("cy", String(y));
+      const circle = this.takeCircle(circleCount++);
+      circle.setAttribute("cx", String(node.column * COL_WIDTH + 10));
+      circle.setAttribute("cy", String(visRow * ROW_HEIGHT + ROW_HEIGHT / 2));
       circle.setAttribute("r", String(isMerge ? NODE_RADIUS + 1 : NODE_RADIUS));
       circle.setAttribute("fill", isMerge ? "var(--background-primary, #1e1e2e)" : color);
       circle.setAttribute("stroke", color);
       circle.setAttribute("stroke-width", isMerge ? "2" : "0");
-      this.svgLayer!.appendChild(circle);
+    }
+    for (let i = circleCount; i < this.circlePool.length; i++) {
+      this.circlePool[i].style.display = "none";
     }
 
-    if (this.hasWorkingChanges && startVis === 0) {
-      const cx = 10;
-      const cy = ROW_HEIGHT / 2;
-      const ring = document.createElementNS("http://www.w3.org/2000/svg", "circle");
-      ring.setAttribute("cx", String(cx));
-      ring.setAttribute("cy", String(cy));
-      ring.setAttribute("r", String(NODE_RADIUS + 2));
-      ring.setAttribute("fill", "none");
-      ring.setAttribute("stroke", "#22c55e");
-      ring.setAttribute("stroke-width", "2");
-      ring.setAttribute("stroke-dasharray", "3 2");
-      this.svgLayer!.appendChild(ring);
-      const dot = document.createElementNS("http://www.w3.org/2000/svg", "circle");
-      dot.setAttribute("cx", String(cx));
-      dot.setAttribute("cy", String(cy));
-      dot.setAttribute("r", "2");
-      dot.setAttribute("fill", "#22c55e");
-      this.svgLayer!.appendChild(dot);
-    }
+    this.renderWorkingChangesNode(startVis);
   }
 
+  /** The dashed working-changes marker lives outside the pool to keep its dash pattern. */
+  private renderWorkingChangesNode(startVis: number): void {
+    const show = this.hasWorkingChanges && startVis === 0;
+    if (!show) {
+      if (this.wcRing) this.wcRing.style.display = "none";
+      if (this.wcDot) this.wcDot.style.display = "none";
+      return;
+    }
+
+    if (!this.wcRing) {
+      this.wcRing = document.createElementNS(SVG_NS, "circle");
+      this.wcRing.setAttribute("cx", "10");
+      this.wcRing.setAttribute("cy", String(ROW_HEIGHT / 2));
+      this.wcRing.setAttribute("r", String(NODE_RADIUS + 2));
+      this.wcRing.setAttribute("fill", "none");
+      this.wcRing.setAttribute("stroke", "#22c55e");
+      this.wcRing.setAttribute("stroke-width", "2");
+      this.wcRing.setAttribute("stroke-dasharray", "3 2");
+      this.svgLayer!.appendChild(this.wcRing);
+
+      this.wcDot = document.createElementNS(SVG_NS, "circle");
+      this.wcDot.setAttribute("cx", "10");
+      this.wcDot.setAttribute("cy", String(ROW_HEIGHT / 2));
+      this.wcDot.setAttribute("r", "2");
+      this.wcDot.setAttribute("fill", "#22c55e");
+      this.svgLayer!.appendChild(this.wcDot);
+    }
+    this.wcRing.style.display = "";
+    this.wcDot!.style.display = "";
+  }
+
+  /**
+   * Mounts only the rows entering the viewport and rebinds the ones whose
+   * content actually changed. Rows leaving the viewport go back into a pool,
+   * so scrolling allocates no DOM and re-parses no icons.
+   */
   private renderRows(
     visibleRows: number[],
     startVis: number,
@@ -342,116 +470,164 @@ export class GraphView extends ItemView {
     offset: number,
   ): void {
     if (!this.tableBody) return;
-    this.tableBody.empty();
 
-    if (this.hasWorkingChanges && startVis === 0) {
-      const wcRow = this.createWorkingChangesRow();
-      wcRow.style.top = "0px";
-      wcRow.style.height = ROW_HEIGHT + "px";
-      this.tableBody.appendChild(wcRow);
-    }
+    this.syncWorkingChangesRow(startVis);
 
-    for (let vi = 0; vi < visibleRows.length; vi++) {
-      const visRow = vi + offset;
-      if (visRow < startVis || visRow > endVis) continue;
-      const origIdx = visibleRows[vi];
-      if (origIdx >= this.nodes.length) continue;
+    // Rows below `offset` belong to the working changes row, so they must be
+    // released when it appears — otherwise a commit row would sit underneath it.
+    const firstRow = Math.max(startVis, offset);
 
-      const node = this.nodes[origIdx];
-      const commit = node.commit;
-      const row = this.createCommitRow(commit, node);
-      row.style.top = visRow * ROW_HEIGHT + "px";
-      row.style.height = ROW_HEIGHT + "px";
-      this.tableBody.appendChild(row);
-    }
-  }
-
-  private createWorkingChangesRow(): HTMLElement {
-    const row = createDiv("gs-graph-row gs-row-wc");
-    row.createDiv("gs-cell gs-cell-ref");
-    row.createDiv("gs-cell gs-cell-graph");
-
-    const msgCell = row.createDiv("gs-cell gs-cell-msg");
-    msgCell.createSpan("gs-wc-label").setText("Working Changes");
-
-    const authorCell = row.createDiv("gs-cell gs-cell-author");
-    authorCell.setText("You");
-
-    const filesCell = row.createDiv("gs-cell gs-cell-files");
-    const changed = this.store.changedFiles.length + this.store.untrackedFiles.length;
-    const staged = this.store.stagedFiles.length;
-    const statsEl = filesCell.createSpan("gs-file-stats");
-    if (staged > 0) statsEl.createSpan("gs-stat-staged").setText(`+${staged}`);
-    if (changed > 0)
-      statsEl.createSpan("gs-stat-changed").setText(`${staged > 0 ? " / " : ""}${changed}`);
-
-    row.createDiv("gs-cell gs-cell-date");
-    row.createDiv("gs-cell gs-cell-hash");
-
-    row.addEventListener("click", () => this.plugin.openSourceControlView());
-    return row;
-  }
-
-  private createCommitRow(commit: CommitInfo, _node: GraphNode): HTMLElement {
-    const row = createDiv("gs-graph-row");
-    if (commit.hash === this.selectedHash) row.addClass("gs-row-selected");
-
-    const refCell = row.createDiv("gs-cell gs-cell-ref");
-    for (const ref of commit.refs) {
-      const pill = refCell.createSpan("gs-ref-pill");
-      if (ref.type === "head") {
-        pill.addClass("gs-ref-head");
-        const icon = pill.createSpan("gs-ref-icon");
-        setIcon(icon, "check");
-      } else if (ref.type === "remote") {
-        pill.addClass("gs-ref-remote");
-        const icon = pill.createSpan("gs-ref-icon");
-        setIcon(icon, "cloud");
-      } else if (ref.type === "tag") {
-        pill.addClass("gs-ref-tag");
-        const icon = pill.createSpan("gs-ref-icon");
-        setIcon(icon, "tag");
-      } else {
-        pill.addClass("gs-ref-branch");
-        const icon = pill.createSpan("gs-ref-icon");
-        setIcon(icon, "git-branch");
+    for (const [visRow, handle] of this.mountedRows) {
+      if (visRow < firstRow || visRow > endVis) {
+        handle.el.remove();
+        handle.commit = null;
+        handle.key = "";
+        this.mountedRows.delete(visRow);
+        this.rowPool.push(handle);
       }
-      pill.createSpan("gs-ref-name").setText(ref.name);
     }
 
-    row.createDiv("gs-cell gs-cell-graph");
+    for (let visRow = firstRow; visRow <= endVis; visRow++) {
+      const origIdx = visibleRows[visRow - offset];
+      if (origIdx === undefined || origIdx >= this.nodes.length) continue;
 
-    const msgCell = row.createDiv("gs-cell gs-cell-msg");
-    msgCell.createSpan("gs-commit-msg").setText(commit.message);
+      const commit = this.nodes[origIdx].commit;
+      const selected = commit.hash === this.selectedHash;
+      const key = `${this.generation}:${commit.hash}:${selected ? 1 : 0}`;
 
-    const authorCell = row.createDiv("gs-cell gs-cell-author");
-    authorCell.setText(commit.author);
+      let handle = this.mountedRows.get(visRow);
+      if (!handle) {
+        handle = this.rowPool.pop() ?? this.createRowShell();
+        handle.el.style.top = visRow * ROW_HEIGHT + "px";
+        this.mountedRows.set(visRow, handle);
+        this.tableBody.appendChild(handle.el);
+      }
+      if (handle.key !== key) {
+        this.bindRow(handle, commit, selected);
+        handle.key = key;
+      }
+    }
+  }
 
-    const filesCell = row.createDiv("gs-cell gs-cell-files");
+  /** Builds the row skeleton once; listeners read the currently bound commit. */
+  private createRowShell(): RowHandle {
+    const el = createDiv("gs-graph-row");
+    el.style.height = ROW_HEIGHT + "px";
 
-    const dateCell = row.createDiv("gs-cell gs-cell-date");
-    dateCell.setText(formatRelativeDate(commit.date));
+    const refCell = el.createDiv("gs-cell gs-cell-ref");
+    el.createDiv("gs-cell gs-cell-graph");
+    const msgSpan = el.createDiv("gs-cell gs-cell-msg").createSpan("gs-commit-msg");
+    const authorCell = el.createDiv("gs-cell gs-cell-author");
+    const filesCell = el.createDiv("gs-cell gs-cell-files");
+    const dateCell = el.createDiv("gs-cell gs-cell-date");
+    const hashCell = el.createDiv("gs-cell gs-cell-hash");
 
-    const hashCell = row.createDiv("gs-cell gs-cell-hash");
-    hashCell.setText(commit.shortHash);
+    const handle: RowHandle = {
+      el,
+      refCell,
+      msgSpan,
+      authorCell,
+      filesCell,
+      dateCell,
+      hashCell,
+      commit: null,
+      key: "",
+    };
 
-    row.addEventListener("click", (e) => this.onRowClick(e, commit, row));
-    row.addEventListener("contextmenu", (e) => this.showCommitMenu(e, commit));
-    row.addEventListener("mouseenter", () => {
-      if (this.tooltipTimeout) clearTimeout(this.tooltipTimeout);
-      this.tooltipTimeout = setTimeout(() => this.showCommitTooltip(commit, row), 400);
+    el.addEventListener("click", (e) => {
+      if (handle.commit) this.onRowClick(e, handle.commit, el);
     });
-    row.addEventListener("mouseleave", () => {
-      if (this.tooltipTimeout) {
-        clearTimeout(this.tooltipTimeout);
+    el.addEventListener("contextmenu", (e) => {
+      if (handle.commit) this.showCommitMenu(e, handle.commit);
+    });
+    el.addEventListener("mouseenter", () => {
+      if (this.tooltipTimeout !== null) window.clearTimeout(this.tooltipTimeout);
+      this.tooltipTimeout = window.setTimeout(() => {
+        if (handle.commit) this.showCommitTooltip(handle.commit, el);
+      }, 400);
+    });
+    el.addEventListener("mouseleave", () => {
+      if (this.tooltipTimeout !== null) {
+        window.clearTimeout(this.tooltipTimeout);
         this.tooltipTimeout = null;
       }
       this.hideCommitTooltip();
     });
 
-    this.renderFileStats(commit, filesCell);
+    return handle;
+  }
 
-    return row;
+  private bindRow(handle: RowHandle, commit: CommitInfo, selected: boolean): void {
+    handle.commit = commit;
+    handle.el.toggleClass("gs-row-selected", selected);
+
+    handle.refCell.empty();
+    for (const ref of commit.refs) {
+      const pill = handle.refCell.createSpan("gs-ref-pill");
+      const icon = pill.createSpan("gs-ref-icon");
+      if (ref.type === "head") {
+        pill.addClass("gs-ref-head");
+        setIcon(icon, "check");
+      } else if (ref.type === "remote") {
+        pill.addClass("gs-ref-remote");
+        setIcon(icon, "cloud");
+      } else if (ref.type === "tag") {
+        pill.addClass("gs-ref-tag");
+        setIcon(icon, "tag");
+      } else {
+        pill.addClass("gs-ref-branch");
+        setIcon(icon, "git-branch");
+      }
+      pill.createSpan("gs-ref-name").setText(ref.name);
+    }
+
+    handle.msgSpan.setText(commit.message);
+    handle.authorCell.setText(commit.author);
+    handle.dateCell.setText(formatRelativeDate(commit.date));
+    handle.hashCell.setText(commit.shortHash);
+
+    handle.filesCell.empty();
+    this.renderFileStats(commit, handle.filesCell);
+  }
+
+  private syncWorkingChangesRow(startVis: number): void {
+    if (!this.tableBody) return;
+    const show = this.hasWorkingChanges && startVis === 0;
+
+    if (!show) {
+      this.wcRow?.el.remove();
+      return;
+    }
+
+    if (!this.wcRow) {
+      const el = createDiv("gs-graph-row gs-row-wc");
+      el.style.height = ROW_HEIGHT + "px";
+      el.style.top = "0px";
+      el.createDiv("gs-cell gs-cell-ref");
+      el.createDiv("gs-cell gs-cell-graph");
+      el.createDiv("gs-cell gs-cell-msg").createSpan("gs-wc-label").setText("Working Changes");
+      el.createDiv("gs-cell gs-cell-author").setText("You");
+      const filesCell = el.createDiv("gs-cell gs-cell-files");
+      el.createDiv("gs-cell gs-cell-date");
+      el.createDiv("gs-cell gs-cell-hash");
+      el.addEventListener("click", () => this.plugin.openSourceControlView());
+
+      this.wcRow = { el, filesCell, key: "" };
+    }
+
+    const changed = this.store.changedFiles.length + this.store.untrackedFiles.length;
+    const staged = this.store.stagedFiles.length;
+    const key = `${staged}/${changed}`;
+    if (this.wcRow.key !== key) {
+      this.wcRow.filesCell.empty();
+      const statsEl = this.wcRow.filesCell.createSpan("gs-file-stats");
+      if (staged > 0) statsEl.createSpan("gs-stat-staged").setText(`+${staged}`);
+      if (changed > 0)
+        statsEl.createSpan("gs-stat-changed").setText(`${staged > 0 ? " / " : ""}${changed}`);
+      this.wcRow.key = key;
+    }
+
+    if (!this.wcRow.el.isConnected) this.tableBody.appendChild(this.wcRow.el);
   }
 
   /**
@@ -460,6 +636,8 @@ export class GraphView extends ItemView {
    * from --shortstat fall back to a one-off lookup, cached per hash.
    */
   private renderFileStats(commit: CommitInfo, cell: HTMLElement): void {
+    cell.dataset.hash = commit.hash;
+
     const stats = commit.stats ?? this.statsFallback.get(commit.hash);
     if (stats) {
       this.paintFileStats(stats, cell);
@@ -476,8 +654,10 @@ export class GraphView extends ItemView {
           deletions: files.reduce((s, f) => s + f.deletions, 0),
         };
         this.statsFallback.set(commit.hash, resolved);
-        // The row may have been recycled away while the lookup ran.
-        if (cell.isConnected) this.paintFileStats(resolved, cell);
+        // The row may have scrolled away or been rebound to another commit.
+        if (cell.isConnected && cell.dataset.hash === commit.hash) {
+          this.paintFileStats(resolved, cell);
+        }
       })
       .catch(() => {
         // leave the column empty for commits we cannot stat
@@ -840,6 +1020,19 @@ export class GraphView extends ItemView {
       cancelAnimationFrame(this.renderHandle);
       this.renderHandle = null;
     }
+    if (this.tooltipTimeout !== null) {
+      window.clearTimeout(this.tooltipTimeout);
+      this.tooltipTimeout = null;
+    }
+    this.mountedRows.clear();
+    this.rowPool = [];
+    this.wcRow = null;
+    this.edgeChunks.clear();
+    this.pathPool = [];
+    this.circlePool = [];
+    this.wcRing = null;
+    this.wcDot = null;
+    this.statsFallback.clear();
     this.hidePopup();
     this.hideCommitTooltip();
   }

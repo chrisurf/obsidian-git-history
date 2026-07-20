@@ -12,26 +12,36 @@ export function computeGraphLayout(commits: CommitInfo[]): GraphData {
   const edges: GraphEdge[] = [];
 
   const activeLanes: (string | null)[] = [];
+  /** Reverse index of activeLanes, so lane lookup stays O(1) as the graph grows. */
+  const laneOf = new Map<string, number>();
   let colorCounter = 0;
   const commitColors = new Map<string, number>();
+
+  function setLane(index: number, hash: string | null): void {
+    const previous = activeLanes[index];
+    if (previous !== null && previous !== undefined) laneOf.delete(previous);
+    activeLanes[index] = hash;
+    if (hash !== null) laneOf.set(hash, index);
+  }
 
   function allocateLane(hash: string): number {
     for (let i = 0; i < activeLanes.length; i++) {
       if (activeLanes[i] === null) {
-        activeLanes[i] = hash;
+        setLane(i, hash);
         return i;
       }
     }
-    activeLanes.push(hash);
+    activeLanes.push(null);
+    setLane(activeLanes.length - 1, hash);
     return activeLanes.length - 1;
   }
 
   function findLane(hash: string): number {
-    return activeLanes.indexOf(hash);
+    return laneOf.get(hash) ?? -1;
   }
 
   function freeLane(index: number): void {
-    activeLanes[index] = null;
+    setLane(index, null);
   }
 
   function getColor(hash: string): number {
@@ -62,7 +72,7 @@ export function computeGraphLayout(commits: CommitInfo[]): GraphData {
 
       if (parentLane === -1) {
         if (pi === 0) {
-          activeLanes[col] = parentHash;
+          setLane(col, parentHash);
           parentLane = col;
           if (!commitColors.has(parentHash)) {
             commitColors.set(parentHash, color);
