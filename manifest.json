@@ -1,7 +1,7 @@
 {
   "id": "git-history",
   "name": "Git History",
-  "version": "0.1.0",
+  "version": "1.0.0",
   "minAppVersion": "1.5.0",
   "description": "Full Git management with GitKraken-style commit graph, source control panel, and diff viewer.",
   "author": "chrisurf",
