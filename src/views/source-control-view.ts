@@ -307,12 +307,6 @@ export class SourceControlView extends ItemView {
         .setIcon("git-branch")
         .onClick(() => this.plugin.openGraphView()),
     );
-    menu.addItem((i) =>
-      i
-        .setTitle("Open History")
-        .setIcon("history")
-        .onClick(() => this.plugin.openHistoryView()),
-    );
     menu.showAtMouseEvent(event);
   }
 

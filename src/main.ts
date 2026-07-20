@@ -2,7 +2,6 @@ import * as fs from "fs";
 import { Plugin, WorkspaceLeaf, Notice, PluginSettingTab, App, Setting } from "obsidian";
 import {
   SOURCE_CONTROL_VIEW_TYPE,
-  HISTORY_VIEW_TYPE,
   GRAPH_VIEW_TYPE,
   DIFF_VIEW_TYPE,
   GitHistorySettings,
@@ -12,10 +11,12 @@ import {
 import { GitService } from "./git/git-service";
 import { RepoStore } from "./store/repo-store";
 import { SourceControlView } from "./views/source-control-view";
-import { HistoryView } from "./views/history-view";
 import { GraphView } from "./views/graph-view";
 import { DiffView } from "./views/diff-view";
 import { StatusBarController } from "./components/status-bar";
+
+/** View type of the removed history panel, kept only to clean up old workspaces. */
+const LEGACY_HISTORY_VIEW_TYPE = "git-history-history";
 
 export default class GitHistoryPlugin extends Plugin {
   settings: GitHistorySettings = DEFAULT_SETTINGS;
@@ -44,9 +45,13 @@ export default class GitHistoryPlugin extends Plugin {
     }
 
     this.registerView(SOURCE_CONTROL_VIEW_TYPE, (leaf) => new SourceControlView(leaf, this));
-    this.registerView(HISTORY_VIEW_TYPE, (leaf) => new HistoryView(leaf, this));
     this.registerView(GRAPH_VIEW_TYPE, (leaf) => new GraphView(leaf, this));
     this.registerView(DIFF_VIEW_TYPE, (leaf) => new DiffView(leaf, this));
+
+    // The standalone history panel was replaced by the Graph tab. A workspace
+    // saved by an older version still restores its leaf, which would now open
+    // as an empty pane nobody can close from inside the plugin.
+    this.app.workspace.detachLeavesOfType(LEGACY_HISTORY_VIEW_TYPE);
 
     this.addRibbonIcon("git-branch", "Git History", () => {
       this.openSourceControlView();
@@ -71,12 +76,6 @@ export default class GitHistoryPlugin extends Plugin {
       id: "open-source-control",
       name: "Open Source Control",
       callback: () => this.openSourceControlView(),
-    });
-
-    this.addCommand({
-      id: "open-history",
-      name: "Open History",
-      callback: () => this.openHistoryView(),
     });
 
     this.addCommand({
@@ -165,17 +164,6 @@ export default class GitHistoryPlugin extends Plugin {
         }
       },
     });
-
-    this.addCommand({
-      id: "show-file-history",
-      name: "Show File History",
-      checkCallback: (checking) => {
-        const file = this.app.workspace.getActiveFile();
-        if (!file) return false;
-        if (checking) return true;
-        this.openFileHistory(file.path);
-      },
-    });
   }
 
   async openSourceControlView(): Promise<void> {
@@ -209,19 +197,6 @@ export default class GitHistoryPlugin extends Plugin {
     }
   }
 
-  async openHistoryView(): Promise<void> {
-    const existing = this.app.workspace.getLeavesOfType(HISTORY_VIEW_TYPE);
-    if (existing.length > 0) {
-      this.app.workspace.revealLeaf(existing[0]);
-      return;
-    }
-    const leaf = this.app.workspace.getRightLeaf(false);
-    if (leaf) {
-      await leaf.setViewState({ type: HISTORY_VIEW_TYPE, active: true });
-      this.app.workspace.revealLeaf(leaf);
-    }
-  }
-
   async openGraphView(): Promise<void> {
     const existing = this.app.workspace.getLeavesOfType(GRAPH_VIEW_TYPE);
     if (existing.length > 0) {
@@ -243,20 +218,6 @@ export default class GitHistoryPlugin extends Plugin {
       view.setFile(path, ref, staged);
       this.app.workspace.revealLeaf(leaf);
     }
-  }
-
-  async openFileHistory(path: string): Promise<void> {
-    const existing = this.app.workspace.getLeavesOfType(HISTORY_VIEW_TYPE);
-    let leaf: WorkspaceLeaf;
-    if (existing.length > 0) {
-      leaf = existing[0];
-    } else {
-      leaf = this.app.workspace.getRightLeaf(false) as WorkspaceLeaf;
-      await leaf.setViewState({ type: HISTORY_VIEW_TYPE, active: true });
-    }
-    const view = leaf.view as HistoryView;
-    view.setFilterPath(path);
-    this.app.workspace.revealLeaf(leaf);
   }
 
   private setupAutoRefresh(): void {

@@ -1,5 +1,4 @@
 export const SOURCE_CONTROL_VIEW_TYPE = "git-history-source-control";
-export const HISTORY_VIEW_TYPE = "git-history-history";
 export const GRAPH_VIEW_TYPE = "git-history-graph";
 export const DIFF_VIEW_TYPE = "git-history-diff";
 

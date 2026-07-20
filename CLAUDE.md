@@ -2,7 +2,7 @@
 
 ## Project Overview
 
-Obsidian plugin for Git management: interactive commit graph, source control panel, diff viewer, and history browser. Desktop-only (requires Node.js/Electron for Git operations).
+Obsidian plugin for Git management: interactive commit graph, source control panel, and diff viewer. Desktop-only (requires Node.js/Electron for Git operations).
 
 ## Tech Stack
 
@@ -62,7 +62,6 @@ src/
 └── views/
     ├── source-control-view.ts  # Main source control sidebar
     ├── graph-view.ts           # Full-page commit graph
-    ├── history-view.ts         # Commit history list
     └── diff-view.ts            # Side-by-side/unified diff viewer
 ```
 

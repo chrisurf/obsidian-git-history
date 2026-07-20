@@ -104,7 +104,6 @@ async function mount(status: FileStatus[]) {
     git,
     settings: { debounceMs: 0 },
     openDiff: () => {},
-    openFileHistory: () => {},
     openGraphView: () => {},
   } as never);
 
