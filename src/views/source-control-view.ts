@@ -1,5 +1,5 @@
 import { ItemView, WorkspaceLeaf, setIcon, Menu, Notice } from "obsidian";
-import { SOURCE_CONTROL_VIEW_TYPE, FileStatus, GraphNode, CommitInfo } from "../types";
+import { SOURCE_CONTROL_VIEW_TYPE, FileStatus, GraphNode, CommitInfo, CommitStats } from "../types";
 import { RepoStore } from "../store/repo-store";
 import { GitService } from "../git/git-service";
 import { computeGraphLayout, formatRelativeDate } from "../utils/graph-layout";
@@ -30,7 +30,11 @@ export class SourceControlView extends ItemView {
   private tabBtns: Record<string, HTMLElement> = {};
 
   private graphNodes: GraphNode[] = [];
+  /** Lazily resolved stats for commits git omits from --shortstat. */
+  private statsFallback = new Map<string, CommitStats>();
   private graphListEl: HTMLElement | null = null;
+  private sgWcRow: HTMLElement | null = null;
+  private sgWcMeta: HTMLElement | null = null;
   private graphSelectedHash: string | null = null;
   private focusHandler: (() => void) | null = null;
   private tooltipEl: HTMLElement | null = null;
@@ -78,7 +82,8 @@ export class SourceControlView extends ItemView {
     this.registerEvent(
       this.store.on("status-changed", () => {
         this.renderFiles();
-        if (this.activeTab === "graph") this.rebuildSidebarGraph();
+        // Commits are unchanged, so only the working changes row needs updating.
+        if (this.activeTab === "graph") this.syncSidebarWorkingRow();
       }),
     );
     this.registerEvent(this.store.on("branch-changed", () => this.updateBranch()));
@@ -932,6 +937,45 @@ export class SourceControlView extends ItemView {
     this.renderSidebarGraphList();
   }
 
+  /**
+   * Creates or updates the working changes row in place. A status change only
+   * affects this one row, so it must not drag the whole commit list — and with
+   * the vault watcher firing on every edit, it was doing exactly that.
+   */
+  private syncSidebarWorkingRow(): void {
+    if (!this.graphListEl) return;
+
+    if (this.store.status.length === 0) {
+      this.sgWcRow?.remove();
+      this.sgWcRow = null;
+      this.sgWcMeta = null;
+      return;
+    }
+
+    if (!this.sgWcRow) {
+      const row = createDiv("gs-sg-row gs-sg-row-wc");
+      const avatarCol = row.createDiv("gs-sg-avatar-col");
+      setIcon(avatarCol.createDiv("gs-sg-avatar gs-sg-avatar-wc"), "pen-line");
+
+      const info = row.createDiv("gs-sg-info");
+      info.createSpan("gs-sg-msg").setText("Working Changes");
+      this.sgWcMeta = info.createDiv("gs-sg-meta-line").createSpan("gs-sg-meta");
+      row.addEventListener("click", () => this.switchTab("changes"));
+
+      this.sgWcRow = row;
+    }
+
+    const total =
+      this.store.changedFiles.length +
+      this.store.untrackedFiles.length +
+      this.store.stagedFiles.length;
+    this.sgWcMeta?.setText(`${total} file${total !== 1 ? "s" : ""} · You`);
+
+    if (this.graphListEl.firstChild !== this.sgWcRow) {
+      this.graphListEl.prepend(this.sgWcRow);
+    }
+  }
+
   private sidebarGraphFilter = "";
 
   private filterSidebarGraph(text: string): void {
@@ -943,26 +987,8 @@ export class SourceControlView extends ItemView {
     if (!this.graphListEl) return;
     this.graphListEl.empty();
 
-    const hasWC = this.store.status.length > 0;
-    if (hasWC) {
-      const wcRow = this.graphListEl.createDiv("gs-sg-row gs-sg-row-wc");
-      const avatarCol = wcRow.createDiv("gs-sg-avatar-col");
-      const wcAvatar = avatarCol.createDiv("gs-sg-avatar gs-sg-avatar-wc");
-      setIcon(wcAvatar, "pen-line");
-
-      const info = wcRow.createDiv("gs-sg-info");
-      info.createSpan("gs-sg-msg").setText("Working Changes");
-      const metaLine = info.createDiv("gs-sg-meta-line");
-      const totalChanges =
-        this.store.changedFiles.length +
-        this.store.untrackedFiles.length +
-        this.store.stagedFiles.length;
-      metaLine
-        .createSpan("gs-sg-meta")
-        .setText(`${totalChanges} file${totalChanges !== 1 ? "s" : ""} · You`);
-
-      wcRow.addEventListener("click", () => this.switchTab("changes"));
-    }
+    this.syncSidebarWorkingRow();
+    const hasWC = this.sgWcRow !== null;
 
     for (let i = 0; i < this.graphNodes.length; i++) {
       const node = this.graphNodes[i];
@@ -1013,7 +1039,7 @@ export class SourceControlView extends ItemView {
       const metaLine = info.createDiv("gs-sg-meta-line");
       const meta = metaLine.createSpan("gs-sg-meta");
       meta.setText(`${commit.shortHash} · ${commit.author} · ${formatRelativeDate(commit.date)}`);
-      this.loadChangesBar(commit.hash, metaLine);
+      this.renderChangesBar(commit, metaLine);
 
       row.addEventListener("mouseenter", () => {
         if (this.tooltipTimeout) clearTimeout(this.tooltipTimeout);
@@ -1156,28 +1182,51 @@ export class SourceControlView extends ItemView {
     }
   }
 
-  private async loadChangesBar(hash: string, container: HTMLElement): Promise<void> {
-    try {
-      const files = await this.git.showCommitFiles(hash);
-      if (files.length === 0) return;
-      const totalAdd = files.reduce((s, f) => s + f.additions, 0);
-      const totalDel = files.reduce((s, f) => s + f.deletions, 0);
-      const total = totalAdd + totalDel;
-      if (total === 0) return;
-
-      const wrap = container.createDiv("gs-sg-changes-bar-wrap");
-      const icon = wrap.createSpan("gs-sg-changes-icon");
-      setIcon(icon, "file");
-      wrap.createSpan("gs-sg-changes-count").setText(String(files.length));
-      const bar = wrap.createDiv("gs-sg-changes-bar");
-      const addPct = Math.round((totalAdd / total) * 100);
-      const addSegment = bar.createDiv("gs-sg-changes-add");
-      addSegment.style.width = addPct + "%";
-      const delSegment = bar.createDiv("gs-sg-changes-del");
-      delSegment.style.width = 100 - addPct + "%";
-    } catch {
-      // ignore
+  /**
+   * Renders the changes bar for a commit. Stats arrive with the commit log, so
+   * this is synchronous and costs no git process — the list renders one row per
+   * commit, and a lookup per row meant hundreds of processes per rebuild.
+   * Only commits git emits no stat block for fall back, cached per hash.
+   */
+  private renderChangesBar(commit: CommitInfo, container: HTMLElement): void {
+    const stats = commit.stats ?? this.statsFallback.get(commit.hash);
+    if (stats) {
+      this.paintChangesBar(stats, container);
+      return;
     }
+    if (this.statsFallback.has(commit.hash)) return;
+
+    container.dataset.hash = commit.hash;
+    void this.git
+      .showCommitFiles(commit.hash)
+      .then((files) => {
+        const resolved: CommitStats = {
+          filesChanged: files.length,
+          additions: files.reduce((s, f) => s + f.additions, 0),
+          deletions: files.reduce((s, f) => s + f.deletions, 0),
+        };
+        this.statsFallback.set(commit.hash, resolved);
+        if (container.isConnected && container.dataset.hash === commit.hash) {
+          this.paintChangesBar(resolved, container);
+        }
+      })
+      .catch(() => {
+        // leave the bar empty for commits we cannot stat
+      });
+  }
+
+  private paintChangesBar(stats: CommitStats, container: HTMLElement): void {
+    const total = stats.additions + stats.deletions;
+    if (stats.filesChanged === 0 || total === 0) return;
+
+    const wrap = container.createDiv("gs-sg-changes-bar-wrap");
+    const icon = wrap.createSpan("gs-sg-changes-icon");
+    setIcon(icon, "file");
+    wrap.createSpan("gs-sg-changes-count").setText(String(stats.filesChanged));
+    const bar = wrap.createDiv("gs-sg-changes-bar");
+    const addPct = Math.round((stats.additions / total) * 100);
+    bar.createDiv("gs-sg-changes-add").style.width = addPct + "%";
+    bar.createDiv("gs-sg-changes-del").style.width = 100 - addPct + "%";
   }
 
   private el(tag: string, cls: string, text?: string): HTMLElement {
