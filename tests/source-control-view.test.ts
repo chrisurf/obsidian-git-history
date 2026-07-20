@@ -338,3 +338,32 @@ describe("SourceControlView — nested repositories", () => {
     expect(Notice.messages).toEqual([]);
   });
 });
+
+describe("SourceControlView — icons", () => {
+  const iconOf = (root: HTMLElement, label: string): string | undefined =>
+    findButton(root, label)
+      ?.querySelector("svg")
+      ?.getAttribute("class")
+      ?.replace("svg-icon lucide-", "");
+
+  it("uses one discard icon for all three discard actions", async () => {
+    const { view } = await mount(screenshotStatus());
+    // Expand the tree so the folder-level action exists too.
+    findButton(view.contentEl, "Expand All")?.dispatchEvent(
+      new MouseEvent("click", { bubbles: true }),
+    );
+    flushFrames();
+
+    const icons = ["Discard All", "Discard All in Folder", "Discard Changes"].map((label) => [
+      label,
+      iconOf(view.contentEl, label),
+    ]);
+    for (const [label, icon] of icons) {
+      expect(icon, `${label} has no icon`).toBeDefined();
+    }
+    expect(
+      new Set(icons.map(([, icon]) => icon)).size,
+      `mismatched icons: ${JSON.stringify(icons)}`,
+    ).toBe(1);
+  });
+});

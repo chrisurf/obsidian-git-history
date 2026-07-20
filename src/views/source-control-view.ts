@@ -470,7 +470,7 @@ export class SourceControlView extends ItemView {
     }
     if (group === "changed") {
       const btn = headerActions.createEl("button", { cls: "gs-icon-btn gs-icon-btn-sm" });
-      setIcon(btn, "rotate-ccw");
+      setIcon(btn, "undo");
       btn.setAttribute("aria-label", "Discard All");
       btn.addEventListener("click", async (e) => {
         e.stopPropagation();
