@@ -11,6 +11,12 @@ export interface FileStatus {
   indexStatus: FileStatusCode | " ";
   workingStatus: FileStatusCode | " ";
   staged: boolean;
+  /**
+   * Untracked entry that git reports as a directory rather than a file, i.e. a
+   * nested repository. `git add` refuses these (or silently turns them into a
+   * gitlink), so staging has to leave them alone.
+   */
+  embeddedRepo?: boolean;
 }
 
 export interface CommitStats {

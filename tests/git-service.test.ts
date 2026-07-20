@@ -1,7 +1,7 @@
 // @vitest-environment node
 import { describe, it, expect, beforeAll, afterAll } from "vitest";
 import { execFileSync } from "child_process";
-import { mkdtempSync, rmSync, writeFileSync } from "fs";
+import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from "fs";
 import { tmpdir } from "os";
 import { join } from "path";
 import { GitService } from "../src/git/git-service";
@@ -153,5 +153,75 @@ describe("GitService.log", () => {
       const files = Number(raw.match(/(\d+) files? changed/)?.[1] ?? 0);
       expect(commit.stats.filesChanged, `mismatch for "${commit.message}"`).toBe(files);
     }
+  });
+});
+
+/**
+ * A vault often contains nested repositories — a plugin checked out into
+ * `.obsidian/plugins`, a folder cloned from elsewhere. `git add -A` aborts on
+ * those ("does not have a commit checked out") and then stages *nothing*, so
+ * Stage All has to route around them.
+ */
+describe("staging a vault that contains nested repositories", () => {
+  let vault: string;
+  let svc: GitService;
+
+  const inVault = (...args: string[]): string =>
+    execFileSync("git", args, { cwd: vault, encoding: "utf8" }).trim();
+
+  beforeAll(() => {
+    vault = mkdtempSync(join(tmpdir(), "git-history-nested-"));
+    inVault("init", "-q", "-b", "main", ".");
+    inVault("config", "user.email", "test@example.com");
+    inVault("config", "user.name", "Test User");
+    writeFileSync(join(vault, "tracked.md"), "one\n");
+    inVault("add", ".");
+    inVault("commit", "-qm", "root");
+
+    writeFileSync(join(vault, "tracked.md"), "two\n");
+    mkdirSync(join(vault, "notes", "deep"), { recursive: true });
+    writeFileSync(join(vault, "notes", "deep", "new.md"), "new\n");
+
+    // Nested repo without any commit — the one that makes `git add -A` fatal.
+    mkdirSync(join(vault, "verification"));
+    execFileSync("git", ["init", "-q", "."], { cwd: join(vault, "verification") });
+
+    // Nested repo with a commit — `git add -A` only warns about this one.
+    const plugin = join(vault, ".obsidian", "plugins", "obsidian-git-history");
+    mkdirSync(plugin, { recursive: true });
+    writeFileSync(join(plugin, "main.js"), "x\n");
+    for (const args of [
+      ["init", "-q", "."],
+      ["config", "user.email", "test@example.com"],
+      ["config", "user.name", "Test User"],
+      ["add", "."],
+      ["commit", "-qm", "plugin"],
+    ]) {
+      execFileSync("git", args, { cwd: plugin });
+    }
+
+    svc = new GitService(vault);
+  });
+
+  afterAll(() => rmSync(vault, { recursive: true, force: true }));
+
+  it("lists untracked files individually instead of collapsing the folder", async () => {
+    const paths = (await svc.status()).map((f) => f.path);
+    expect(paths).toContain("notes/deep/new.md");
+    expect(paths).not.toContain("notes");
+  });
+
+  it("flags nested repositories", async () => {
+    const status = await svc.status();
+    const embedded = status.filter((f) => f.embeddedRepo).map((f) => f.path);
+    expect(embedded.sort()).toEqual([".obsidian/plugins/obsidian-git-history", "verification"]);
+  });
+
+  it("stages everything else and reports what it skipped", async () => {
+    const { skipped } = await svc.stageAll();
+    expect(skipped.sort()).toEqual([".obsidian/plugins/obsidian-git-history", "verification"]);
+
+    const staged = inVault("diff", "--cached", "--name-only").split("\n").filter(Boolean);
+    expect(staged.sort()).toEqual(["notes/deep/new.md", "tracked.md"]);
   });
 });

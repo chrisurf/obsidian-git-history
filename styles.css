@@ -752,6 +752,12 @@
   height: 16px;
 }
 
+/* Nested repositories are listed for information only — git cannot stage them. */
+.gs-tree-file-embedded .gs-tree-filename {
+  font-style: italic;
+  opacity: 0.7;
+}
+
 /* Folder icon color */
 .gs-tree-folder-icon {
   display: flex;

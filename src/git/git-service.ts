@@ -69,7 +69,11 @@ export class GitService {
   }
 
   async status(): Promise<FileStatus[]> {
-    const out = await this.exec(["status", "--porcelain=v2", "-z", "--untracked-files=normal"]);
+    // `-uall` lists untracked files individually instead of collapsing a whole
+    // directory into one `dir/` entry, which is what the file tree needs to
+    // show and what per-file staging needs to address. The only entries that
+    // stay directories are nested repositories.
+    const out = await this.exec(["status", "--porcelain=v2", "-z", "--untracked-files=all"]);
     return this.parseStatusV2(out);
   }
 
@@ -102,12 +106,14 @@ export class GitService {
           staged: xy[0] !== "." && xy[0] !== "?" && xy[0] !== " ",
         });
       } else if (line.startsWith("? ")) {
-        const path = line.substring(2).replace(/\/+$/, "");
+        const raw = line.substring(2);
+        const path = raw.replace(/\/+$/, "");
         entries.push({
           path,
           indexStatus: " ",
           workingStatus: "?",
           staged: false,
+          embeddedRepo: raw !== path,
         });
       } else if (line.startsWith("u ")) {
         const fields = line.split(" ");
@@ -124,13 +130,38 @@ export class GitService {
     return entries;
   }
 
+  /** Keeps `git add` argument lists below the OS limit on large vaults. */
+  private static readonly PATHS_PER_CALL = 200;
+
   async stage(paths: string[]): Promise<void> {
     if (paths.length === 0) return;
-    await this.enqueue(() => this.exec(["add", "--", ...paths]));
+    await this.enqueue(async () => {
+      for (let i = 0; i < paths.length; i += GitService.PATHS_PER_CALL) {
+        const chunk = paths.slice(i, i + GitService.PATHS_PER_CALL);
+        await this.exec(["add", "-A", "--", ...chunk]);
+      }
+    });
   }
 
-  async stageAll(): Promise<void> {
-    await this.enqueue(() => this.exec(["add", "-A"]));
+  /**
+   * Stages everything except nested repositories. A plain `git add -A` aborts
+   * with "does not have a commit checked out" as soon as the vault contains an
+   * embedded repo without commits, and then stages *nothing at all* — so the
+   * paths are collected from status and the embedded repos are left out.
+   * Returns the paths that were skipped so the caller can say so.
+   */
+  async stageAll(): Promise<{ skipped: string[] }> {
+    const status = await this.status();
+    const skipped = status.filter((f) => f.embeddedRepo).map((f) => f.path);
+    if (skipped.length === 0) {
+      await this.enqueue(() => this.exec(["add", "-A"]));
+      return { skipped };
+    }
+    const paths = status
+      .filter((f) => !f.embeddedRepo)
+      .flatMap((f) => (f.originalPath ? [f.path, f.originalPath] : [f.path]));
+    await this.stage(paths);
+    return { skipped };
   }
 
   async unstage(paths: string[]): Promise<void> {

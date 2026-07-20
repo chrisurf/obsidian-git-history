@@ -454,7 +454,12 @@ export class SourceControlView extends ItemView {
       btn.addEventListener("click", async (e) => {
         e.stopPropagation();
         try {
-          await this.git.stageAll();
+          const { skipped } = await this.git.stageAll();
+          if (skipped.length > 0) {
+            new Notice(
+              `Skipped ${skipped.length} nested Git ${skipped.length === 1 ? "repository" : "repositories"}: ${skipped.join(", ")}`,
+            );
+          }
         } catch (err) {
           new Notice(`Stage all failed: ${err instanceof Error ? err.message : String(err)}`);
         }
@@ -523,7 +528,9 @@ export class SourceControlView extends ItemView {
     for (const child of node.children) {
       if (child.isDir) {
         paths.push(...this.collectFilePaths(child));
-      } else if (child.file) {
+      } else if (child.file && !child.file.embeddedRepo) {
+        // `git add` cannot index a nested repository, and one of them in the
+        // list makes the whole call fail.
         paths.push(child.file.path);
       }
     }
@@ -661,11 +668,18 @@ export class SourceControlView extends ItemView {
       svg: "image",
       gif: "image",
     };
-    setIcon(fileIcon, iconMap[ext] || "file");
+    setIcon(fileIcon, file.embeddedRepo ? "git-branch" : iconMap[ext] || "file");
     fileIcon.addClass(`gs-ext-${ext || "default"}`);
 
     const nameEl = row.createSpan("gs-tree-filename");
     nameEl.setText(file.path.split("/").pop() || file.path);
+    if (file.embeddedRepo) {
+      row.addClass("gs-tree-file-embedded");
+      row.setAttribute(
+        "aria-label",
+        "Nested Git repository — cannot be staged. Add it as a submodule or ignore it.",
+      );
+    }
 
     const rightSide = row.createDiv("gs-tree-file-right");
 
@@ -694,7 +708,7 @@ export class SourceControlView extends ItemView {
       });
     }
 
-    if (group !== "staged" && group !== "conflict") {
+    if (group !== "staged" && group !== "conflict" && !file.embeddedRepo) {
       const stageBtn = actions.createEl("button", { cls: "gs-action-btn" });
       setIcon(stageBtn, "plus");
       stageBtn.setAttribute("aria-label", "Stage Changes");
