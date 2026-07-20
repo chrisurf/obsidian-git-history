@@ -52,10 +52,34 @@ export class WorkspaceLeaf {
   view: unknown = null;
 }
 
+/** Vault paths the mocked app knows about; tests add what they need. */
+export const vaultFiles = new Set<string>();
+/** Files opened through the workspace, for assertions. */
+export const openedFiles: string[] = [];
+
+export class TFile {
+  constructor(public path: string) {}
+}
+
+const mockApp = {
+  vault: {
+    getAbstractFileByPath: (path: string): TFile | null =>
+      vaultFiles.has(path) ? new TFile(path) : null,
+  },
+  workspace: {
+    openLinkText: (): void => {},
+    getLeaf: (): { openFile: (file: TFile) => Promise<void> } => ({
+      openFile: async (file: TFile): Promise<void> => {
+        openedFiles.push(file.path);
+      },
+    }),
+  },
+};
+
 export class ItemView extends Component {
   containerEl: HTMLElement;
   contentEl: HTMLElement;
-  app: Record<string, unknown> = {};
+  app: Record<string, unknown> = mockApp;
   leaf: WorkspaceLeaf;
 
   constructor(leaf: WorkspaceLeaf) {

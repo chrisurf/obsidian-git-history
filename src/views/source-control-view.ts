@@ -1,4 +1,4 @@
-import { ItemView, WorkspaceLeaf, setIcon, Menu, Notice } from "obsidian";
+import { ItemView, WorkspaceLeaf, setIcon, Menu, Notice, TFile } from "obsidian";
 import { SOURCE_CONTROL_VIEW_TYPE, FileStatus, GraphNode, CommitInfo, CommitStats } from "../types";
 import { RepoStore } from "../store/repo-store";
 import { GitService } from "../git/git-service";
@@ -46,10 +46,12 @@ export class SourceControlView extends ItemView {
 
   /**
    * Shortest time the progress bar stays up once it appeared. A fetch against a
-   * warm remote returns in well under 100ms, and a 2-3px line that appears for
-   * that long is not something anyone notices — it has to outlast a glance.
+   * warm remote returns in well under 100ms, and a thin line that appears for
+   * that long is not something anyone notices — it has to outlast a glance and,
+   * above all, one full sweep of the 0.8s animation. Cut it short and the bar
+   * looks stationary, because the segment never leaves the left edge.
    */
-  static readonly PROGRESS_MIN_MS = 700;
+  static readonly PROGRESS_MIN_MS = 900;
 
   private graphSubTabBtns: Record<string, HTMLElement> = {};
   private graphSubGraphPanel: HTMLElement | null = null;
@@ -776,6 +778,7 @@ export class SourceControlView extends ItemView {
         e.stopPropagation();
         this.plugin.openDiff(file.path);
       });
+      this.addOpenFileButton(actions, file);
     }
 
     if (group === "changed" && file.workingStatus !== "?") {
@@ -808,6 +811,7 @@ export class SourceControlView extends ItemView {
         e.stopPropagation();
         this.plugin.openDiff(file.path, undefined, true);
       });
+      this.addOpenFileButton(actions, file);
 
       const unstageBtn = actions.createEl("button", { cls: "gs-action-btn" });
       setIcon(unstageBtn, "minus");
@@ -863,6 +867,30 @@ export class SourceControlView extends ItemView {
     });
 
     this.loadFileStats(file, statsEl, group);
+  }
+
+  /**
+   * Opens the note itself, next to the button that opens its diff. Only offered
+   * for paths the vault actually holds: a deleted file has nothing to show, and
+   * `.obsidian/*` config files are not part of the vault index.
+   */
+  private addOpenFileButton(actions: HTMLElement, file: FileStatus): void {
+    const target = this.vaultFile(file.path);
+    if (!target) return;
+
+    const btn = actions.createEl("button", { cls: "gs-action-btn" });
+    setIcon(btn, "file");
+    btn.setAttribute("aria-label", "Open File");
+    btn.addEventListener("click", async (e) => {
+      e.stopPropagation();
+      const current = this.vaultFile(file.path);
+      if (current) await this.app.workspace.getLeaf(false).openFile(current);
+    });
+  }
+
+  private vaultFile(path: string): TFile | null {
+    const found = this.app.vault.getAbstractFileByPath(path);
+    return found instanceof TFile ? found : null;
   }
 
   private async loadFileStats(file: FileStatus, el: HTMLElement, group: string): Promise<void> {

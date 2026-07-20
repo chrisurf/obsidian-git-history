@@ -1,9 +1,10 @@
 import { describe, it, expect, beforeEach } from "vitest";
-import { WorkspaceLeaf, Notice } from "obsidian";
+import { WorkspaceLeaf, Notice, vaultFiles, openedFiles } from "obsidian";
 import { SourceControlView } from "../src/views/source-control-view";
 import { RepoStore } from "../src/store/repo-store";
 import type { GitService } from "../src/git/git-service";
 import type { FileStatus } from "../src/types";
+import { readFileSync } from "fs";
 import { flushFrames } from "./setup";
 
 /**
@@ -500,4 +501,95 @@ describe("SourceControlView — toolbar buttons drive the progress bar", () => {
       );
     });
   }
+});
+
+describe("SourceControlView — Open File", () => {
+  const rowFor = (view: { contentEl: HTMLElement }, name: string): HTMLElement | undefined =>
+    Array.from(view.contentEl.querySelectorAll(".gs-tree-file")).find(
+      (el) => el.querySelector(".gs-tree-filename")?.textContent === name,
+    ) as HTMLElement | undefined;
+
+  const expandAll = (view: { contentEl: HTMLElement }): void => {
+    findButton(view.contentEl, "Expand All")?.dispatchEvent(
+      new MouseEvent("click", { bubbles: true }),
+    );
+    flushFrames();
+  };
+
+  beforeEach(() => {
+    vaultFiles.clear();
+    openedFiles.length = 0;
+  });
+
+  it("sits between Open Changes and the stage button", async () => {
+    vaultFiles.add("Testing.md");
+    const status = [
+      ...screenshotStatus(),
+      { path: "Testing.md", indexStatus: ".", workingStatus: "M", staged: false },
+    ] as FileStatus[];
+    const { view } = await mount(status);
+    expandAll(view);
+
+    const labels = Array.from(rowFor(view, "Testing.md")!.querySelectorAll("button")).map((b) =>
+      b.getAttribute("aria-label"),
+    );
+    expect(labels).toEqual(["Open Changes", "Open File", "Discard Changes", "Stage Changes"]);
+  });
+
+  it("opens the file as it currently is", async () => {
+    vaultFiles.add("Testing.md");
+    const status = [
+      ...screenshotStatus(),
+      { path: "Testing.md", indexStatus: ".", workingStatus: "M", staged: false },
+    ] as FileStatus[];
+    const { view } = await mount(status);
+    expandAll(view);
+
+    rowFor(view, "Testing.md")
+      ?.querySelector('button[aria-label="Open File"]')
+      ?.dispatchEvent(new MouseEvent("click", { bubbles: true }));
+    await Promise.resolve();
+
+    expect(openedFiles).toEqual(["Testing.md"]);
+  });
+
+  it("is left out for paths the vault does not hold", async () => {
+    // .obsidian/* config files and deletions have nothing to open.
+    const { view } = await mount(screenshotStatus());
+    expandAll(view);
+
+    expect(rowFor(view, "workspace.json")?.querySelector('button[aria-label="Open File"]')).toBe(
+      null,
+    );
+  });
+});
+
+describe("progress bar timing", () => {
+  // happy-dom rewrites import.meta.url to an http URL, so read from the root.
+  const css = readFileSync("styles.css", "utf8");
+  const sweep = css.match(/animation:\s*gs-progress-slide\s+([\d.]+)s\s+(\w+[-\w]*)/);
+
+  it("moves at a constant speed", () => {
+    // ease-in-out spends the first third of the cycle creeping at the left
+    // edge, where the segment is still clipped — it reads as a stationary stub.
+    expect(sweep, "the animation is gone").not.toBeNull();
+    expect(sweep?.[2]).toBe("linear");
+  });
+
+  it("travels back and forth inside the track", () => {
+    // `alternate` from translateX(0) keeps the segment fully inside the clip at
+    // all times. A one-way sweep starts outside it and is invisible until it
+    // has crawled in, which is what made the bar look motionless.
+    expect(css).toMatch(/animation:\s*gs-progress-slide[^;]*alternate/);
+    expect(css).toMatch(
+      /@keyframes gs-progress-slide\s*\{\s*0%\s*\{\s*transform:\s*translateX\(0\)/,
+    );
+  });
+
+  it("stays up long enough for one full sweep", () => {
+    // Hiding the bar mid-sweep is what made it look motionless: the segment
+    // never got past the left edge before it disappeared again.
+    const durationMs = parseFloat(sweep![1]) * 1000;
+    expect(SourceControlView.PROGRESS_MIN_MS).toBeGreaterThanOrEqual(durationMs);
+  });
 });

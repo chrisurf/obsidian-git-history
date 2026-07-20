@@ -598,22 +598,39 @@
   opacity: 1;
   /* Indeterminate on purpose: git reports no usable progress for push, pull or
      fetch, and an invented percentage is worse than none. */
-  animation: gs-progress-slide 0.9s ease-in-out infinite;
+  /* Back and forth inside the track, at a constant speed. A one-way sweep
+     starts and ends outside the clip, so the segment spends a third of every
+     cycle invisible or crawling at an edge — which reads as standing still. */
+  animation: gs-progress-slide 0.7s linear infinite alternate;
 }
 
+/* 185% of the segment's own width is the width of the track minus the segment,
+   so it travels edge to edge and never leaves it. */
 @keyframes gs-progress-slide {
   0% {
-    transform: translateX(-100%);
+    transform: translateX(0);
   }
   100% {
-    transform: translateX(250%);
+    transform: translateX(185%);
+  }
+}
+
+@keyframes gs-progress-pulse {
+  0%,
+  100% {
+    opacity: 1;
+  }
+  50% {
+    opacity: 0.3;
   }
 }
 
 @media (prefers-reduced-motion: reduce) {
+  /* No travel, but it still has to read as active — a motionless bar is
+     indistinguishable from a decorative line. */
   .gs-progress-active .gs-progress-bar {
-    animation: none;
     width: 100%;
+    animation: gs-progress-pulse 1.6s ease-in-out infinite;
   }
 }
 
