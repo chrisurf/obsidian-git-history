@@ -1,4 +1,4 @@
-import { execFile } from "child_process";
+import { execFile, processEnv } from "../utils/node-api";
 import {
   FileStatus,
   FileStatusCode,
@@ -34,7 +34,7 @@ export class GitService {
           cwd: this.repoPath,
           maxBuffer: 50 * 1024 * 1024,
           timeout,
-          env: { ...process.env, GIT_TERMINAL_PROMPT: "0" },
+          env: { ...processEnv(), GIT_TERMINAL_PROMPT: "0" },
         },
         (error, stdout, stderr) => {
           if (error) {

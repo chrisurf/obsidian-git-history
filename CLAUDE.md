@@ -20,6 +20,7 @@ Obsidian plugin for Git management: interactive commit graph, source control pan
 - `npm run validate` — full pipeline: typecheck + lint + lint:css + format:check + test + build
 - `npm test` / `npm run test:watch` — Vitest
 - `npm run lint` / `npm run lint:fix` — ESLint (zero warnings allowed)
+- `npm run lint:review` — ESLint as the community review sees it (no Node types)
 - `npm run lint:css` — Stylelint
 - `npm run format` / `npm run format:check` — Prettier
 - `npm run typecheck` — `tsc --noEmit`
@@ -94,7 +95,10 @@ src/
 `npm run validate` is the gate, and CI fails on any warning. The lint setup is
 the same one the Obsidian community review runs
 (`eslint-plugin-obsidianmd` + typescript-eslint type-checked + stylelint), so
-what passes here passes review.
+what passes here passes review. It runs twice: once normally, once against
+`tsconfig.review.json`, which drops `@types/node` the way the review does —
+Node APIs are `any` there, so anything touching them goes through
+`src/utils/node-api.ts`.
 
 Write to the linters, not around them: use Obsidian's APIs over raw DOM and
 browser globals, keep state in CSS classes rather than inline styles, never

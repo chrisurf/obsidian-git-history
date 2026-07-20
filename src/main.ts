@@ -1,4 +1,3 @@
-import * as fs from "fs";
 import {
   Plugin,
   WorkspaceLeaf,
@@ -23,6 +22,7 @@ import { SourceControlView } from "./views/source-control-view";
 import { GraphView } from "./views/graph-view";
 import { DiffView } from "./views/diff-view";
 import { StatusBarController } from "./components/status-bar";
+import { watchPath, type FileWatcher } from "./utils/node-api";
 import { asVoid } from "./utils/async";
 
 /** View type of the removed history panel, kept only to clean up old workspaces. */
@@ -36,7 +36,7 @@ export default class GitHistoryPlugin extends Plugin {
   private refreshTimer: number | null = null;
   private debounceTimer: number | null = null;
   private fsDebounceTimer: number | null = null;
-  private fsWatcher: fs.FSWatcher | null = null;
+  private fsWatcher: FileWatcher | null = null;
 
   async onload(): Promise<void> {
     await this.loadSettings();
@@ -288,7 +288,7 @@ export default class GitHistoryPlugin extends Plugin {
     if (basePath) {
       const configPath = normalizePath(`${basePath}/${this.app.vault.configDir}`);
       try {
-        this.fsWatcher = fs.watch(configPath, { recursive: true }, () => {
+        this.fsWatcher = watchPath(configPath, { recursive: true }, () => {
           if (this.fsDebounceTimer) window.clearTimeout(this.fsDebounceTimer);
           this.fsDebounceTimer = window.setTimeout(() => {
             void this.store.refresh();

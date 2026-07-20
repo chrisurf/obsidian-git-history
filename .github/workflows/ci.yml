@@ -51,6 +51,12 @@ jobs:
       - name: ESLint
         run: npx eslint src/ --max-warnings 0
 
+      # The review type-checks without @types/node, where every Node API reads
+      # as `any`. Linting that way too keeps those findings from reappearing
+      # only after a submission.
+      - name: ESLint (review environment)
+        run: npx eslint src/ --config eslint.review.config.mjs --max-warnings 0
+
       - name: Stylelint
         run: npx stylelint styles.css
 

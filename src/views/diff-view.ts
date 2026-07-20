@@ -1,4 +1,4 @@
-import { execFile } from "child_process";
+import { execFile } from "../utils/node-api";
 import { ItemView, WorkspaceLeaf, Notice } from "obsidian";
 import { DIFF_VIEW_TYPE, FileDiff, DiffHunk, DiffLine } from "../types";
 import { GitService } from "../git/git-service";

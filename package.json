@@ -13,9 +13,10 @@
     "typecheck": "tsc --noEmit",
     "test": "vitest run",
     "test:watch": "vitest",
-    "validate": "npm run typecheck && npm run lint && npm run lint:css && npm run format:check && npm run test && npm run build",
+    "validate": "npm run typecheck && npm run lint && npm run lint:review && npm run lint:css && npm run format:check && npm run test && npm run build",
     "prepare": "husky",
-    "lint:css": "stylelint styles.css"
+    "lint:css": "stylelint styles.css",
+    "lint:review": "eslint src/ --config eslint.review.config.mjs --max-warnings 0"
   },
   "keywords": [
     "obsidian",
