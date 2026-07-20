@@ -839,27 +839,28 @@
 /* --- Sidebar graph sub-tabs --- */
 .gs-sg-subtabbar {
   display: flex;
-  gap: 12px;
-  padding: 4px 10px 0;
+  justify-content: flex-end;
+  gap: 10px;
+  padding: 0 10px;
   flex-shrink: 0;
+  margin-top: -2px;
 }
 .gs-sg-subtab {
-  padding: 2px 0 4px;
+  padding: 0;
   font-size: 11px;
   font-weight: 400;
   color: var(--gs-text-faint);
   background: none;
   border: none;
-  border-bottom: 1.5px solid transparent;
   cursor: pointer;
-  transition: color 0.15s, border-color 0.15s;
+  transition: color 0.15s;
+  line-height: 20px;
 }
 .gs-sg-subtab:hover {
   color: var(--gs-text-muted);
 }
 .gs-sg-subtab-active {
-  color: var(--gs-text);
-  border-bottom-color: var(--gs-accent);
+  color: var(--gs-accent);
   font-weight: 500;
 }
 
