@@ -152,6 +152,17 @@ export default class GitHistoryPlugin extends Plugin {
     });
 
     this.addCommand({
+      id: "show-file-history",
+      name: "Show File History",
+      checkCallback: (checking) => {
+        const file = this.app.workspace.getActiveFile();
+        if (!file) return false;
+        if (checking) return true;
+        this.openFileHistory(file.path);
+      },
+    });
+
+    this.addCommand({
       id: "init-repo",
       name: "Initialize Git Repository",
       callback: async () => {
@@ -208,6 +219,13 @@ export default class GitHistoryPlugin extends Plugin {
       await leaf.setViewState({ type: GRAPH_VIEW_TYPE, active: true });
       this.app.workspace.revealLeaf(leaf);
     }
+  }
+
+  /** Opens the graph narrowed to one file — the history of that note. */
+  async openFileHistory(path: string): Promise<void> {
+    await this.openGraphView();
+    const leaf = this.app.workspace.getLeavesOfType(GRAPH_VIEW_TYPE)[0];
+    if (leaf) (leaf.view as GraphView).setPathFilter(path);
   }
 
   async openDiff(path: string, ref?: string, staged = false): Promise<void> {

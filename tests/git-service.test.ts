@@ -225,3 +225,53 @@ describe("staging a vault that contains nested repositories", () => {
     expect(staged.sort()).toEqual(["notes/deep/new.md", "tracked.md"]);
   });
 });
+
+/** File history is `git log --follow`, and it has to survive a rename. */
+describe("log for a single file", () => {
+  let vault: string;
+  let svc: GitService;
+
+  const inVault = (...args: string[]): string =>
+    execFileSync("git", args, { cwd: vault, encoding: "utf8" }).trim();
+
+  beforeAll(() => {
+    vault = mkdtempSync(join(tmpdir(), "git-history-filelog-"));
+    inVault("init", "-q", "-b", "main", ".");
+    inVault("config", "user.email", "test@example.com");
+    inVault("config", "user.name", "Test User");
+
+    writeFileSync(join(vault, "note.md"), "one\n");
+    writeFileSync(join(vault, "other.md"), "x\n");
+    inVault("add", "-A");
+    inVault("commit", "-qm", "add both");
+
+    writeFileSync(join(vault, "other.md"), "y\n");
+    inVault("commit", "-qam", "touch other only");
+
+    writeFileSync(join(vault, "note.md"), "two\n");
+    inVault("commit", "-qam", "edit note");
+
+    inVault("mv", "note.md", "renamed-note.md");
+    inVault("commit", "-qm", "rename note");
+
+    svc = new GitService(vault);
+  });
+
+  afterAll(() => rmSync(vault, { recursive: true, force: true }));
+
+  it("returns only the commits that touched the file", async () => {
+    const messages = (await svc.log({ file: "renamed-note.md" })).map((c) => c.message);
+    expect(messages).not.toContain("touch other only");
+    expect(messages).toContain("edit note");
+  });
+
+  it("follows the file across a rename", async () => {
+    const messages = (await svc.log({ file: "renamed-note.md" })).map((c) => c.message);
+    expect(messages, "--follow did not reach beyond the rename").toContain("add both");
+  });
+
+  it("still returns the full log without a file", async () => {
+    const messages = (await svc.log({})).map((c) => c.message);
+    expect(messages).toContain("touch other only");
+  });
+});

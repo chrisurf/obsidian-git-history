@@ -27,11 +27,17 @@ function makeCommits(count: number): CommitInfo[] {
 }
 
 /** Records which per-commit lookups happen, so the N+1 regression stays caught. */
-const gitCalls = { showCommitFiles: [] as string[] };
+const gitCalls = {
+  showCommitFiles: [] as string[],
+  log: [] as ({ file?: string; all?: boolean } | undefined)[],
+};
 
 function makeGit(commits: CommitInfo[], status: FileStatus[]): GitService {
   return {
-    log: async () => commits,
+    log: async (opts?: { file?: string; all?: boolean }) => {
+      gitCalls.log.push(opts);
+      return opts?.file ? commits.slice(0, 3) : commits;
+    },
     status: async () => status,
     currentBranch: async () => "main",
     getAheadBehind: async () => ({ ahead: 0, behind: 0 }),
@@ -347,5 +353,66 @@ describe("GraphView filtering", () => {
     for (const row of rows) {
       expect(row.message).toBe(h.commits[row.top / ROW_HEIGHT].message);
     }
+  });
+});
+
+/**
+ * File history is the graph narrowed to one path — there is no second view for
+ * it, so the filter has to survive every code path that reloads the log.
+ */
+describe("GraphView — file history filter", () => {
+  const chip = (h: Harness): HTMLElement =>
+    h.view.contentEl.querySelector(".gs-path-chip") as HTMLElement;
+  const lastLog = (): { file?: string; all?: boolean } | undefined =>
+    gitCalls.log[gitCalls.log.length - 1];
+
+  beforeEach(() => {
+    gitCalls.log = [];
+  });
+
+  it("hides the chip while the whole repository is shown", async () => {
+    const h = await mount();
+    expect(chip(h).style.display).toBe("none");
+    expect(lastLog()?.file).toBeUndefined();
+  });
+
+  it("asks git for one file's history and names it in the chip", async () => {
+    const h = await mount();
+    h.view.setPathFilter("notes/Testing.md");
+    await Promise.resolve();
+    flushFrames();
+
+    expect(lastLog()?.file).toBe("notes/Testing.md");
+    expect(chip(h).style.display).not.toBe("none");
+    expect(chip(h).textContent).toContain("notes/Testing.md");
+  });
+
+  it("keeps the filter when the log is reloaded from the toolbar", async () => {
+    const h = await mount();
+    h.view.setPathFilter("notes/Testing.md");
+    await Promise.resolve();
+
+    const refresh = h.view.contentEl.querySelector(
+      'button[aria-label="Refresh"]',
+    ) as HTMLElement | null;
+    refresh?.dispatchEvent(new MouseEvent("click", { bubbles: true }));
+    await Promise.resolve();
+
+    expect(lastLog()?.file, "the toolbar dropped the path filter").toBe("notes/Testing.md");
+  });
+
+  it("goes back to the full log when the chip is cleared", async () => {
+    const h = await mount();
+    h.view.setPathFilter("notes/Testing.md");
+    await Promise.resolve();
+    flushFrames();
+
+    const clear = chip(h).querySelector("button") as HTMLElement;
+    clear.dispatchEvent(new MouseEvent("click", { bubbles: true }));
+    await Promise.resolve();
+    flushFrames();
+
+    expect(lastLog()?.file).toBeUndefined();
+    expect(chip(h).style.display).toBe("none");
   });
 });

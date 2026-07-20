@@ -762,6 +762,12 @@ export class SourceControlView extends ItemView {
       );
       menu.addItem((i) =>
         i
+          .setTitle("File History")
+          .setIcon("history")
+          .onClick(() => this.plugin.openFileHistory(file.path)),
+      );
+      menu.addItem((i) =>
+        i
           .setTitle("Open Diff")
           .setIcon("file-diff")
           .onClick(() => this.plugin.openDiff(file.path, undefined, group === "staged")),

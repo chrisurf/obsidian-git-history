@@ -70,6 +70,9 @@ export class GraphView extends ItemView {
   private maxColumns = 0;
   private selectedHash: string | null = null;
   private filterText = "";
+  /** When set, the log is restricted to one file's history (`git log --follow`). */
+  private pathFilter: string | null = null;
+  private pathChipEl: HTMLElement | null = null;
   private filteredIndices: number[] | null = null;
   private hasWorkingChanges = false;
   private tooltipEl: HTMLElement | null = null;
@@ -138,18 +141,53 @@ export class GraphView extends ItemView {
         // never needs computeGraphLayout() — it only affects the working
         // changes row. Vault edits fire this constantly while typing.
         const had = this.hasWorkingChanges;
-        this.hasWorkingChanges = this.store.status.length > 0;
+        this.hasWorkingChanges = this.pathFilter
+          ? this.store.status.some((f) => f.path === this.pathFilter)
+          : this.store.status.length > 0;
         if (had !== this.hasWorkingChanges) this.updateLayout();
         this.scheduleRender();
       }),
     );
 
     // Paint a first screenful quickly, then fill in the rest in the background.
-    await this.store.refreshLog({ all: true, maxCount: INITIAL_LOG_COUNT });
-    await Promise.all([
-      this.store.refreshLog({ all: true, maxCount: FULL_LOG_COUNT }),
-      this.store.refresh(),
-    ]);
+    await this.reloadLog(INITIAL_LOG_COUNT);
+    await Promise.all([this.reloadLog(FULL_LOG_COUNT), this.store.refresh()]);
+  }
+
+  /** Every log reload goes through here so the path filter is never dropped. */
+  private reloadLog(maxCount = FULL_LOG_COUNT, all = true): Promise<void> {
+    return this.store.refreshLog({
+      all: this.pathFilter ? false : all,
+      maxCount,
+      file: this.pathFilter ?? undefined,
+    });
+  }
+
+  /**
+   * Narrows the graph to a single file, the "file history" of that note. Pass
+   * null to go back to the full repository log.
+   */
+  setPathFilter(path: string | null): void {
+    this.pathFilter = path;
+    this.syncPathChip();
+    this.reloadLog();
+    this.store.refresh();
+  }
+
+  private syncPathChip(): void {
+    const chip = this.pathChipEl;
+    if (!chip) return;
+    chip.empty();
+    chip.style.display = this.pathFilter ? "" : "none";
+    if (!this.pathFilter) return;
+
+    const icon = chip.createSpan("gs-path-chip-icon");
+    setIcon(icon, "file-clock");
+    chip.createSpan("gs-path-chip-name").setText(this.pathFilter);
+    const clear = chip.createEl("button", { cls: "gs-path-chip-clear" });
+    setIcon(clear, "x");
+    clear.setAttribute("aria-label", "Show all commits");
+    clear.addEventListener("click", () => this.setPathFilter(null));
   }
 
   private buildToolbar(el: HTMLElement): void {
@@ -168,6 +206,9 @@ export class GraphView extends ItemView {
       this.applyFilter();
     });
 
+    this.pathChipEl = left.createDiv("gs-path-chip");
+    this.syncPathChip();
+
     const right = bar.createDiv("gs-toolbar-right");
 
     const allBtn = right.createEl("button", { cls: "gs-tbtn" });
@@ -184,20 +225,20 @@ export class GraphView extends ItemView {
       showAll = !showAll;
       branchFilterBtn.toggleClass("gs-tbtn-active", !showAll);
       allBtn.toggleClass("gs-tbtn-active", showAll);
-      this.store.refreshLog({ all: showAll, maxCount: FULL_LOG_COUNT });
+      this.reloadLog(FULL_LOG_COUNT, showAll);
     });
     allBtn.addEventListener("click", () => {
       showAll = true;
       allBtn.addClass("gs-tbtn-active");
       branchFilterBtn.removeClass("gs-tbtn-active");
-      this.store.refreshLog({ all: true, maxCount: FULL_LOG_COUNT });
+      this.reloadLog(FULL_LOG_COUNT);
     });
 
     const refreshBtn = right.createEl("button", { cls: "gs-tbtn" });
     setIcon(refreshBtn, "refresh-cw");
     refreshBtn.setAttribute("aria-label", "Refresh");
     refreshBtn.addEventListener("click", () => {
-      this.store.refreshLog({ all: showAll, maxCount: FULL_LOG_COUNT });
+      this.reloadLog(FULL_LOG_COUNT, showAll);
       this.store.refresh();
     });
   }

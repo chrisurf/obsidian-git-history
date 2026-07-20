@@ -44,6 +44,12 @@ Stage, commit, push, pull, and browse your entire commit history — without eve
 - **Changes bar** with additions/deletions per commit
 - Click a commit to expand details inline
 
+### File History
+
+- View the full commit history for any single file, inside the commit graph
+- Follows the file across renames
+- Open from the command palette or the context menu in Source Control
+
 ### Diff Viewer
 
 - **Side-by-side** and **inline** diff modes
@@ -84,6 +90,7 @@ Copy `main.js`, `manifest.json`, and `styles.css` into your vault's `.obsidian/p
 | Pull | Pull from remote |
 | Fetch | Fetch from remote |
 | Backup: Stage All, Commit & Push | One-click vault backup |
+| Show File History | Show the graph filtered to the active file |
 | Initialize Git Repository | Init a new repo in the vault |
 
 ## Settings
