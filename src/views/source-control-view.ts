@@ -43,8 +43,12 @@ export class SourceControlView extends ItemView {
   private progressHideTimer: number | null = null;
   private progressShownAt = 0;
 
-  /** Shortest time the progress bar stays up once it appeared. */
-  private static readonly PROGRESS_MIN_MS = 300;
+  /**
+   * Shortest time the progress bar stays up once it appeared. A fetch against a
+   * warm remote returns in well under 100ms, and a 2-3px line that appears for
+   * that long is not something anyone notices — it has to outlast a glance.
+   */
+  static readonly PROGRESS_MIN_MS = 700;
 
   private graphSubTabBtns: Record<string, HTMLElement> = {};
   private graphSubGraphPanel: HTMLElement | null = null;
@@ -1429,6 +1433,7 @@ export class SourceControlView extends ItemView {
 
   async onClose(): Promise<void> {
     if (this.focusHandler) window.removeEventListener("focus", this.focusHandler);
+    if (this.progressHideTimer) window.clearTimeout(this.progressHideTimer);
     this.hideCommitTooltip();
   }
 }

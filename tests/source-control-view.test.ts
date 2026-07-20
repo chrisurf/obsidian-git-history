@@ -51,6 +51,7 @@ function screenshotStatus(): FileStatus[] {
 }
 
 interface Calls {
+  release: Record<string, () => void>;
   stageAll: number;
   unstageAll: number;
   discardAll: number;
@@ -60,6 +61,7 @@ interface Calls {
 
 async function mount(status: FileStatus[]) {
   const calls: Calls = {
+    release: {},
     stageAll: 0,
     unstageAll: 0,
     discardAll: 0,
@@ -96,6 +98,12 @@ async function mount(status: FileStatus[]) {
     stage: async (paths: string[]) => {
       calls.stage.push(paths);
     },
+    // Toolbar commands: each one hands back a promise the test releases, so the
+    // bar can be observed while the command is still running.
+    fetch: () => new Promise<void>((r) => (calls.release.fetch = r)),
+    pull: () => new Promise<void>((r) => (calls.release.pull = r)),
+    push: () => new Promise<void>((r) => (calls.release.push = r)),
+    stashSave: () => new Promise<void>((r) => (calls.release.stash = r)),
   } as unknown as GitService;
 
   const store = new RepoStore(git);
@@ -376,8 +384,9 @@ describe("SourceControlView — progress bar", () => {
     view.contentEl.querySelector(".gs-progress") as HTMLElement;
   const active = (view: { contentEl: HTMLElement }): boolean =>
     bar(view).classList.contains("gs-progress-active");
-  /** Longer than PROGRESS_MIN_MS so the minimum-visible delay has elapsed. */
-  const settle = (): Promise<void> => new Promise((r) => setTimeout(r, 350));
+  /** Longer than the minimum-visible delay, read from the view so it stays in sync. */
+  const settle = (): Promise<void> =>
+    new Promise((r) => setTimeout(r, SourceControlView.PROGRESS_MIN_MS + 50));
 
   it("sits between the header and the tabs", async () => {
     const { view } = await mount(screenshotStatus());
@@ -448,4 +457,38 @@ describe("SourceControlView — progress bar", () => {
 
     expect(active(view), "the bar blinks on every vault edit").toBe(false);
   });
+});
+
+/**
+ * The bar is only worth anything if the toolbar buttons actually reach it.
+ * These click the real buttons instead of calling store.runTask() directly —
+ * the wiring in between is what the user sees.
+ */
+describe("SourceControlView — toolbar buttons drive the progress bar", () => {
+  const active = (view: { contentEl: HTMLElement }): boolean =>
+    (view.contentEl.querySelector(".gs-progress") as HTMLElement).classList.contains(
+      "gs-progress-active",
+    );
+
+  for (const [label, key] of [
+    ["Fetch", "fetch"],
+    ["Pull", "pull"],
+    ["Push", "push"],
+    ["Stash", "stash"],
+  ] as const) {
+    it(`shows the bar while ${label} is running`, async () => {
+      const { view, calls } = await mount(screenshotStatus());
+      expect(active(view)).toBe(false);
+
+      findButton(view.contentEl, label)?.dispatchEvent(new MouseEvent("click", { bubbles: true }));
+      await Promise.resolve();
+      await Promise.resolve();
+
+      expect(active(view), `clicking ${label} never reached the progress bar`).toBe(true);
+
+      calls.release[key]?.();
+      await new Promise((r) => setTimeout(r, SourceControlView.PROGRESS_MIN_MS + 50));
+      expect(active(view), `the bar kept running after ${label} finished`).toBe(false);
+    });
+  }
 });

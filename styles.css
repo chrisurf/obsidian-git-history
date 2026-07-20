@@ -537,7 +537,7 @@
 /* Progress bar between the header and the tabs. The track always occupies its
    row so the panel never shifts by 2px when a command starts. */
 .gs-progress {
-  height: 2px;
+  height: 3px;
   flex-shrink: 0;
   overflow: hidden;
   background: transparent;
@@ -559,7 +559,7 @@
   opacity: 1;
   /* Indeterminate on purpose: git reports no usable progress for push, pull or
      fetch, and an invented percentage is worse than none. */
-  animation: gs-progress-slide 1.1s ease-in-out infinite;
+  animation: gs-progress-slide 0.9s ease-in-out infinite;
 }
 
 @keyframes gs-progress-slide {
