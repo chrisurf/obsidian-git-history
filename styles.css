@@ -840,45 +840,43 @@
 .gs-sg-subtabbar {
   display: flex;
   justify-content: flex-end;
-  gap: 10px;
-  padding: 0 10px;
+  gap: 14px;
+  padding: 2px 10px 0;
   flex-shrink: 0;
-  margin-top: -2px;
-}
-.gs-sg-subtab,
-.gs-sg-subtab:hover,
-.gs-sg-subtab:focus,
-.gs-sg-subtab:active,
-.gs-sg-subtab-active,
-.gs-sg-subtab-active:hover,
-.gs-sg-subtab-active:focus {
-  background: transparent !important;
-  border: none !important;
-  border-top: none !important;
-  border-left: none !important;
-  border-right: none !important;
-  border-radius: 0 !important;
-  box-shadow: none !important;
-  outline: none !important;
 }
 .gs-sg-subtab {
-  padding: 2px 0 3px;
+  padding: 2px 0 4px;
   font-size: 11px;
   font-weight: 400;
   color: var(--gs-text-faint);
   cursor: pointer;
   line-height: 18px;
-  border-bottom: 2px solid transparent !important;
+  background: transparent !important;
+  border-top: none !important;
+  border-left: none !important;
+  border-right: none !important;
+  border-bottom: 2px solid transparent;
+  border-radius: 0 !important;
+  box-shadow: none !important;
+  outline: none !important;
 }
-.gs-sg-subtab:hover {
+.gs-sg-subtab:hover,
+.gs-sg-subtab:focus,
+.gs-sg-subtab:active {
   color: var(--gs-text-muted);
-  border-bottom: 2px solid transparent !important;
+  background: transparent !important;
+  border-top: none !important;
+  border-left: none !important;
+  border-right: none !important;
+  border-bottom: 2px solid transparent;
+  box-shadow: none !important;
 }
-.gs-sg-subtab-active,
-.gs-sg-subtab-active:hover {
+.gs-sg-subtab.gs-sg-subtab-active,
+.gs-sg-subtab.gs-sg-subtab-active:hover,
+.gs-sg-subtab.gs-sg-subtab-active:focus {
   color: var(--gs-accent);
   font-weight: 500;
-  border-bottom: 2px solid var(--gs-accent) !important;
+  border-bottom: 2px solid var(--gs-accent);
 }
 
 .gs-sg-subpanel {
