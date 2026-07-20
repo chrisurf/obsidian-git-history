@@ -1,7 +1,7 @@
 {
   "id": "git-history",
   "name": "Git History",
-  "version": "1.0.1",
+  "version": "1.0.2",
   "minAppVersion": "1.7.2",
   "description": "Manage Git repositories with an intuitive UI: interactive commit graph, source control panel, and diff viewer.",
   "author": "chrisurf",

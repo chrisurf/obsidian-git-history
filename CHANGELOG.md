@@ -1,3 +1,10 @@
+## [1.0.2](https://github.com/chrisurf/obsidian-git-history/compare/1.0.1...1.0.2) (2026-07-20)
+
+
+### Bug Fixes
+
+* clear the community review findings and enforce them in CI ([#6](https://github.com/chrisurf/obsidian-git-history/issues/6)) ([de52749](https://github.com/chrisurf/obsidian-git-history/commit/de527492cbbc0b98d68280ca9b0d73b8b060b2ba))
+
 ## [1.0.1](https://github.com/chrisurf/obsidian-git-history/compare/1.0.0...1.0.1) (2026-07-20)
 
 
