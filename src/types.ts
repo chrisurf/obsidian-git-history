@@ -128,6 +128,7 @@ export interface GitHistorySettings {
   treeView: boolean;
   ignoredPaths: string[];
   debounceMs: number;
+  showNestedRepos: boolean;
 }
 
 export const DEFAULT_SETTINGS: GitHistorySettings = {
@@ -140,4 +141,5 @@ export const DEFAULT_SETTINGS: GitHistorySettings = {
   treeView: false,
   ignoredPaths: [],
   debounceMs: 1000,
+  showNestedRepos: false,
 };

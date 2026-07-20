@@ -34,6 +34,7 @@ export default class GitHistoryPlugin extends Plugin {
     const basePath = adapter.getBasePath?.() ?? adapter.basePath ?? "";
     this.git = new GitService(basePath);
     this.store = new RepoStore(this.git);
+    this.store.showNestedRepos = this.settings.showNestedRepos;
 
     const isRepo = await this.git.isRepo();
     if (!isRepo) {
@@ -385,6 +386,20 @@ class GitHistorySettingTab extends PluginSettingTab {
         }
       }),
     );
+
+    new Setting(containerEl)
+      .setName("Show nested repositories")
+      .setDesc(
+        "Folders inside the vault that are Git repositories of their own cannot be staged, " +
+          "so they are hidden from the changes list. Turn this on to list them anyway.",
+      )
+      .addToggle((t) =>
+        t.setValue(this.plugin.settings.showNestedRepos).onChange(async (v) => {
+          this.plugin.settings.showNestedRepos = v;
+          this.plugin.store.showNestedRepos = v;
+          await this.plugin.saveSettings();
+        }),
+      );
 
     new Setting(containerEl)
       .setName("File watcher debounce (ms)")

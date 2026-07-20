@@ -6,7 +6,11 @@ import type { GitService } from "../src/git/git-service";
 import type { FileStatus } from "../src/types";
 import { flushFrames } from "./setup";
 
-/** Mirrors the vault state from the bug report: three modified files, three untracked. */
+/**
+ * Mirrors the vault state from the bug report: three modified files, two
+ * untracked theme files, and two folders that are Git repositories of their
+ * own — the vault's plugin checkout and a stray `git init`.
+ */
 function screenshotStatus(): FileStatus[] {
   return [
     { path: ".obsidian/appearance.json", indexStatus: ".", workingStatus: "M", staged: false },
@@ -17,9 +21,32 @@ function screenshotStatus(): FileStatus[] {
       staged: false,
     },
     { path: ".obsidian/workspace.json", indexStatus: ".", workingStatus: "M", staged: false },
-    { path: ".obsidian/plugins", indexStatus: " ", workingStatus: "?", staged: false },
-    { path: ".obsidian/themes", indexStatus: " ", workingStatus: "?", staged: false },
-    { path: "verification", indexStatus: " ", workingStatus: "?", staged: false },
+    {
+      path: ".obsidian/themes/GitHub Theme/manifest.json",
+      indexStatus: " ",
+      workingStatus: "?",
+      staged: false,
+    },
+    {
+      path: ".obsidian/themes/GitHub Theme/theme.css",
+      indexStatus: " ",
+      workingStatus: "?",
+      staged: false,
+    },
+    {
+      path: ".obsidian/plugins/obsidian-git-history",
+      indexStatus: " ",
+      workingStatus: "?",
+      staged: false,
+      embeddedRepo: true,
+    },
+    {
+      path: "verification",
+      indexStatus: " ",
+      workingStatus: "?",
+      staged: false,
+      embeddedRepo: true,
+    },
   ] as FileStatus[];
 }
 
@@ -55,7 +82,10 @@ async function mount(status: FileStatus[]) {
     stashList: async () => [],
     stageAll: async () => {
       calls.stageAll++;
-      current = current.map((f) => ({ ...f, staged: true, indexStatus: "M" }) as FileStatus);
+      current = current.map((f) =>
+        f.embeddedRepo ? f : ({ ...f, staged: true, indexStatus: "M" } as FileStatus),
+      );
+      return { skipped: current.filter((f) => f.embeddedRepo).map((f) => f.path) };
     },
     unstageAll: async () => {
       calls.unstageAll++;
@@ -95,7 +125,8 @@ describe("SourceControlView — Stage All", () => {
   it("renders the Changes section with the file count from the status", async () => {
     const { view } = await mount(screenshotStatus());
     const count = view.contentEl.querySelector(".gs-count-changed")?.textContent;
-    expect(count).toBe("6");
+    // Five stageable entries — the two nested repositories are not counted.
+    expect(count).toBe("5");
   });
 
   it("exposes a Stage All button in the Changes section", async () => {
@@ -246,5 +277,64 @@ describe("SourceControlView — loading state", () => {
     await new Promise((r) => setTimeout(r, 0));
 
     expect(calls.stageAll, "buttons must stay usable during a background refresh").toBe(1);
+  });
+});
+
+describe("SourceControlView — nested repositories", () => {
+  beforeEach(() => {
+    Notice.messages = [];
+  });
+
+  /** Folders render collapsed, so the rows only exist after Expand All. */
+  const filenames = (view: { contentEl: HTMLElement }): string[] => {
+    findButton(view.contentEl, "Expand All")?.dispatchEvent(
+      new MouseEvent("click", { bubbles: true }),
+    );
+    flushFrames();
+    return Array.from(view.contentEl.querySelectorAll(".gs-tree-filename")).map(
+      (el) => el.textContent ?? "",
+    );
+  };
+
+  it("keeps nested repositories out of the changes list", async () => {
+    const { view } = await mount(screenshotStatus());
+    const names = filenames(view);
+    expect(names).not.toContain("verification");
+    expect(names).not.toContain("obsidian-git-history");
+    expect(names).toContain("theme.css");
+  });
+
+  it("lists them again once the setting is turned on", async () => {
+    const { view, store } = await mount(screenshotStatus());
+
+    store.showNestedRepos = true;
+    flushFrames();
+
+    expect(filenames(view)).toContain("verification");
+  });
+
+  it("offers no stage button for a nested repository", async () => {
+    const { view, store } = await mount(screenshotStatus());
+    store.showNestedRepos = true;
+    filenames(view);
+
+    const row = Array.from(view.contentEl.querySelectorAll(".gs-tree-file")).find(
+      (el) => el.querySelector(".gs-tree-filename")?.textContent === "verification",
+    );
+    expect(row, "the nested repository row is missing").toBeDefined();
+    expect(row?.querySelector('button[aria-label="Stage Changes"]')).toBeNull();
+  });
+
+  it("stages the rest of the vault without mentioning what it skipped", async () => {
+    const { view, calls } = await mount(screenshotStatus());
+
+    findButton(view.contentEl, "Stage All")?.dispatchEvent(
+      new MouseEvent("click", { bubbles: true }),
+    );
+    await new Promise((r) => setTimeout(r, 0));
+    flushFrames();
+
+    expect(calls.stageAll).toBe(1);
+    expect(Notice.messages).toEqual([]);
   });
 });

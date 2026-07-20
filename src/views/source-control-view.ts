@@ -455,7 +455,9 @@ export class SourceControlView extends ItemView {
         e.stopPropagation();
         try {
           const { skipped } = await this.git.stageAll();
-          if (skipped.length > 0) {
+          // Only worth a notice when the user can actually see the entries the
+          // message is about; otherwise they were deliberately hidden.
+          if (skipped.length > 0 && this.store.showNestedRepos) {
             new Notice(
               `Skipped ${skipped.length} nested Git ${skipped.length === 1 ? "repository" : "repositories"}: ${skipped.join(", ")}`,
             );

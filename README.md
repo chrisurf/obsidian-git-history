@@ -103,6 +103,7 @@ Copy `main.js`, `manifest.json`, and `styles.css` into your vault's `.obsidian/p
 | Auto-fetch | off | Periodically fetch from remote |
 | Auto-fetch interval | 300s | Seconds between auto-fetches |
 | Show status bar | on | Git status in the Obsidian status bar |
+| Show nested repositories | off | List folders that are Git repositories of their own (they cannot be staged) |
 | Debounce | 1000ms | Delay before refreshing after file changes |
 
 ---
