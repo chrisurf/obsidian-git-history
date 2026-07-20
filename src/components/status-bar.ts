@@ -1,16 +1,16 @@
 import { setIcon } from "obsidian";
 import { RepoStore } from "../store/repo-store";
-import type GitStudioPlugin from "../main";
+import type GitHistoryPlugin from "../main";
 
 export class StatusBarController {
   private el: HTMLElement;
   private store: RepoStore;
-  private plugin: GitStudioPlugin;
+  private plugin: GitHistoryPlugin;
   private branchEl: HTMLSpanElement | null = null;
   private syncEl: HTMLSpanElement | null = null;
   private spinnerEl: HTMLSpanElement | null = null;
 
-  constructor(el: HTMLElement, plugin: GitStudioPlugin) {
+  constructor(el: HTMLElement, plugin: GitHistoryPlugin) {
     this.el = el;
     this.plugin = plugin;
     this.store = plugin.store;
@@ -22,7 +22,7 @@ export class StatusBarController {
   }
 
   private build(): void {
-    this.el.addClass("git-studio-statusbar");
+    this.el.addClass("git-history-statusbar");
     this.el.addEventListener("click", () => this.plugin.openSourceControlView());
 
     this.spinnerEl = this.el.createSpan("git-sb-spinner");

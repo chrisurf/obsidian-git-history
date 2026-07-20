@@ -13,8 +13,9 @@ import {
   HISTORY_VIEW_TYPE,
   GRAPH_VIEW_TYPE,
   DIFF_VIEW_TYPE,
-  GitStudioSettings,
+  GitHistorySettings,
   DEFAULT_SETTINGS,
+  CommitInfo,
 } from "./types";
 import { GitService } from "./git/git-service";
 import { RepoStore } from "./store/repo-store";
@@ -24,8 +25,8 @@ import { GraphView } from "./views/graph-view";
 import { DiffView } from "./views/diff-view";
 import { StatusBarController } from "./components/status-bar";
 
-export default class GitStudioPlugin extends Plugin {
-  settings: GitStudioSettings = DEFAULT_SETTINGS;
+export default class GitHistoryPlugin extends Plugin {
+  settings: GitHistorySettings = DEFAULT_SETTINGS;
   git!: GitService;
   store!: RepoStore;
   private statusBar: StatusBarController | null = null;
@@ -44,7 +45,7 @@ export default class GitStudioPlugin extends Plugin {
 
     const isRepo = await this.git.isRepo();
     if (!isRepo) {
-      new Notice("Git Studio: This vault is not a Git repository. Use the init command to create one.");
+      new Notice("Git History: This vault is not a Git repository. Use the init command to create one.");
     }
 
     this.registerView(SOURCE_CONTROL_VIEW_TYPE, (leaf) => new SourceControlView(leaf, this));
@@ -52,7 +53,7 @@ export default class GitStudioPlugin extends Plugin {
     this.registerView(GRAPH_VIEW_TYPE, (leaf) => new GraphView(leaf, this));
     this.registerView(DIFF_VIEW_TYPE, (leaf) => new DiffView(leaf, this));
 
-    this.addRibbonIcon("git-branch", "Git Studio", () => {
+    this.addRibbonIcon("git-branch", "Git History", () => {
       this.openSourceControlView();
     });
 
@@ -61,7 +62,7 @@ export default class GitStudioPlugin extends Plugin {
     const statusBarEl = this.addStatusBarItem();
     this.statusBar = new StatusBarController(statusBarEl, this);
 
-    this.addSettingTab(new GitStudioSettingTab(this.app, this));
+    this.addSettingTab(new GitHistorySettingTab(this.app, this));
 
     if (isRepo) {
       await this.store.refresh();
@@ -193,6 +194,24 @@ export default class GitStudioPlugin extends Plugin {
     }
   }
 
+  async showCommitChangesInSidebar(commit: CommitInfo): Promise<void> {
+    let leaf: WorkspaceLeaf | undefined;
+    const existing = this.app.workspace.getLeavesOfType(SOURCE_CONTROL_VIEW_TYPE);
+    if (existing.length > 0) {
+      leaf = existing[0];
+    } else {
+      leaf = this.app.workspace.getRightLeaf(false) ?? undefined;
+      if (leaf) {
+        await leaf.setViewState({ type: SOURCE_CONTROL_VIEW_TYPE, active: true });
+      }
+    }
+    if (leaf) {
+      this.app.workspace.revealLeaf(leaf);
+      const view = leaf.view as SourceControlView;
+      view.showCommitChanges(commit);
+    }
+  }
+
   async openHistoryView(): Promise<void> {
     const existing = this.app.workspace.getLeavesOfType(HISTORY_VIEW_TYPE);
     if (existing.length > 0) {
@@ -309,10 +328,10 @@ export default class GitStudioPlugin extends Plugin {
   }
 }
 
-class GitStudioSettingTab extends PluginSettingTab {
-  plugin: GitStudioPlugin;
+class GitHistorySettingTab extends PluginSettingTab {
+  plugin: GitHistoryPlugin;
 
-  constructor(app: App, plugin: GitStudioPlugin) {
+  constructor(app: App, plugin: GitHistoryPlugin) {
     super(app, plugin);
     this.plugin = plugin;
   }
@@ -321,7 +340,7 @@ class GitStudioSettingTab extends PluginSettingTab {
     const { containerEl } = this;
     containerEl.empty();
 
-    containerEl.createEl("h2", { text: "Git Studio Settings" });
+    containerEl.createEl("h2", { text: "Git History Settings" });
 
     new Setting(containerEl)
       .setName("Commit message template")
