@@ -8,7 +8,6 @@ import {
   RemoteInfo,
   FileDiff,
   DiffHunk,
-  DiffLine,
   StashEntry,
 } from "../types";
 
@@ -42,7 +41,7 @@ export class GitService {
             return;
           }
           resolve(stdout);
-        }
+        },
       );
     });
   }
@@ -68,12 +67,7 @@ export class GitService {
   }
 
   async status(): Promise<FileStatus[]> {
-    const out = await this.exec([
-      "status",
-      "--porcelain=v2",
-      "-z",
-      "--untracked-files=normal",
-    ]);
+    const out = await this.exec(["status", "--porcelain=v2", "-z", "--untracked-files=normal"]);
     return this.parseStatusV2(out);
   }
 
@@ -139,9 +133,7 @@ export class GitService {
 
   async unstage(paths: string[]): Promise<void> {
     if (paths.length === 0) return;
-    await this.enqueue(() =>
-      this.exec(["reset", "HEAD", "--", ...paths])
-    );
+    await this.enqueue(() => this.exec(["reset", "HEAD", "--", ...paths]));
   }
 
   async unstageAll(): Promise<void> {
@@ -150,9 +142,7 @@ export class GitService {
 
   async discard(paths: string[]): Promise<void> {
     if (paths.length === 0) return;
-    await this.enqueue(() =>
-      this.exec(["checkout", "--", ...paths])
-    );
+    await this.enqueue(() => this.exec(["checkout", "--", ...paths]));
   }
 
   async discardAll(): Promise<void> {
@@ -162,10 +152,7 @@ export class GitService {
     });
   }
 
-  async commit(
-    message: string,
-    opts?: { amend?: boolean; allowEmpty?: boolean }
-  ): Promise<void> {
+  async commit(message: string, opts?: { amend?: boolean; allowEmpty?: boolean }): Promise<void> {
     const args = ["commit", "-m", message];
     if (opts?.amend) args.push("--amend");
     if (opts?.allowEmpty) args.push("--allow-empty");
@@ -237,7 +224,8 @@ export class GitService {
       if (!line.trim()) continue;
       const parts = line.split(sep);
       if (parts.length < 9) continue;
-      const [hash, shortHash, parentsStr, message, body, author, authorEmail, dateStr, refsStr] = parts;
+      const [hash, shortHash, parentsStr, message, body, author, authorEmail, dateStr, refsStr] =
+        parts;
       const parents = parentsStr.trim() ? parentsStr.trim().split(" ") : [];
       const refs = this.parseRefs(refsStr.trim());
       commits.push({
@@ -333,9 +321,7 @@ export class GitService {
   }
 
   async deleteBranch(name: string, force = false): Promise<void> {
-    await this.enqueue(() =>
-      this.exec(["branch", force ? "-D" : "-d", name])
-    );
+    await this.enqueue(() => this.exec(["branch", force ? "-D" : "-d", name]));
   }
 
   async merge(branch: string, opts?: { noFf?: boolean; squash?: boolean }): Promise<void> {
@@ -371,7 +357,9 @@ export class GitService {
     }
   }
 
-  async showCommitFiles(hash: string): Promise<{ path: string; additions: number; deletions: number }[]> {
+  async showCommitFiles(
+    hash: string,
+  ): Promise<{ path: string; additions: number; deletions: number }[]> {
     const out = await this.exec(["diff-tree", "--no-commit-id", "-r", "--numstat", hash]);
     return out
       .split("\n")
@@ -462,12 +450,7 @@ export class GitService {
 
   async getAheadBehind(): Promise<{ ahead: number; behind: number }> {
     try {
-      const out = await this.exec([
-        "rev-list",
-        "--left-right",
-        "--count",
-        "HEAD...@{upstream}",
-      ]);
+      const out = await this.exec(["rev-list", "--left-right", "--count", "HEAD...@{upstream}"]);
       const [ahead, behind] = out.trim().split(/\s+/).map(Number);
       return { ahead: ahead || 0, behind: behind || 0 };
     } catch {
@@ -541,7 +524,7 @@ export class GitService {
 export class GitError extends Error {
   constructor(
     message: string,
-    public readonly command: string[]
+    public readonly command: string[],
   ) {
     super(message);
     this.name = "GitError";

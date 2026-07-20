@@ -4,3 +4,6 @@ dist/
 *.js.map
 .DS_Store
 data.json
+coverage/
+.env
+.env.*

@@ -1,4 +1,4 @@
-import { ItemView, WorkspaceLeaf, setIcon, Menu, Notice } from "obsidian";
+import { ItemView, WorkspaceLeaf, setIcon, Menu, Modal, Notice } from "obsidian";
 import { GRAPH_VIEW_TYPE, CommitInfo, GraphNode, GraphEdge } from "../types";
 import { RepoStore } from "../store/repo-store";
 import { GitService } from "../git/git-service";
@@ -54,9 +54,15 @@ export class GraphView extends ItemView {
     this.git = plugin.git;
   }
 
-  getViewType(): string { return GRAPH_VIEW_TYPE; }
-  getDisplayText(): string { return "Git Graph"; }
-  getIcon(): string { return "git-branch"; }
+  getViewType(): string {
+    return GRAPH_VIEW_TYPE;
+  }
+  getDisplayText(): string {
+    return "Git Graph";
+  }
+  getIcon(): string {
+    return "git-branch";
+  }
 
   async onOpen(): Promise<void> {
     const { contentEl } = this;
@@ -83,15 +89,14 @@ export class GraphView extends ItemView {
     this.popupEl.style.display = "none";
 
     this.registerEvent(this.store.on("log-changed", () => this.rebuildGraph()));
-    this.registerEvent(this.store.on("status-changed", () => {
-      this.hasWorkingChanges = this.store.status.length > 0;
-      this.rebuildGraph();
-    }));
+    this.registerEvent(
+      this.store.on("status-changed", () => {
+        this.hasWorkingChanges = this.store.status.length > 0;
+        this.rebuildGraph();
+      }),
+    );
 
-    await Promise.all([
-      this.store.refreshLog({ all: true, maxCount: 500 }),
-      this.store.refresh(),
-    ]);
+    await Promise.all([this.store.refreshLog({ all: true, maxCount: 500 }), this.store.refresh()]);
   }
 
   private buildToolbar(el: HTMLElement): void {
@@ -222,7 +227,7 @@ export class GraphView extends ItemView {
     const startVisRow = Math.max(0, Math.floor(scrollTop / ROW_HEIGHT) - OVERSCAN);
     const endVisRow = Math.min(
       visibleRows.length + offset - 1,
-      Math.ceil((scrollTop + viewHeight) / ROW_HEIGHT) + OVERSCAN
+      Math.ceil((scrollTop + viewHeight) / ROW_HEIGHT) + OVERSCAN,
     );
 
     this.renderSvg(visibleRows, startVisRow, endVisRow, offset);
@@ -313,7 +318,12 @@ export class GraphView extends ItemView {
     }
   }
 
-  private renderRows(visibleRows: number[], startVis: number, endVis: number, offset: number): void {
+  private renderRows(
+    visibleRows: number[],
+    startVis: number,
+    endVis: number,
+    offset: number,
+  ): void {
     if (!this.tableBody) return;
     this.tableBody.empty();
 
@@ -355,7 +365,8 @@ export class GraphView extends ItemView {
     const staged = this.store.stagedFiles.length;
     const statsEl = filesCell.createSpan("gs-file-stats");
     if (staged > 0) statsEl.createSpan("gs-stat-staged").setText(`+${staged}`);
-    if (changed > 0) statsEl.createSpan("gs-stat-changed").setText(`${staged > 0 ? " / " : ""}${changed}`);
+    if (changed > 0)
+      statsEl.createSpan("gs-stat-changed").setText(`${staged > 0 ? " / " : ""}${changed}`);
 
     row.createDiv("gs-cell gs-cell-date");
     row.createDiv("gs-cell gs-cell-hash");
@@ -364,7 +375,7 @@ export class GraphView extends ItemView {
     return row;
   }
 
-  private createCommitRow(commit: CommitInfo, node: GraphNode): HTMLElement {
+  private createCommitRow(commit: CommitInfo, _node: GraphNode): HTMLElement {
     const row = createDiv("gs-graph-row");
     if (commit.hash === this.selectedHash) row.addClass("gs-row-selected");
 
@@ -414,7 +425,10 @@ export class GraphView extends ItemView {
       this.tooltipTimeout = setTimeout(() => this.showCommitTooltip(commit, row), 400);
     });
     row.addEventListener("mouseleave", () => {
-      if (this.tooltipTimeout) { clearTimeout(this.tooltipTimeout); this.tooltipTimeout = null; }
+      if (this.tooltipTimeout) {
+        clearTimeout(this.tooltipTimeout);
+        this.tooltipTimeout = null;
+      }
       this.hideCommitTooltip();
     });
 
@@ -436,14 +450,14 @@ export class GraphView extends ItemView {
         const bar = cell.createDiv("gs-sg-changes-bar");
         const addPct = Math.round((totalAdd / total) * 100);
         bar.createDiv("gs-sg-changes-add").style.width = addPct + "%";
-        bar.createDiv("gs-sg-changes-del").style.width = (100 - addPct) + "%";
+        bar.createDiv("gs-sg-changes-del").style.width = 100 - addPct + "%";
       }
     } catch {
       // ignore
     }
   }
 
-  private async onRowClick(e: MouseEvent, commit: CommitInfo, row: HTMLElement): Promise<void> {
+  private async onRowClick(_e: MouseEvent, commit: CommitInfo, row: HTMLElement): Promise<void> {
     if (this.selectedHash === commit.hash) {
       this.selectedHash = null;
       this.hidePopup();
@@ -464,7 +478,12 @@ export class GraphView extends ItemView {
 
     const header = this.popupEl.createDiv("gs-popup-header");
     const avatar = header.createDiv("gs-popup-avatar");
-    const initials = commit.author.split(" ").map(w => w[0] || "").join("").substring(0, 2).toUpperCase();
+    const initials = commit.author
+      .split(" ")
+      .map((w) => w[0] || "")
+      .join("")
+      .substring(0, 2)
+      .toUpperCase();
     avatar.setText(initials);
 
     const info = header.createDiv("gs-popup-info");
@@ -477,9 +496,9 @@ export class GraphView extends ItemView {
     const parentLabel = metaLine.createSpan("gs-popup-parent-label");
     parentLabel.setText(`◆ ${commit.shortHash}`);
     if (commit.parents.length > 0) {
-      metaLine.createSpan("gs-popup-parent-hash").setText(
-        ` ← ${commit.parents.map(p => p.substring(0, 7)).join(", ")}`
-      );
+      metaLine
+        .createSpan("gs-popup-parent-hash")
+        .setText(` ← ${commit.parents.map((p) => p.substring(0, 7)).join(", ")}`);
     }
 
     try {
@@ -539,7 +558,7 @@ export class GraphView extends ItemView {
     const scrollRect = this.scrollEl.getBoundingClientRect();
     this.popupEl.style.left = "0";
     this.popupEl.style.right = "0";
-    this.popupEl.style.top = (anchorRect.bottom - scrollRect.top + this.scrollEl.scrollTop) + "px";
+    this.popupEl.style.top = anchorRect.bottom - scrollRect.top + this.scrollEl.scrollTop + "px";
   }
 
   private hidePopup(): void {
@@ -548,58 +567,83 @@ export class GraphView extends ItemView {
 
   private showCommitMenu(event: MouseEvent, commit: CommitInfo): void {
     const menu = new Menu();
-    menu.addItem(i => i.setTitle("Copy SHA").setIcon("copy").onClick(() => {
-      navigator.clipboard.writeText(commit.hash);
-      new Notice("SHA copied");
-    }));
+    menu.addItem((i) =>
+      i
+        .setTitle("Copy SHA")
+        .setIcon("copy")
+        .onClick(() => {
+          navigator.clipboard.writeText(commit.hash);
+          new Notice("SHA copied");
+        }),
+    );
     menu.addSeparator();
-    menu.addItem(i => i.setTitle("Create Branch here...").setIcon("git-branch-plus").onClick(async () => {
-      const name = await this.promptText("New branch name:");
-      if (name) {
-        try {
-          await this.git.createBranch(name, commit.hash);
-          await this.store.refresh();
-          await this.store.refreshLog({ all: true });
-          new Notice(`Branch '${name}' created`);
-        } catch (e: unknown) {
-          new Notice(`Error: ${e instanceof Error ? e.message : String(e)}`);
-        }
-      }
-    }));
-    menu.addItem(i => i.setTitle("Checkout").setIcon("log-in").onClick(async () => {
-      try {
-        await this.git.checkout(commit.hash);
-        await this.store.refresh();
-        new Notice("Checked out " + commit.shortHash);
-      } catch (e: unknown) {
-        new Notice(`Error: ${e instanceof Error ? e.message : String(e)}`);
-      }
-    }));
+    menu.addItem((i) =>
+      i
+        .setTitle("Create Branch here...")
+        .setIcon("git-branch-plus")
+        .onClick(async () => {
+          const name = await this.promptText("New branch name:");
+          if (name) {
+            try {
+              await this.git.createBranch(name, commit.hash);
+              await this.store.refresh();
+              await this.store.refreshLog({ all: true });
+              new Notice(`Branch '${name}' created`);
+            } catch (e: unknown) {
+              new Notice(`Error: ${e instanceof Error ? e.message : String(e)}`);
+            }
+          }
+        }),
+    );
+    menu.addItem((i) =>
+      i
+        .setTitle("Checkout")
+        .setIcon("log-in")
+        .onClick(async () => {
+          try {
+            await this.git.checkout(commit.hash);
+            await this.store.refresh();
+            new Notice("Checked out " + commit.shortHash);
+          } catch (e: unknown) {
+            new Notice(`Error: ${e instanceof Error ? e.message : String(e)}`);
+          }
+        }),
+    );
     menu.addSeparator();
-    menu.addItem(i => i.setTitle("Cherry-pick").setIcon("cherry").onClick(async () => {
-      try {
-        await (this.git as any).exec(["cherry-pick", commit.hash]);
-        await this.store.refresh();
-        new Notice("Cherry-picked " + commit.shortHash);
-      } catch (e: unknown) {
-        new Notice(`Error: ${e instanceof Error ? e.message : String(e)}`);
-      }
-    }));
-    menu.addItem(i => i.setTitle("Revert").setIcon("undo").onClick(async () => {
-      try {
-        await (this.git as any).exec(["revert", "--no-edit", commit.hash]);
-        await this.store.refresh();
-        new Notice("Reverted " + commit.shortHash);
-      } catch (e: unknown) {
-        new Notice(`Error: ${e instanceof Error ? e.message : String(e)}`);
-      }
-    }));
+    menu.addItem((i) =>
+      i
+        .setTitle("Cherry-pick")
+        .setIcon("cherry")
+        .onClick(async () => {
+          try {
+            await (this.git as any).exec(["cherry-pick", commit.hash]);
+            await this.store.refresh();
+            new Notice("Cherry-picked " + commit.shortHash);
+          } catch (e: unknown) {
+            new Notice(`Error: ${e instanceof Error ? e.message : String(e)}`);
+          }
+        }),
+    );
+    menu.addItem((i) =>
+      i
+        .setTitle("Revert")
+        .setIcon("undo")
+        .onClick(async () => {
+          try {
+            await (this.git as any).exec(["revert", "--no-edit", commit.hash]);
+            await this.store.refresh();
+            new Notice("Reverted " + commit.shortHash);
+          } catch (e: unknown) {
+            new Notice(`Error: ${e instanceof Error ? e.message : String(e)}`);
+          }
+        }),
+    );
     menu.showAtMouseEvent(event);
   }
 
   private promptText(label: string): Promise<string | null> {
     return new Promise((resolve) => {
-      const modal = new (require("obsidian").Modal)(this.app);
+      const modal = new Modal(this.app);
       modal.titleEl.setText(label);
       const input = modal.contentEl.createEl("input", {
         cls: "gs-modal-input",
@@ -608,11 +652,23 @@ export class GraphView extends ItemView {
       const btnRow = modal.contentEl.createDiv("gs-modal-btns");
       const ok = btnRow.createEl("button", { text: "OK", cls: "mod-cta" });
       const cancel = btnRow.createEl("button", { text: "Cancel" });
-      ok.addEventListener("click", () => { modal.close(); resolve(input.value || null); });
-      cancel.addEventListener("click", () => { modal.close(); resolve(null); });
+      ok.addEventListener("click", () => {
+        modal.close();
+        resolve(input.value || null);
+      });
+      cancel.addEventListener("click", () => {
+        modal.close();
+        resolve(null);
+      });
       input.addEventListener("keydown", (e: KeyboardEvent) => {
-        if (e.key === "Enter") { modal.close(); resolve(input.value || null); }
-        if (e.key === "Escape") { modal.close(); resolve(null); }
+        if (e.key === "Enter") {
+          modal.close();
+          resolve(input.value || null);
+        }
+        if (e.key === "Escape") {
+          modal.close();
+          resolve(null);
+        }
       });
       modal.open();
       input.focus();
@@ -630,7 +686,12 @@ export class GraphView extends ItemView {
     this.hideCommitTooltip();
     const tip = this.el("div", "gs-sg-tooltip");
 
-    const initials = commit.author.split(" ").map(w => w[0] || "").join("").substring(0, 2).toUpperCase();
+    const initials = commit.author
+      .split(" ")
+      .map((w) => w[0] || "")
+      .join("")
+      .substring(0, 2)
+      .toUpperCase();
     tip.appendChild(this.el("div", "gs-sg-tip-avatar", initials || "?"));
 
     const body = this.el("div", "gs-sg-tip-body");
@@ -642,8 +703,13 @@ export class GraphView extends ItemView {
     body.appendChild(authorLine);
 
     const dateStr = commit.date.toLocaleString("en-US", {
-      weekday: "long", year: "numeric", month: "long", day: "numeric",
-      hour: "numeric", minute: "2-digit", hour12: true,
+      weekday: "long",
+      year: "numeric",
+      month: "long",
+      day: "numeric",
+      hour: "numeric",
+      minute: "2-digit",
+      hour12: true,
     });
     body.appendChild(this.el("div", "gs-sg-tip-date-full", dateStr));
 
@@ -651,8 +717,13 @@ export class GraphView extends ItemView {
     shaLine.appendChild(this.el("span", "gs-sg-tip-sha-icon", "◇"));
     shaLine.appendChild(this.el("span", "gs-sg-tip-sha", commit.shortHash));
     if (commit.parents.length > 0) {
-      shaLine.appendChild(this.el("span", "gs-sg-tip-parents-label",
-        ` (${commit.parents.length} parent${commit.parents.length > 1 ? "s" : ""})`));
+      shaLine.appendChild(
+        this.el(
+          "span",
+          "gs-sg-tip-parents-label",
+          ` (${commit.parents.length} parent${commit.parents.length > 1 ? "s" : ""})`,
+        ),
+      );
     }
     body.appendChild(shaLine);
 
@@ -677,7 +748,8 @@ export class GraphView extends ItemView {
       let top = rect.top - tipRect.height - 6;
       if (top < 8) top = rect.bottom + 6;
       let left = rect.left + 20;
-      if (left + tipRect.width > window.innerWidth - 8) left = window.innerWidth - tipRect.width - 8;
+      if (left + tipRect.width > window.innerWidth - 8)
+        left = window.innerWidth - tipRect.width - 8;
       tip.style.top = top + "px";
       tip.style.left = left + "px";
       tip.style.opacity = "1";
@@ -690,10 +762,17 @@ export class GraphView extends ItemView {
       if (!this.tooltipEl || files.length === 0) return;
       const totalAdd = files.reduce((s, f) => s + f.additions, 0);
       const totalDel = files.reduce((s, f) => s + f.deletions, 0);
-      container.appendChild(this.el("span", "gs-sg-tip-stats-files",
-        `${files.length} file${files.length !== 1 ? "s" : ""} changed`));
-      if (totalAdd > 0) container.appendChild(this.el("span", "gs-stat-add", `  ${totalAdd} additions`));
-      if (totalDel > 0) container.appendChild(this.el("span", "gs-stat-del", `  ${totalDel} deletions`));
+      container.appendChild(
+        this.el(
+          "span",
+          "gs-sg-tip-stats-files",
+          `${files.length} file${files.length !== 1 ? "s" : ""} changed`,
+        ),
+      );
+      if (totalAdd > 0)
+        container.appendChild(this.el("span", "gs-stat-add", `  ${totalAdd} additions`));
+      if (totalDel > 0)
+        container.appendChild(this.el("span", "gs-stat-del", `  ${totalDel} deletions`));
     } catch {
       // ignore
     }

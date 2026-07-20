@@ -1,0 +1,49 @@
+name: CI
+
+on:
+  push:
+    branches: ["feature/**", "fix/**", "chore/**", "refactor/**", "docs/**", "ci/**", "style/**"]
+  pull_request:
+    branches: [main]
+
+jobs:
+  quality:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: npm
+      - run: npm ci
+
+      - name: ESLint
+        run: npx eslint src/ --max-warnings 0
+
+      - name: TypeScript
+        run: npx tsc --noEmit
+
+      - name: Prettier
+        run: npx prettier --check "src/**/*.ts" "styles.css"
+
+      - name: Build
+        run: npm run build
+
+      - name: Validate manifest.json
+        run: |
+          node -e "
+            const m = require('./manifest.json');
+            const required = ['id','name','version','minAppVersion','description','author','isDesktopOnly'];
+            const missing = required.filter(k => !(k in m));
+            if (missing.length) { console.error('Missing:', missing); process.exit(1); }
+            if (m.id.includes('obsidian')) { console.error('Plugin ID must not contain obsidian'); process.exit(1); }
+            if (m.id.endsWith('plugin')) { console.error('Plugin ID must not end with plugin'); process.exit(1); }
+            if (m.description.length > 250) { console.error('Description exceeds 250 chars'); process.exit(1); }
+            console.log('manifest.json valid');
+          "
+
+      - name: Commitlint
+        if: github.event_name == 'pull_request'
+        run: |
+          npx commitlint --from ${{ github.event.pull_request.base.sha }} \
+                          --to ${{ github.event.pull_request.head.sha }}

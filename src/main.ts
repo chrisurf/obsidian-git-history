@@ -1,13 +1,5 @@
 import * as fs from "fs";
-import {
-  Plugin,
-  WorkspaceLeaf,
-  Notice,
-  addIcon,
-  PluginSettingTab,
-  App,
-  Setting,
-} from "obsidian";
+import { Plugin, WorkspaceLeaf, Notice, PluginSettingTab, App, Setting } from "obsidian";
 import {
   SOURCE_CONTROL_VIEW_TYPE,
   HISTORY_VIEW_TYPE,
@@ -45,7 +37,9 @@ export default class GitHistoryPlugin extends Plugin {
 
     const isRepo = await this.git.isRepo();
     if (!isRepo) {
-      new Notice("Git History: This vault is not a Git repository. Use the init command to create one.");
+      new Notice(
+        "Git History: This vault is not a Git repository. Use the init command to create one.",
+      );
     }
 
     this.registerView(SOURCE_CONTROL_VIEW_TYPE, (leaf) => new SourceControlView(leaf, this));
@@ -144,7 +138,9 @@ export default class GitHistoryPlugin extends Plugin {
       callback: async () => {
         try {
           await this.git.stageAll();
-          const msg = this.settings.commitTemplate || `vault backup ${new Date().toISOString().split("T")[0]}`;
+          const msg =
+            this.settings.commitTemplate ||
+            `vault backup ${new Date().toISOString().split("T")[0]}`;
           await this.git.commit(msg);
           await this.git.push({ setUpstream: true, remote: "origin", branch: this.store.branch });
           await this.store.refresh();
@@ -276,18 +272,10 @@ export default class GitHistoryPlugin extends Plugin {
   }
 
   private setupFileWatcher(): void {
-    this.registerEvent(
-      this.app.vault.on("modify", () => this.debouncedRefresh())
-    );
-    this.registerEvent(
-      this.app.vault.on("create", () => this.debouncedRefresh())
-    );
-    this.registerEvent(
-      this.app.vault.on("delete", () => this.debouncedRefresh())
-    );
-    this.registerEvent(
-      this.app.vault.on("rename", () => this.debouncedRefresh())
-    );
+    this.registerEvent(this.app.vault.on("modify", () => this.debouncedRefresh()));
+    this.registerEvent(this.app.vault.on("create", () => this.debouncedRefresh()));
+    this.registerEvent(this.app.vault.on("delete", () => this.debouncedRefresh()));
+    this.registerEvent(this.app.vault.on("rename", () => this.debouncedRefresh()));
 
     const adapter = this.app.vault.adapter as { basePath?: string; getBasePath?: () => string };
     const basePath = adapter.getBasePath?.() ?? adapter.basePath ?? "";
@@ -323,7 +311,10 @@ export default class GitHistoryPlugin extends Plugin {
     if (this.refreshTimer) clearInterval(this.refreshTimer);
     if (this.debounceTimer) clearTimeout(this.debounceTimer);
     if (this.fsDebounceTimer) clearTimeout(this.fsDebounceTimer);
-    if (this.fsWatcher) { this.fsWatcher.close(); this.fsWatcher = null; }
+    if (this.fsWatcher) {
+      this.fsWatcher.close();
+      this.fsWatcher = null;
+    }
     this.statusBar?.destroy();
   }
 }
@@ -352,32 +343,28 @@ class GitHistorySettingTab extends PluginSettingTab {
           .onChange(async (v) => {
             this.plugin.settings.commitTemplate = v;
             await this.plugin.saveSettings();
-          })
+          }),
       );
 
-    new Setting(containerEl)
-      .setName("Pull strategy")
-      .addDropdown((dd) =>
-        dd
-          .addOptions({ merge: "Merge", rebase: "Rebase", "ff-only": "Fast-forward only" })
-          .setValue(this.plugin.settings.pullStrategy)
-          .onChange(async (v) => {
-            this.plugin.settings.pullStrategy = v as "merge" | "rebase" | "ff-only";
-            await this.plugin.saveSettings();
-          })
-      );
+    new Setting(containerEl).setName("Pull strategy").addDropdown((dd) =>
+      dd
+        .addOptions({ merge: "Merge", rebase: "Rebase", "ff-only": "Fast-forward only" })
+        .setValue(this.plugin.settings.pullStrategy)
+        .onChange(async (v) => {
+          this.plugin.settings.pullStrategy = v as "merge" | "rebase" | "ff-only";
+          await this.plugin.saveSettings();
+        }),
+    );
 
-    new Setting(containerEl)
-      .setName("Default diff view")
-      .addDropdown((dd) =>
-        dd
-          .addOptions({ "side-by-side": "Side-by-Side", inline: "Inline" })
-          .setValue(this.plugin.settings.diffViewMode)
-          .onChange(async (v) => {
-            this.plugin.settings.diffViewMode = v as "side-by-side" | "inline";
-            await this.plugin.saveSettings();
-          })
-      );
+    new Setting(containerEl).setName("Default diff view").addDropdown((dd) =>
+      dd
+        .addOptions({ "side-by-side": "Side-by-Side", inline: "Inline" })
+        .setValue(this.plugin.settings.diffViewMode)
+        .onChange(async (v) => {
+          this.plugin.settings.diffViewMode = v as "side-by-side" | "inline";
+          await this.plugin.saveSettings();
+        }),
+    );
 
     new Setting(containerEl)
       .setName("Auto-fetch")
@@ -386,36 +373,30 @@ class GitHistorySettingTab extends PluginSettingTab {
         t.setValue(this.plugin.settings.autoFetchEnabled).onChange(async (v) => {
           this.plugin.settings.autoFetchEnabled = v;
           await this.plugin.saveSettings();
-        })
+        }),
       );
 
-    new Setting(containerEl)
-      .setName("Auto-fetch interval (seconds)")
-      .addText((text) =>
-        text
-          .setValue(String(this.plugin.settings.autoFetchInterval))
-          .onChange(async (v) => {
-            const n = parseInt(v);
-            if (!isNaN(n) && n >= 30) {
-              this.plugin.settings.autoFetchInterval = n;
-              await this.plugin.saveSettings();
-            }
-          })
-      );
+    new Setting(containerEl).setName("Auto-fetch interval (seconds)").addText((text) =>
+      text.setValue(String(this.plugin.settings.autoFetchInterval)).onChange(async (v) => {
+        const n = parseInt(v);
+        if (!isNaN(n) && n >= 30) {
+          this.plugin.settings.autoFetchInterval = n;
+          await this.plugin.saveSettings();
+        }
+      }),
+    );
 
     new Setting(containerEl)
       .setName("File watcher debounce (ms)")
       .setDesc("Delay before refreshing status after file changes.")
       .addText((text) =>
-        text
-          .setValue(String(this.plugin.settings.debounceMs))
-          .onChange(async (v) => {
-            const n = parseInt(v);
-            if (!isNaN(n) && n >= 100) {
-              this.plugin.settings.debounceMs = n;
-              await this.plugin.saveSettings();
-            }
-          })
+        text.setValue(String(this.plugin.settings.debounceMs)).onChange(async (v) => {
+          const n = parseInt(v);
+          if (!isNaN(n) && n >= 100) {
+            this.plugin.settings.debounceMs = n;
+            await this.plugin.saveSettings();
+          }
+        }),
       );
   }
 }

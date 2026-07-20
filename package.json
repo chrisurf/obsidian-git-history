@@ -6,16 +6,51 @@
   "scripts": {
     "dev": "node esbuild.config.mjs",
     "build": "node esbuild.config.mjs production",
-    "version": "node version-bump.mjs && git add manifest.json versions.json"
+    "lint": "eslint src/",
+    "lint:fix": "eslint src/ --fix",
+    "format": "prettier --write \"src/**/*.ts\" \"styles.css\"",
+    "format:check": "prettier --check \"src/**/*.ts\" \"styles.css\"",
+    "typecheck": "tsc --noEmit",
+    "validate": "npm run typecheck && npm run lint && npm run format:check && npm run build",
+    "prepare": "husky"
   },
-  "keywords": ["obsidian", "git", "version-control", "history", "graph"],
-  "author": "",
+  "lint-staged": {
+    "src/**/*.ts": [
+      "eslint --fix",
+      "prettier --write"
+    ],
+    "styles.css": [
+      "prettier --write"
+    ]
+  },
+  "keywords": [
+    "obsidian",
+    "git",
+    "version-control",
+    "history",
+    "graph"
+  ],
+  "author": "chrisurf",
   "license": "MIT",
   "devDependencies": {
+    "@commitlint/cli": "^21.2.1",
+    "@commitlint/config-conventional": "^21.2.0",
+    "@eslint/js": "^10.0.1",
+    "@semantic-release/changelog": "^6.0.3",
+    "@semantic-release/exec": "^7.1.0",
+    "@semantic-release/git": "^10.0.1",
+    "@semantic-release/github": "^12.0.9",
     "@types/node": "^20.11.0",
     "esbuild": "^0.20.0",
+    "eslint": "^10.7.0",
+    "eslint-config-prettier": "^10.1.8",
+    "husky": "^9.1.7",
+    "lint-staged": "^17.1.0",
     "obsidian": "^1.7.2",
+    "prettier": "^3.9.5",
+    "semantic-release": "^25.0.8",
     "tslib": "^2.6.0",
-    "typescript": "^5.3.0"
+    "typescript": "^5.3.0",
+    "typescript-eslint": "^8.64.0"
   }
 }

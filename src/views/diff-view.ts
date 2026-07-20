@@ -3,7 +3,19 @@ import { DIFF_VIEW_TYPE, FileDiff, DiffHunk, DiffLine } from "../types";
 import { GitService } from "../git/git-service";
 import type GitHistoryPlugin from "../main";
 
-type TokenType = "keyword" | "string" | "comment" | "number" | "function" | "type" | "property" | "punctuation" | "operator" | "tag" | "attribute" | "text";
+type TokenType =
+  | "keyword"
+  | "string"
+  | "comment"
+  | "number"
+  | "function"
+  | "type"
+  | "property"
+  | "punctuation"
+  | "operator"
+  | "tag"
+  | "attribute"
+  | "text";
 
 interface Token {
   type: TokenType;
@@ -11,26 +23,114 @@ interface Token {
 }
 
 const JS_KEYWORDS = new Set([
-  "var", "let", "const", "function", "return", "if", "else", "for", "while", "do",
-  "switch", "case", "break", "continue", "new", "delete", "typeof", "instanceof",
-  "in", "of", "try", "catch", "finally", "throw", "class", "extends", "super",
-  "this", "import", "export", "from", "default", "async", "await", "yield",
-  "true", "false", "null", "undefined", "void", "static", "get", "set",
+  "var",
+  "let",
+  "const",
+  "function",
+  "return",
+  "if",
+  "else",
+  "for",
+  "while",
+  "do",
+  "switch",
+  "case",
+  "break",
+  "continue",
+  "new",
+  "delete",
+  "typeof",
+  "instanceof",
+  "in",
+  "of",
+  "try",
+  "catch",
+  "finally",
+  "throw",
+  "class",
+  "extends",
+  "super",
+  "this",
+  "import",
+  "export",
+  "from",
+  "default",
+  "async",
+  "await",
+  "yield",
+  "true",
+  "false",
+  "null",
+  "undefined",
+  "void",
+  "static",
+  "get",
+  "set",
 ]);
 
 const TS_EXTRAS = new Set([
-  "interface", "type", "enum", "namespace", "module", "declare", "abstract",
-  "implements", "readonly", "private", "protected", "public", "as", "is",
-  "keyof", "infer", "never", "unknown", "any", "string", "number", "boolean",
-  "object", "symbol", "bigint",
+  "interface",
+  "type",
+  "enum",
+  "namespace",
+  "module",
+  "declare",
+  "abstract",
+  "implements",
+  "readonly",
+  "private",
+  "protected",
+  "public",
+  "as",
+  "is",
+  "keyof",
+  "infer",
+  "never",
+  "unknown",
+  "any",
+  "string",
+  "number",
+  "boolean",
+  "object",
+  "symbol",
+  "bigint",
 ]);
 
 const CSS_KEYWORDS = new Set([
-  "display", "flex", "grid", "none", "block", "inline", "position", "relative",
-  "absolute", "fixed", "sticky", "top", "left", "right", "bottom", "width",
-  "height", "margin", "padding", "border", "background", "color", "font",
-  "overflow", "opacity", "z-index", "transition", "transform", "animation",
-  "important", "auto", "inherit", "initial", "unset",
+  "display",
+  "flex",
+  "grid",
+  "none",
+  "block",
+  "inline",
+  "position",
+  "relative",
+  "absolute",
+  "fixed",
+  "sticky",
+  "top",
+  "left",
+  "right",
+  "bottom",
+  "width",
+  "height",
+  "margin",
+  "padding",
+  "border",
+  "background",
+  "color",
+  "font",
+  "overflow",
+  "opacity",
+  "z-index",
+  "transition",
+  "transform",
+  "animation",
+  "important",
+  "auto",
+  "inherit",
+  "initial",
+  "unset",
 ]);
 
 function tokenizeJS(text: string): Token[] {
@@ -92,7 +192,7 @@ function tokenizeJS(text: string): Token[] {
       continue;
     }
 
-    if (/[{}()\[\];,.]/.test(text[i])) {
+    if (/[{}()[\];,.]/.test(text[i])) {
       tokens.push({ type: "punctuation", value: text[i] });
       i++;
       continue;
@@ -205,23 +305,27 @@ function tokenizeJSON(text: string): Token[] {
       continue;
     }
 
-    if (/[0-9\-]/.test(text[i]) && (i === 0 || !/[a-zA-Z]/.test(text[i - 1]))) {
+    if (/[0-9-]/.test(text[i]) && (i === 0 || !/[a-zA-Z]/.test(text[i - 1]))) {
       let j = i;
       if (text[j] === "-") j++;
-      while (j < text.length && /[0-9.eE+\-]/.test(text[j])) j++;
+      while (j < text.length && /[0-9.eE+-]/.test(text[j])) j++;
       tokens.push({ type: "number", value: text.slice(i, j) });
       i = j;
       continue;
     }
 
-    if (text.slice(i, i + 4) === "true" || text.slice(i, i + 5) === "false" || text.slice(i, i + 4) === "null") {
+    if (
+      text.slice(i, i + 4) === "true" ||
+      text.slice(i, i + 5) === "false" ||
+      text.slice(i, i + 4) === "null"
+    ) {
       const word = text.slice(i, i + (text[i] === "f" ? 5 : 4));
       tokens.push({ type: "keyword", value: word });
       i += word.length;
       continue;
     }
 
-    if (/[{}\[\]:,]/.test(text[i])) {
+    if (/[{}[\]:,]/.test(text[i])) {
       tokens.push({ type: "punctuation", value: text[i] });
       i++;
       continue;
@@ -271,14 +375,25 @@ function tokenizePlain(text: string): Token[] {
 function getTokenizer(filePath: string): (text: string) => Token[] {
   const ext = filePath.split(".").pop()?.toLowerCase() || "";
   switch (ext) {
-    case "js": case "jsx": case "mjs": case "cjs":
-    case "ts": case "tsx": case "mts": case "cts":
+    case "js":
+    case "jsx":
+    case "mjs":
+    case "cjs":
+    case "ts":
+    case "tsx":
+    case "mts":
+    case "cts":
       return tokenizeJS;
-    case "css": case "scss": case "less":
+    case "css":
+    case "scss":
+    case "less":
       return tokenizeCSS;
-    case "json": case "jsonc": case "json5":
+    case "json":
+    case "jsonc":
+    case "json5":
       return tokenizeJSON;
-    case "md": case "markdown":
+    case "md":
+    case "markdown":
       return tokenizeMarkdown;
     default:
       return tokenizePlain;
@@ -321,15 +436,21 @@ export class DiffView extends ItemView {
     this.mode = plugin.settings.diffViewMode;
   }
 
-  getViewType(): string { return DIFF_VIEW_TYPE; }
-  getDisplayText(): string { return this.filePath ? `Diff: ${this.filePath}` : "Diff"; }
-  getIcon(): string { return "file-diff"; }
+  getViewType(): string {
+    return DIFF_VIEW_TYPE;
+  }
+  getDisplayText(): string {
+    return this.filePath ? `Diff: ${this.filePath}` : "Diff";
+  }
+  getIcon(): string {
+    return "file-diff";
+  }
 
   setFile(path: string, ref?: string): void {
     this.filePath = path;
     this.ref = ref ?? null;
     this.tokenize = getTokenizer(path);
-    this.leaf.updateHeader();
+    (this.leaf as WorkspaceLeaf & { updateHeader?: () => void }).updateHeader?.();
     if (this.diffContainer) this.loadDiff();
   }
 
@@ -369,7 +490,8 @@ export class DiffView extends ItemView {
         breadcrumb.appendChild(sep);
       }
       const seg = document.createElement("span");
-      seg.className = idx === parts.length - 1 ? "git-diff-breadcrumb-file" : "git-diff-breadcrumb-dir";
+      seg.className =
+        idx === parts.length - 1 ? "git-diff-breadcrumb-file" : "git-diff-breadcrumb-dir";
       seg.textContent = part;
       breadcrumb.appendChild(seg);
     });
@@ -452,15 +574,19 @@ export class DiffView extends ItemView {
       this.updateSyncStats(diffs);
       requestAnimationFrame(() => this.renderMinimap());
     } catch (e: unknown) {
-      this.diffContainer.createDiv("git-diff-error").setText(
-        `Error loading diff: ${e instanceof Error ? e.message : String(e)}`
-      );
+      this.diffContainer
+        .createDiv("git-diff-error")
+        .setText(`Error loading diff: ${e instanceof Error ? e.message : String(e)}`);
     }
   }
 
   private updateSyncStats(diffs: FileDiff[]): void {
-    let totalAdd = 0, totalDel = 0;
-    for (const d of diffs) { totalAdd += d.additions; totalDel += d.deletions; }
+    let totalAdd = 0,
+      totalDel = 0;
+    for (const d of diffs) {
+      totalAdd += d.additions;
+      totalDel += d.deletions;
+    }
     const upEl = this.contentEl.querySelector(".git-diff-sync-up");
     const downEl = this.contentEl.querySelector(".git-diff-sync-down");
     if (upEl) upEl.textContent = `↑ ${totalAdd}`;
@@ -499,15 +625,27 @@ export class DiffView extends ItemView {
 
     for (const hunk of fileDiff.hunks) {
       const leftHunkHeader = leftCode.createDiv("git-diff-hunk-header");
-      leftHunkHeader.setText(hunk.header || `@@ -${hunk.oldStart},${hunk.oldLines} +${hunk.newStart},${hunk.newLines} @@`);
+      leftHunkHeader.setText(
+        hunk.header ||
+          `@@ -${hunk.oldStart},${hunk.oldLines} +${hunk.newStart},${hunk.newLines} @@`,
+      );
       const rightHunkHeader = rightCode.createDiv("git-diff-hunk-header");
-      rightHunkHeader.setText(hunk.header || `@@ -${hunk.oldStart},${hunk.oldLines} +${hunk.newStart},${hunk.newLines} @@`);
+      rightHunkHeader.setText(
+        hunk.header ||
+          `@@ -${hunk.oldStart},${hunk.oldLines} +${hunk.newStart},${hunk.newLines} @@`,
+      );
 
       if (!this.ref) {
         const hunkActions = rightHunkHeader.createDiv("git-diff-hunk-actions");
-        const stageBtn = hunkActions.createEl("button", { cls: "git-diff-hunk-btn", text: "Stage Hunk" });
+        const stageBtn = hunkActions.createEl("button", {
+          cls: "git-diff-hunk-btn",
+          text: "Stage Hunk",
+        });
         stageBtn.addEventListener("click", () => this.stageHunk(fileDiff.path, hunk));
-        const revertBtn = hunkActions.createEl("button", { cls: "git-diff-hunk-btn", text: "Revert" });
+        const revertBtn = hunkActions.createEl("button", {
+          cls: "git-diff-hunk-btn",
+          text: "Revert",
+        });
         revertBtn.addEventListener("click", () => this.revertHunk(fileDiff.path, hunk));
       }
 
@@ -528,12 +666,22 @@ export class DiffView extends ItemView {
           const leftLine = leftCode.createDiv("git-diff-line git-diff-del");
           leftLine.createSpan("git-diff-linenum").setText(String(pair.left?.oldLineNo ?? ""));
           const leftContent = leftLine.createSpan("git-diff-content");
-          this.renderInlineHighlight(leftContent, pair.left?.content ?? "", pair.right?.content ?? "", "del");
+          this.renderInlineHighlight(
+            leftContent,
+            pair.left?.content ?? "",
+            pair.right?.content ?? "",
+            "del",
+          );
 
           const rightLine = rightCode.createDiv("git-diff-line git-diff-add");
           rightLine.createSpan("git-diff-linenum").setText(String(pair.right?.newLineNo ?? ""));
           const rightContent = rightLine.createSpan("git-diff-content");
-          this.renderInlineHighlight(rightContent, pair.right?.content ?? "", pair.left?.content ?? "", "add");
+          this.renderInlineHighlight(
+            rightContent,
+            pair.right?.content ?? "",
+            pair.left?.content ?? "",
+            "add",
+          );
         } else if (pair.type === "del") {
           const leftLine = leftCode.createDiv("git-diff-line git-diff-del");
           leftLine.createSpan("git-diff-linenum").setText(String(pair.left?.oldLineNo ?? ""));
@@ -584,16 +732,26 @@ export class DiffView extends ItemView {
 
     for (const hunk of fileDiff.hunks) {
       const hunkHeader = code.createDiv("git-diff-hunk-header");
-      hunkHeader.setText(`@@ -${hunk.oldStart},${hunk.oldLines} +${hunk.newStart},${hunk.newLines} @@ ${hunk.header}`);
+      hunkHeader.setText(
+        `@@ -${hunk.oldStart},${hunk.oldLines} +${hunk.newStart},${hunk.newLines} @@ ${hunk.header}`,
+      );
 
       if (!this.ref) {
         const hunkActions = hunkHeader.createDiv("git-diff-hunk-actions");
-        const stageBtn = hunkActions.createEl("button", { cls: "git-diff-hunk-btn", text: "Stage" });
+        const stageBtn = hunkActions.createEl("button", {
+          cls: "git-diff-hunk-btn",
+          text: "Stage",
+        });
         stageBtn.addEventListener("click", () => this.stageHunk(fileDiff.path, hunk));
       }
 
       for (const line of hunk.lines) {
-        const cls = line.type === "add" ? "git-diff-add" : line.type === "del" ? "git-diff-del" : "git-diff-context";
+        const cls =
+          line.type === "add"
+            ? "git-diff-add"
+            : line.type === "del"
+              ? "git-diff-del"
+              : "git-diff-context";
         const lineEl = code.createDiv(`git-diff-line ${cls}`);
         const lineNo = lineEl.createSpan("git-diff-linenum");
 
@@ -621,7 +779,11 @@ export class DiffView extends ItemView {
     left?: DiffLine;
     right?: DiffLine;
   }> {
-    const result: Array<{ type: "context" | "modify" | "add" | "del"; left?: DiffLine; right?: DiffLine }> = [];
+    const result: Array<{
+      type: "context" | "modify" | "add" | "del";
+      left?: DiffLine;
+      right?: DiffLine;
+    }> = [];
     let i = 0;
 
     while (i < lines.length) {
@@ -654,11 +816,13 @@ export class DiffView extends ItemView {
     return result;
   }
 
-  private renderInlineHighlight(container: HTMLElement, text: string, other: string, side: "add" | "del"): void {
-    const diffs = this.charDiff(
-      side === "del" ? text : other,
-      side === "del" ? other : text
-    );
+  private renderInlineHighlight(
+    container: HTMLElement,
+    text: string,
+    other: string,
+    side: "add" | "del",
+  ): void {
+    const diffs = this.charDiff(side === "del" ? text : other, side === "del" ? other : text);
 
     const segments = side === "del" ? diffs.old : diffs.new;
 
@@ -686,7 +850,10 @@ export class DiffView extends ItemView {
     }
   }
 
-  private charDiff(oldStr: string, newStr: string): {
+  private charDiff(
+    oldStr: string,
+    newStr: string,
+  ): {
     old: Array<{ value: string; changed: boolean }>;
     new: Array<{ value: string; changed: boolean }>;
   } {
@@ -698,14 +865,23 @@ export class DiffView extends ItemView {
     const oldSegs: Array<{ value: string; changed: boolean }> = [];
     const newSegs: Array<{ value: string; changed: boolean }> = [];
 
-    let oi = 0, ni = 0, li = 0;
+    let oi = 0,
+      ni = 0,
+      li = 0;
 
     while (oi < oldWords.length || ni < newWords.length) {
-      if (li < lcs.length && oi < oldWords.length && ni < newWords.length &&
-          oldWords[oi] === lcs[li] && newWords[ni] === lcs[li]) {
+      if (
+        li < lcs.length &&
+        oi < oldWords.length &&
+        ni < newWords.length &&
+        oldWords[oi] === lcs[li] &&
+        newWords[ni] === lcs[li]
+      ) {
         oldSegs.push({ value: oldWords[oi], changed: false });
         newSegs.push({ value: newWords[ni], changed: false });
-        oi++; ni++; li++;
+        oi++;
+        ni++;
+        li++;
       } else {
         if (oi < oldWords.length && (li >= lcs.length || oldWords[oi] !== lcs[li])) {
           oldSegs.push({ value: oldWords[oi], changed: true });
@@ -752,7 +928,8 @@ export class DiffView extends ItemView {
       return [];
     }
 
-    const m = a.length, n = b.length;
+    const m = a.length,
+      n = b.length;
     const dp: number[][] = Array.from({ length: m + 1 }, () => new Array(n + 1).fill(0));
 
     for (let i = 1; i <= m; i++) {
@@ -766,11 +943,13 @@ export class DiffView extends ItemView {
     }
 
     const result: string[] = [];
-    let i = m, j = n;
+    let i = m,
+      j = n;
     while (i > 0 && j > 0) {
       if (a[i - 1] === b[j - 1]) {
         result.unshift(a[i - 1]);
-        i--; j--;
+        i--;
+        j--;
       } else if (dp[i - 1][j] > dp[i][j - 1]) {
         i--;
       } else {
@@ -781,7 +960,9 @@ export class DiffView extends ItemView {
     return result;
   }
 
-  private mergeSegments(segs: Array<{ value: string; changed: boolean }>): Array<{ value: string; changed: boolean }> {
+  private mergeSegments(
+    segs: Array<{ value: string; changed: boolean }>,
+  ): Array<{ value: string; changed: boolean }> {
     if (segs.length === 0) return segs;
     const merged: Array<{ value: string; changed: boolean }> = [segs[0]];
     for (let i = 1; i < segs.length; i++) {
@@ -847,9 +1028,12 @@ export class DiffView extends ItemView {
       if (textLen > 0) {
         const x = 4 + Math.min(indent, 20) * 0.8;
         const w = Math.min(textLen * 0.6, width - x - 6);
-        ctx.fillStyle = line.type === "add" ? "rgba(100, 200, 120, 0.35)" :
-                        line.type === "del" ? "rgba(220, 100, 100, 0.35)" :
-                        "rgba(180, 180, 180, 0.15)";
+        ctx.fillStyle =
+          line.type === "add"
+            ? "rgba(100, 200, 120, 0.35)"
+            : line.type === "del"
+              ? "rgba(220, 100, 100, 0.35)"
+              : "rgba(180, 180, 180, 0.15)";
         ctx.fillRect(x, y + lineH * 0.15, Math.max(w, 3), lineH * 0.7);
       }
     }
@@ -905,7 +1089,9 @@ export class DiffView extends ItemView {
       e.preventDefault();
     });
 
-    document.addEventListener("mouseup", () => { dragging = false; });
+    document.addEventListener("mouseup", () => {
+      dragging = false;
+    });
   }
 
   private async stageHunk(path: string, hunk: DiffHunk): Promise<void> {
@@ -914,11 +1100,8 @@ export class DiffView extends ItemView {
       const { execFile } = require("child_process") as typeof import("child_process");
       const repoRoot = await this.git.getRepoRoot();
       await new Promise<void>((resolve, reject) => {
-        const proc = execFile(
-          "git",
-          ["apply", "--cached", "-"],
-          { cwd: repoRoot },
-          (err) => (err ? reject(err) : resolve())
+        const proc = execFile("git", ["apply", "--cached", "-"], { cwd: repoRoot }, (err) =>
+          err ? reject(err) : resolve(),
         );
         proc.stdin?.write(patch);
         proc.stdin?.end();
@@ -937,11 +1120,8 @@ export class DiffView extends ItemView {
       const { execFile } = require("child_process") as typeof import("child_process");
       const repoRoot = await this.git.getRepoRoot();
       await new Promise<void>((resolve, reject) => {
-        const proc = execFile(
-          "git",
-          ["apply", "-R", "-"],
-          { cwd: repoRoot },
-          (err) => (err ? reject(err) : resolve())
+        const proc = execFile("git", ["apply", "-R", "-"], { cwd: repoRoot }, (err) =>
+          err ? reject(err) : resolve(),
         );
         proc.stdin?.write(patch);
         proc.stdin?.end();
@@ -954,7 +1134,7 @@ export class DiffView extends ItemView {
     }
   }
 
-  private buildPatch(path: string, hunk: DiffHunk, reverse = false): string {
+  private buildPatch(path: string, hunk: DiffHunk, _reverse = false): string {
     let patch = `--- a/${path}\n+++ b/${path}\n`;
     patch += `@@ -${hunk.oldStart},${hunk.oldLines} +${hunk.newStart},${hunk.newLines} @@\n`;
     for (const line of hunk.lines) {

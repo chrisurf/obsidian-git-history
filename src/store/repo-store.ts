@@ -19,24 +19,46 @@ export class RepoStore extends Events {
     super();
   }
 
-  get status(): FileStatus[] { return this._status; }
-  get stagedFiles(): FileStatus[] { return this._status.filter(f => f.staged); }
-  get changedFiles(): FileStatus[] { return this._status.filter(f => !f.staged && f.workingStatus !== "?"); }
-  get untrackedFiles(): FileStatus[] { return this._status.filter(f => f.workingStatus === "?"); }
-  get branch(): string { return this._branch; }
-  get branches(): BranchInfo[] { return this._branches; }
-  get commits(): CommitInfo[] { return this._commits; }
-  get ahead(): number { return this._ahead; }
-  get behind(): number { return this._behind; }
-  get loading(): boolean { return this._loading; }
-  get merging(): boolean { return this._merging; }
+  get status(): FileStatus[] {
+    return this._status;
+  }
+  get stagedFiles(): FileStatus[] {
+    return this._status.filter((f) => f.staged);
+  }
+  get changedFiles(): FileStatus[] {
+    return this._status.filter((f) => !f.staged && f.workingStatus !== "?");
+  }
+  get untrackedFiles(): FileStatus[] {
+    return this._status.filter((f) => f.workingStatus === "?");
+  }
+  get branch(): string {
+    return this._branch;
+  }
+  get branches(): BranchInfo[] {
+    return this._branches;
+  }
+  get commits(): CommitInfo[] {
+    return this._commits;
+  }
+  get ahead(): number {
+    return this._ahead;
+  }
+  get behind(): number {
+    return this._behind;
+  }
+  get loading(): boolean {
+    return this._loading;
+  }
+  get merging(): boolean {
+    return this._merging;
+  }
 
   get mergeConflicts(): FileStatus[] {
-    return this._status.filter(f => f.indexStatus === "U" || f.workingStatus === "U");
+    return this._status.filter((f) => f.indexStatus === "U" || f.workingStatus === "U");
   }
 
   private computeFingerprint(status: FileStatus[]): string {
-    return status.map(f => `${f.path}:${f.indexStatus}:${f.workingStatus}:${f.staged}`).join("|");
+    return status.map((f) => `${f.path}:${f.indexStatus}:${f.workingStatus}:${f.staged}`).join("|");
   }
 
   async refresh(): Promise<void> {
@@ -63,7 +85,7 @@ export class RepoStore extends Events {
       this._branch = branch;
       this._ahead = ab.ahead;
       this._behind = ab.behind;
-      this._merging = status.some(f => f.indexStatus === "U" || f.workingStatus === "U");
+      this._merging = status.some((f) => f.indexStatus === "U" || f.workingStatus === "U");
       this._statusFingerprint = newStatusFp;
       this._branchFingerprint = newBranchFp;
 
