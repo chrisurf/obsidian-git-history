@@ -1,0 +1,10 @@
+{
+  // Type-checks the plugin the way the community review does: without
+  // @types/node. Node APIs then resolve to `any`, and every call through them
+  // is reported as unsafe — which is why they go through src/utils/node-api.ts.
+  // CI lints against this config so the difference cannot resurface.
+  "extends": "./tsconfig.json",
+  "compilerOptions": {
+    "types": []
+  }
+}

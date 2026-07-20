@@ -8,6 +8,9 @@ permissions:
   contents: write
   issues: write
   pull-requests: write
+  # Required to sign the release assets with build provenance.
+  id-token: write
+  attestations: write
 
 jobs:
   release:
@@ -24,6 +27,12 @@ jobs:
 
       - name: Build
         run: npm run build
+
+      # Lets users verify the released assets were built from this repository.
+      - name: Attest build provenance
+        uses: actions/attest-build-provenance@v2
+        with:
+          subject-path: "main.js, styles.css"
 
       - name: Semantic Release
         env:

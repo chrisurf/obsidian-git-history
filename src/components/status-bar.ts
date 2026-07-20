@@ -18,17 +18,17 @@ export class StatusBarController {
 
     this.store.on("branch-changed", () => this.update());
     this.store.on("status-changed", () => this.update());
-    this.store.on("loading", ((...args: unknown[]) => this.setLoading(args[0] as boolean)) as (
-      ...data: unknown[]
-    ) => unknown);
+    this.store.on("loading", (...args: unknown[]) => this.setLoading(args[0] as boolean));
   }
 
   private build(): void {
     this.el.addClass("git-history-statusbar");
-    this.el.addEventListener("click", () => this.plugin.openSourceControlView());
+    this.el.addEventListener("click", () => {
+      void this.plugin.openSourceControlView();
+    });
 
     this.spinnerEl = this.el.createSpan("git-sb-spinner");
-    this.spinnerEl.style.display = "none";
+    this.spinnerEl.addClass("gs-hidden");
     setIcon(this.spinnerEl, "loader");
 
     const branchIcon = this.el.createSpan("git-sb-icon");

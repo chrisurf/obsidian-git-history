@@ -1,5 +1,13 @@
-import * as fs from "fs";
-import { Plugin, WorkspaceLeaf, Notice, PluginSettingTab, App, Setting } from "obsidian";
+import {
+  Plugin,
+  WorkspaceLeaf,
+  Notice,
+  PluginSettingTab,
+  App,
+  normalizePath,
+  Setting,
+  type SettingDefinitionItem,
+} from "obsidian";
 import {
   SOURCE_CONTROL_VIEW_TYPE,
   GRAPH_VIEW_TYPE,
@@ -14,6 +22,8 @@ import { SourceControlView } from "./views/source-control-view";
 import { GraphView } from "./views/graph-view";
 import { DiffView } from "./views/diff-view";
 import { StatusBarController } from "./components/status-bar";
+import { watchPath, type FileWatcher } from "./utils/node-api";
+import { asVoid } from "./utils/async";
 
 /** View type of the removed history panel, kept only to clean up old workspaces. */
 const LEGACY_HISTORY_VIEW_TYPE = "git-history-history";
@@ -23,24 +33,22 @@ export default class GitHistoryPlugin extends Plugin {
   git!: GitService;
   store!: RepoStore;
   private statusBar: StatusBarController | null = null;
-  private refreshTimer: ReturnType<typeof setInterval> | null = null;
-  private debounceTimer: ReturnType<typeof setTimeout> | null = null;
-  private fsDebounceTimer: ReturnType<typeof setTimeout> | null = null;
-  private fsWatcher: fs.FSWatcher | null = null;
+  private refreshTimer: number | null = null;
+  private debounceTimer: number | null = null;
+  private fsDebounceTimer: number | null = null;
+  private fsWatcher: FileWatcher | null = null;
 
   async onload(): Promise<void> {
     await this.loadSettings();
 
-    const adapter = this.app.vault.adapter as { basePath?: string; getBasePath?: () => string };
-    const basePath = adapter.getBasePath?.() ?? adapter.basePath ?? "";
-    this.git = new GitService(basePath);
+    this.git = new GitService(this.vaultPath());
     this.store = new RepoStore(this.git);
     this.store.showNestedRepos = this.settings.showNestedRepos;
 
     const isRepo = await this.git.isRepo();
     if (!isRepo) {
       new Notice(
-        "Git History: This vault is not a Git repository. Use the init command to create one.",
+        "Git history: This vault is not a Git repository. Use the init command to create one.",
       );
     }
 
@@ -53,8 +61,8 @@ export default class GitHistoryPlugin extends Plugin {
     // as an empty pane nobody can close from inside the plugin.
     this.app.workspace.detachLeavesOfType(LEGACY_HISTORY_VIEW_TYPE);
 
-    this.addRibbonIcon("git-branch", "Git History", () => {
-      this.openSourceControlView();
+    this.addRibbonIcon("git-branch", "Git history", () => {
+      void this.openSourceControlView();
     });
 
     this.registerCommands();
@@ -74,13 +82,13 @@ export default class GitHistoryPlugin extends Plugin {
   private registerCommands(): void {
     this.addCommand({
       id: "open-source-control",
-      name: "Open Source Control",
+      name: "Open source control",
       callback: () => this.openSourceControlView(),
     });
 
     this.addCommand({
       id: "open-graph",
-      name: "Open Git Graph",
+      name: "Open Git graph",
       callback: () => this.openGraphView(),
     });
 
@@ -138,7 +146,7 @@ export default class GitHistoryPlugin extends Plugin {
 
     this.addCommand({
       id: "backup",
-      name: "Backup: Stage All, Commit & Push",
+      name: "Backup: Stage all, commit & push",
       callback: async () => {
         try {
           await this.store.runTask("Backing up", async () => {
@@ -159,18 +167,18 @@ export default class GitHistoryPlugin extends Plugin {
 
     this.addCommand({
       id: "show-file-history",
-      name: "Show File History",
+      name: "Show file history",
       checkCallback: (checking) => {
         const file = this.app.workspace.getActiveFile();
         if (!file) return false;
         if (checking) return true;
-        this.openFileHistory(file.path);
+        void this.openFileHistory(file.path);
       },
     });
 
     this.addCommand({
       id: "init-repo",
-      name: "Initialize Git Repository",
+      name: "Initialize Git repository",
       callback: async () => {
         try {
           await this.git.init();
@@ -186,13 +194,13 @@ export default class GitHistoryPlugin extends Plugin {
   async openSourceControlView(): Promise<void> {
     const existing = this.app.workspace.getLeavesOfType(SOURCE_CONTROL_VIEW_TYPE);
     if (existing.length > 0) {
-      this.app.workspace.revealLeaf(existing[0]);
+      void this.app.workspace.revealLeaf(existing[0]);
       return;
     }
     const leaf = this.app.workspace.getRightLeaf(false);
     if (leaf) {
       await leaf.setViewState({ type: SOURCE_CONTROL_VIEW_TYPE, active: true });
-      this.app.workspace.revealLeaf(leaf);
+      void this.app.workspace.revealLeaf(leaf);
     }
   }
 
@@ -208,7 +216,7 @@ export default class GitHistoryPlugin extends Plugin {
       }
     }
     if (leaf) {
-      this.app.workspace.revealLeaf(leaf);
+      void this.app.workspace.revealLeaf(leaf);
       const view = leaf.view as SourceControlView;
       view.showCommitChanges(commit);
     }
@@ -217,13 +225,13 @@ export default class GitHistoryPlugin extends Plugin {
   async openGraphView(): Promise<void> {
     const existing = this.app.workspace.getLeavesOfType(GRAPH_VIEW_TYPE);
     if (existing.length > 0) {
-      this.app.workspace.revealLeaf(existing[0]);
+      void this.app.workspace.revealLeaf(existing[0]);
       return;
     }
     const leaf = this.app.workspace.getLeaf("tab");
     if (leaf) {
       await leaf.setViewState({ type: GRAPH_VIEW_TYPE, active: true });
-      this.app.workspace.revealLeaf(leaf);
+      void this.app.workspace.revealLeaf(leaf);
     }
   }
 
@@ -240,21 +248,30 @@ export default class GitHistoryPlugin extends Plugin {
       await leaf.setViewState({ type: DIFF_VIEW_TYPE, active: true });
       const view = leaf.view as DiffView;
       view.setFile(path, ref, staged);
-      this.app.workspace.revealLeaf(leaf);
+      void this.app.workspace.revealLeaf(leaf);
     }
   }
 
   private setupAutoRefresh(): void {
     if (this.settings.autoFetchEnabled && this.settings.autoFetchInterval > 0) {
-      this.refreshTimer = setInterval(async () => {
-        try {
-          await this.git.fetch();
-          await this.store.refresh();
-        } catch {
-          // silent fail for auto-fetch
-        }
-      }, this.settings.autoFetchInterval * 1000);
+      this.refreshTimer = window.setInterval(
+        asVoid(async () => {
+          try {
+            await this.git.fetch();
+            await this.store.refresh();
+          } catch {
+            // silent fail for auto-fetch
+          }
+        }),
+        this.settings.autoFetchInterval * 1000,
+      );
     }
+  }
+
+  /** Absolute path of the vault, which git needs as its working directory. */
+  private vaultPath(): string {
+    const adapter = this.app.vault.adapter as { basePath?: string; getBasePath?: () => string };
+    return adapter.getBasePath?.() ?? adapter.basePath ?? "";
   }
 
   private setupFileWatcher(): void {
@@ -263,30 +280,37 @@ export default class GitHistoryPlugin extends Plugin {
     this.registerEvent(this.app.vault.on("delete", () => this.debouncedRefresh()));
     this.registerEvent(this.app.vault.on("rename", () => this.debouncedRefresh()));
 
-    const adapter = this.app.vault.adapter as { basePath?: string; getBasePath?: () => string };
-    const basePath = adapter.getBasePath?.() ?? adapter.basePath ?? "";
+    // Obsidian's events cover the notes, but not its own config files —
+    // appearance.json and workspace.json change constantly and show up as
+    // changes in the panel. Watching just the config folder keeps the panel
+    // honest without walking the whole vault.
+    const basePath = this.vaultPath();
     if (basePath) {
+      const configPath = normalizePath(`${basePath}/${this.app.vault.configDir}`);
       try {
-        this.fsWatcher = fs.watch(basePath, { recursive: true }, (_event, filename) => {
-          if (typeof filename === "string" && filename.startsWith(".git")) return;
-          if (this.fsDebounceTimer) clearTimeout(this.fsDebounceTimer);
-          this.fsDebounceTimer = setTimeout(() => this.store.refresh(), 2000);
+        this.fsWatcher = watchPath(configPath, { recursive: true }, () => {
+          if (this.fsDebounceTimer) window.clearTimeout(this.fsDebounceTimer);
+          this.fsDebounceTimer = window.setTimeout(() => {
+            void this.store.refresh();
+          }, 2000);
         });
       } catch {
-        // fs.watch may not support recursive on all platforms
+        // Recursive watching is not available on every platform; the panel
+        // still refreshes on window focus and from the toolbar.
       }
     }
   }
 
   private debouncedRefresh(): void {
-    if (this.debounceTimer) clearTimeout(this.debounceTimer);
-    this.debounceTimer = setTimeout(() => {
-      this.store.refresh();
+    if (this.debounceTimer) window.clearTimeout(this.debounceTimer);
+    this.debounceTimer = window.setTimeout(() => {
+      void this.store.refresh();
     }, this.settings.debounceMs);
   }
 
   async loadSettings(): Promise<void> {
-    this.settings = Object.assign({}, DEFAULT_SETTINGS, await this.loadData());
+    const saved = (await this.loadData()) as Partial<GitHistorySettings> | null;
+    this.settings = Object.assign({}, DEFAULT_SETTINGS, saved ?? {});
   }
 
   async saveSettings(): Promise<void> {
@@ -294,9 +318,9 @@ export default class GitHistoryPlugin extends Plugin {
   }
 
   onunload(): void {
-    if (this.refreshTimer) clearInterval(this.refreshTimer);
-    if (this.debounceTimer) clearTimeout(this.debounceTimer);
-    if (this.fsDebounceTimer) clearTimeout(this.fsDebounceTimer);
+    if (this.refreshTimer) window.clearInterval(this.refreshTimer);
+    if (this.debounceTimer) window.clearTimeout(this.debounceTimer);
+    if (this.fsDebounceTimer) window.clearTimeout(this.fsDebounceTimer);
     if (this.fsWatcher) {
       this.fsWatcher.close();
       this.fsWatcher = null;
@@ -313,11 +337,78 @@ class GitHistorySettingTab extends PluginSettingTab {
     this.plugin = plugin;
   }
 
+  /**
+   * Obsidian 1.13+ renders and searches settings from these definitions.
+   * display() below stays for older versions, which ignore this method — the
+   * two lists are kept in step by hand, which is the price of supporting both.
+   */
+  getSettingDefinitions(): SettingDefinitionItem[] {
+    return [
+      {
+        name: "Commit message template",
+        desc: "Default commit message. Use {{date}} for the current date.",
+        control: {
+          type: "text",
+          key: "commitTemplate",
+          placeholder: "vault backup {{date}}",
+        },
+      },
+      {
+        name: "Pull strategy",
+        control: {
+          type: "dropdown",
+          key: "pullStrategy",
+          options: { merge: "Merge", rebase: "Rebase", "ff-only": "Fast-forward only" },
+        },
+      },
+      {
+        name: "Default diff view",
+        control: {
+          type: "dropdown",
+          key: "diffViewMode",
+          options: { "side-by-side": "Side by side", inline: "Inline" },
+        },
+      },
+      {
+        name: "Auto-fetch",
+        desc: "Automatically fetch from remotes.",
+        control: { type: "toggle", key: "autoFetchEnabled" },
+      },
+      {
+        name: "Auto-fetch interval",
+        desc: "Seconds between automatic fetches.",
+        control: { type: "number", key: "autoFetchInterval", min: 30 },
+      },
+      {
+        name: "Show nested repositories",
+        desc:
+          "Folders inside the vault that are Git repositories of their own cannot be staged, " +
+          "so they are hidden from the changes list. Turn this on to list them anyway.",
+        control: { type: "toggle", key: "showNestedRepos" },
+      },
+      {
+        name: "File watcher debounce",
+        desc: "Milliseconds to wait before refreshing status after file changes.",
+        control: { type: "number", key: "debounceMs", min: 100 },
+      },
+    ];
+  }
+
+  getControlValue(key: string): unknown {
+    return this.plugin.settings[key as keyof GitHistorySettings];
+  }
+
+  async setControlValue(key: string, value: unknown): Promise<void> {
+    Object.assign(this.plugin.settings, { [key]: value });
+    if (key === "showNestedRepos") {
+      this.plugin.store.showNestedRepos = Boolean(value);
+    }
+    await this.plugin.saveSettings();
+  }
+
   display(): void {
     const { containerEl } = this;
     containerEl.empty();
-
-    containerEl.createEl("h2", { text: "Git History Settings" });
 
     new Setting(containerEl)
       .setName("Commit message template")
