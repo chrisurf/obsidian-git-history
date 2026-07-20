@@ -1,3 +1,10 @@
+## [1.0.1](https://github.com/chrisurf/obsidian-git-history/compare/1.0.0...1.0.1) (2026-07-20)
+
+
+### Bug Fixes
+
+* staging correctness, graph expansion, and feedback while commands run ([#5](https://github.com/chrisurf/obsidian-git-history/issues/5)) ([ae93ce2](https://github.com/chrisurf/obsidian-git-history/commit/ae93ce2a7d5b81af3a550424f8eb729dfa5abdc7))
+
 # 1.0.0 (2026-07-20)
 
 
