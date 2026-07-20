@@ -1404,6 +1404,26 @@
   letter-spacing: 0.2px;
 }
 
+.git-diff-breadcrumb {
+  display: flex;
+  align-items: center;
+  gap: 2px;
+  font-size: 13px;
+  font-family: var(--diff-font);
+}
+.git-diff-breadcrumb-dir {
+  color: var(--diff-text-muted);
+  cursor: default;
+}
+.git-diff-breadcrumb-sep {
+  color: var(--diff-text-faint);
+  margin: 0 2px;
+  font-size: 11px;
+}
+.git-diff-breadcrumb-file {
+  color: var(--diff-text);
+}
+
 .git-diff-sync {
   display: flex;
   align-items: center;
@@ -1585,6 +1605,18 @@
   border-left-color: transparent;
 }
 
+/* Character-level inline diff highlights */
+.git-diff-char-add {
+  background: rgba(35, 134, 54, 0.45);
+  border-radius: 2px;
+  padding: 0 1px;
+}
+.git-diff-char-del {
+  background: rgba(248, 81, 73, 0.40);
+  border-radius: 2px;
+  padding: 0 1px;
+}
+
 .git-diff-hunk-header {
   display: flex;
   justify-content: space-between;
@@ -1633,7 +1665,7 @@
 /* --- Minimap --- */
 
 .git-diff-minimap {
-  width: 64px;
+  width: 80px;
   flex-shrink: 0;
   position: relative;
   background: rgba(30, 30, 30, 0.8);
