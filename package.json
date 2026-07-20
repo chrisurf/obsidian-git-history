@@ -1,7 +1,7 @@
 {
   "name": "obsidian-git-history",
   "version": "1.0.0",
-  "description": "Git History for Obsidian – Full Git management with commit graph",
+  "description": "Git History for Obsidian – Full Git management with an intuitive UI and commit graph",
   "main": "main.js",
   "scripts": {
     "dev": "node esbuild.config.mjs",
