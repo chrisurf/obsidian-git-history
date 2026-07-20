@@ -670,9 +670,9 @@ export class SourceControlView extends ItemView {
 
       const info = wcRow.createDiv("gs-sg-info");
       info.createSpan("gs-sg-msg").setText("Working Changes");
-      const meta = info.createSpan("gs-sg-meta");
+      const metaLine = info.createDiv("gs-sg-meta-line");
       const totalChanges = this.store.changedFiles.length + this.store.untrackedFiles.length + this.store.stagedFiles.length;
-      meta.setText(`${totalChanges} file${totalChanges !== 1 ? "s" : ""} · You`);
+      metaLine.createSpan("gs-sg-meta").setText(`${totalChanges} file${totalChanges !== 1 ? "s" : ""} · You`);
 
       wcRow.addEventListener("click", () => this.switchTab("changes"));
     }
@@ -717,8 +717,10 @@ export class SourceControlView extends ItemView {
       }
 
       info.createSpan("gs-sg-msg").setText(commit.message);
-      const meta = info.createSpan("gs-sg-meta");
+      const metaLine = info.createDiv("gs-sg-meta-line");
+      const meta = metaLine.createSpan("gs-sg-meta");
       meta.setText(`${commit.shortHash} · ${commit.author} · ${formatRelativeDate(commit.date)}`);
+      this.loadChangesBar(commit.hash, metaLine);
 
       row.addEventListener("mouseenter", (e) => {
         if (this.tooltipTimeout) clearTimeout(this.tooltipTimeout);
@@ -819,6 +821,30 @@ export class SourceControlView extends ItemView {
           this.plugin.openDiff(f.path, hash);
         });
       }
+    } catch {
+      // ignore
+    }
+  }
+
+  private async loadChangesBar(hash: string, container: HTMLElement): Promise<void> {
+    try {
+      const files = await this.git.showCommitFiles(hash);
+      if (files.length === 0) return;
+      const totalAdd = files.reduce((s, f) => s + f.additions, 0);
+      const totalDel = files.reduce((s, f) => s + f.deletions, 0);
+      const total = totalAdd + totalDel;
+      if (total === 0) return;
+
+      const wrap = container.createDiv("gs-sg-changes-bar-wrap");
+      const icon = wrap.createSpan("gs-sg-changes-icon");
+      setIcon(icon, "file");
+      wrap.createSpan("gs-sg-changes-count").setText(String(files.length));
+      const bar = wrap.createDiv("gs-sg-changes-bar");
+      const addPct = Math.round((totalAdd / total) * 100);
+      const addSegment = bar.createDiv("gs-sg-changes-add");
+      addSegment.style.width = addPct + "%";
+      const delSegment = bar.createDiv("gs-sg-changes-del");
+      delSegment.style.width = (100 - addPct) + "%";
     } catch {
       // ignore
     }

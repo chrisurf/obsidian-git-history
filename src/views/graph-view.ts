@@ -419,6 +419,15 @@ export class GraphView extends ItemView {
       const icon = cell.createSpan("gs-files-icon");
       setIcon(icon, "file");
       cell.createSpan("gs-files-count").setText(String(files.length));
+      const totalAdd = files.reduce((s, f) => s + f.additions, 0);
+      const totalDel = files.reduce((s, f) => s + f.deletions, 0);
+      const total = totalAdd + totalDel;
+      if (total > 0) {
+        const bar = cell.createDiv("gs-sg-changes-bar");
+        const addPct = Math.round((totalAdd / total) * 100);
+        bar.createDiv("gs-sg-changes-add").style.width = addPct + "%";
+        bar.createDiv("gs-sg-changes-del").style.width = (100 - addPct) + "%";
+      }
     } catch {
       // ignore
     }
