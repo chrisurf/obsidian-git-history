@@ -5,7 +5,7 @@
   </picture>
 </p>
 
-# Git History for Obsidian
+# 🌿 Git History for Obsidian
 
 Version control for your vault, with an intuitive interface and no terminal
 required.
@@ -17,16 +17,16 @@ click, done.
 
 ---
 
-## New to Git? Start here
+## 🌱 New to Git? Start here
 
 Git is a tool that remembers every version of every file. Three ideas cover
 almost everything you will do:
 
 | Term | What it means for your vault |
 | --- | --- |
-| **Commit** | A snapshot of your vault at one moment, with a short note about it. Like a save point you can return to. |
-| **Push** | Uploads your snapshots to a backup copy, so they also exist off this computer. |
-| **Pull** | Downloads snapshots you made elsewhere, for example on another computer. |
+| 📸 **Commit** | A snapshot of your vault at one moment, with a short note about it. Like a save point you can return to. |
+| ⬆️ **Push** | Uploads your snapshots to a backup copy, so they also exist off this computer. |
+| ⬇️ **Pull** | Downloads snapshots you made elsewhere, for example on another computer. |
 
 A typical day needs one habit: write what changed, press **Commit**, press
 **Push**. Everything else in this plugin is there for the moment you want to
@@ -43,7 +43,7 @@ command from Obsidian's command palette and the plugin sets one up for you.
   <img src="docs/screenshots/overview.png" alt="Commit graph and source control panel" width="100%" />
 </p>
 
-### Source control panel
+### 📋 Source control panel
 
 Your changed notes, grouped and ready to commit.
 
@@ -54,7 +54,7 @@ Your changed notes, grouped and ready to commit.
 - Switch or create branches
 - Refreshes itself when you edit notes or come back to the window
 
-### Commit graph
+### 🌳 Commit graph
 
 The history of your vault as a timeline.
 
@@ -66,13 +66,13 @@ The history of your vault as a timeline.
 A compact version lives in the sidebar, so you can glance at recent commits
 without leaving what you were doing.
 
-### File history
+### 🕰️ File history
 
 Pick any note and see only the commits that touched it — including the ones from
 before you renamed it. Available from the command palette and from the
 right-click menu in the source control panel.
 
-### Diff viewer
+### 🔍 Diff viewer
 
 See exactly what changed in a note: old and new side by side, or as one
 annotated text. You can stage or undo a single block of changes instead of the
@@ -80,7 +80,7 @@ whole file.
 
 ---
 
-## Requirements
+## 🧩 Requirements
 
 - Obsidian 1.7.2 or later
 - Git installed on your computer ([how to install](https://git-scm.com/downloads))
@@ -88,7 +88,7 @@ whole file.
 
 ---
 
-## Commands
+## ⌨️ Commands
 
 Available from Obsidian's command palette (`Ctrl/Cmd + P`).
 
@@ -104,7 +104,7 @@ Available from Obsidian's command palette (`Ctrl/Cmd + P`).
 | Show file history | Shows the history of the note you have open |
 | Initialize Git repository | Sets up version control for a vault that has none |
 
-## Settings
+## ⚙️ Settings
 
 | Setting | Default | What it does |
 | --- | --- | --- |
@@ -119,7 +119,7 @@ Available from Obsidian's command palette (`Ctrl/Cmd + P`).
 
 ---
 
-## What the plugin does on your computer
+## 🔒 What the plugin does on your computer
 
 Obsidian lists what a plugin is capable of, so here is what those capabilities
 are used for:
