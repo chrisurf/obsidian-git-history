@@ -1,5 +1,5 @@
 import { ItemView, WorkspaceLeaf, setIcon, Menu, Notice } from "obsidian";
-import { SOURCE_CONTROL_VIEW_TYPE, FileStatus, GraphNode } from "../types";
+import { SOURCE_CONTROL_VIEW_TYPE, FileStatus, GraphNode, CommitInfo } from "../types";
 import { RepoStore } from "../store/repo-store";
 import { GitService } from "../git/git-service";
 import { computeGraphLayout, formatRelativeDate } from "../utils/graph-layout";
@@ -32,6 +32,8 @@ export class SourceControlView extends ItemView {
   private graphListEl: HTMLElement | null = null;
   private graphSelectedHash: string | null = null;
   private focusHandler: (() => void) | null = null;
+  private tooltipEl: HTMLElement | null = null;
+  private tooltipTimeout: ReturnType<typeof setTimeout> | null = null;
 
   constructor(leaf: WorkspaceLeaf, plugin: GitHistoryPlugin) {
     super(leaf);
@@ -692,7 +694,7 @@ export class SourceControlView extends ItemView {
       if (commit.hash === this.graphSelectedHash) row.addClass("gs-sg-row-selected");
 
       const dotCol = row.createDiv("gs-sg-dot-col");
-      const COLORS = ["#0ea5e9","#22c55e","#f59e0b","#ef4444","#a855f7","#ec4899","#14b8a6","#f97316","#6366f1","#84cc16","#06b6d4","#e879f9"];
+      const COLORS = ["#4fc1ff","#3fb950","#d2a8ff","#f0883e","#f778ba","#58a6ff","#7ee787","#ffa657","#ff7b72","#79c0ff","#bb8eff","#56d364"];
       const color = COLORS[node.color % COLORS.length];
       const isMerge = commit.parents.length > 1;
 
@@ -718,7 +720,17 @@ export class SourceControlView extends ItemView {
       const meta = info.createSpan("gs-sg-meta");
       meta.setText(`${commit.shortHash} · ${commit.author} · ${formatRelativeDate(commit.date)}`);
 
+      row.addEventListener("mouseenter", (e) => {
+        if (this.tooltipTimeout) clearTimeout(this.tooltipTimeout);
+        this.tooltipTimeout = setTimeout(() => this.showCommitTooltip(commit, e), 400);
+      });
+      row.addEventListener("mouseleave", () => {
+        if (this.tooltipTimeout) { clearTimeout(this.tooltipTimeout); this.tooltipTimeout = null; }
+        this.hideCommitTooltip();
+      });
+
       row.addEventListener("click", () => {
+        this.hideCommitTooltip();
         if (this.graphSelectedHash === commit.hash) {
           this.graphSelectedHash = null;
         } else {
@@ -728,6 +740,7 @@ export class SourceControlView extends ItemView {
       });
 
       row.addEventListener("contextmenu", (e) => {
+        this.hideCommitTooltip();
         const menu = new Menu();
         menu.addItem(item => item.setTitle("Copy SHA").setIcon("copy").onClick(() => {
           navigator.clipboard.writeText(commit.hash);
@@ -811,7 +824,83 @@ export class SourceControlView extends ItemView {
     }
   }
 
+  private showCommitTooltip(commit: CommitInfo, e: MouseEvent): void {
+    this.hideCommitTooltip();
+    const tip = document.createElement("div");
+    tip.className = "gs-sg-tooltip";
+
+    const initials = commit.author.split(" ").map(w => w[0]).join("").substring(0, 2).toUpperCase();
+    const avatar = tip.createDiv("gs-sg-tip-avatar");
+    avatar.setText(initials);
+
+    const body = tip.createDiv("gs-sg-tip-body");
+
+    const authorLine = body.createDiv("gs-sg-tip-author-line");
+    authorLine.createSpan("gs-sg-tip-author").setText(commit.author);
+    authorLine.createSpan("gs-sg-tip-date-rel").setText(formatRelativeDate(commit.date));
+
+    const dateLine = body.createDiv("gs-sg-tip-date-full");
+    dateLine.setText(commit.date.toLocaleString("en-US", {
+      weekday: "long", year: "numeric", month: "long", day: "numeric",
+      hour: "numeric", minute: "2-digit", hour12: true,
+    }));
+
+    const shaLine = body.createDiv("gs-sg-tip-sha-line");
+    shaLine.createSpan("gs-sg-tip-sha-icon").setText("◇");
+    shaLine.createSpan("gs-sg-tip-sha").setText(commit.shortHash);
+    if (commit.parents.length > 0) {
+      shaLine.createSpan("gs-sg-tip-parents-label").setText(` (${commit.parents.length} parent${commit.parents.length > 1 ? "s" : ""})`);
+    }
+
+    const emailLine = body.createDiv("gs-sg-tip-email");
+    emailLine.setText(`${commit.authorEmail}`);
+
+    this.loadTooltipStats(commit.hash, body);
+
+    const msgEl = body.createDiv("gs-sg-tip-msg");
+    msgEl.setText(commit.message);
+    if (commit.body) {
+      body.createDiv("gs-sg-tip-msg-body").setText(commit.body);
+    }
+
+    document.body.appendChild(tip);
+    this.tooltipEl = tip;
+
+    const rect = (e.currentTarget as HTMLElement).getBoundingClientRect();
+    const tipRect = tip.getBoundingClientRect();
+    let top = rect.top - tipRect.height - 6;
+    if (top < 8) top = rect.bottom + 6;
+    let left = rect.left + 20;
+    if (left + tipRect.width > window.innerWidth - 8) left = window.innerWidth - tipRect.width - 8;
+    tip.style.top = top + "px";
+    tip.style.left = left + "px";
+    tip.style.opacity = "1";
+  }
+
+  private async loadTooltipStats(hash: string, body: HTMLElement): Promise<void> {
+    try {
+      const files = await this.git.showCommitFiles(hash);
+      if (!this.tooltipEl || files.length === 0) return;
+      const totalAdd = files.reduce((s, f) => s + f.additions, 0);
+      const totalDel = files.reduce((s, f) => s + f.deletions, 0);
+      const statsEl = body.createDiv("gs-sg-tip-stats");
+      statsEl.createSpan("gs-sg-tip-stats-files").setText(`${files.length} file${files.length !== 1 ? "s" : ""} changed`);
+      if (totalAdd > 0) statsEl.createSpan("gs-stat-add").setText(`  ${totalAdd} additions`);
+      if (totalDel > 0) statsEl.createSpan("gs-stat-del").setText(`  ${totalDel} deletions`);
+    } catch {
+      // ignore
+    }
+  }
+
+  private hideCommitTooltip(): void {
+    if (this.tooltipEl) {
+      this.tooltipEl.remove();
+      this.tooltipEl = null;
+    }
+  }
+
   async onClose(): Promise<void> {
     if (this.focusHandler) window.removeEventListener("focus", this.focusHandler);
+    this.hideCommitTooltip();
   }
 }
