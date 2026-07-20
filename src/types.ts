@@ -13,6 +13,12 @@ export interface FileStatus {
   staged: boolean;
 }
 
+export interface CommitStats {
+  filesChanged: number;
+  additions: number;
+  deletions: number;
+}
+
 export interface CommitInfo {
   hash: string;
   shortHash: string;
@@ -23,6 +29,13 @@ export interface CommitInfo {
   authorEmail: string;
   date: Date;
   refs: RefInfo[];
+  /**
+   * Aggregated diff stats collected in the same `git log` call.
+   * Undefined when git emits no stat block for the commit (merge commits
+   * without --diff-merges, empty commits) — callers fall back to a lazy
+   * per-commit lookup for those.
+   */
+  stats?: CommitStats;
 }
 
 export interface RefInfo {

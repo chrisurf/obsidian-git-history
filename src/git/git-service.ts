@@ -3,6 +3,7 @@ import {
   FileStatus,
   FileStatusCode,
   CommitInfo,
+  CommitStats,
   RefInfo,
   BranchInfo,
   RemoteInfo,
@@ -14,6 +15,7 @@ import {
 export class GitService {
   private repoPath: string;
   private queue: Promise<unknown> = Promise.resolve();
+  private supportsDiffMerges = true;
 
   constructor(repoPath: string) {
     this.repoPath = repoPath;
@@ -201,8 +203,14 @@ export class GitService {
     all?: boolean;
   }): Promise<CommitInfo[]> {
     const SEP = "@@GS_SEP@@";
-    const format = ["%H", "%h", "%P", "%s", "%b", "%an", "%ae", "%aI", "%D"].join(SEP);
-    const args = ["log", `--format=${format}`, "--parents"];
+    // %x00 starts each record so commits stay parseable even when %b spans
+    // multiple lines. --shortstat appends the diff summary to the same call,
+    // which avoids one `git diff-tree` process per rendered row.
+    const format = "%x00" + ["%H", "%h", "%P", "%s", "%b", "%an", "%ae", "%aI", "%D"].join(SEP);
+    const args = ["log", `--format=${format}`, "--parents", "--shortstat"];
+    // Merge commits carry no stat block by default. Requires git >= 2.31, so
+    // the first failure disables it for the rest of the session.
+    if (this.supportsDiffMerges) args.push("--diff-merges=first-parent");
     if (opts?.all) args.push("--all");
     if (opts?.maxCount) args.push(`-n${opts.maxCount}`);
     if (opts?.skip) args.push(`--skip=${opts.skip}`);
@@ -213,19 +221,29 @@ export class GitService {
     try {
       const out = await this.exec(args);
       return this.parseLog(out, SEP);
-    } catch {
+    } catch (e) {
+      if (this.supportsDiffMerges && e instanceof GitError && /diff-merges/.test(e.message)) {
+        this.supportsDiffMerges = false;
+        return this.log(opts);
+      }
       return [];
     }
   }
 
   private parseLog(raw: string, sep: string): CommitInfo[] {
     const commits: CommitInfo[] = [];
-    for (const line of raw.split("\n")) {
-      if (!line.trim()) continue;
-      const parts = line.split(sep);
+    for (const record of raw.split("\0")) {
+      if (!record.trim()) continue;
+      const parts = record.split(sep);
       if (parts.length < 9) continue;
-      const [hash, shortHash, parentsStr, message, body, author, authorEmail, dateStr, refsStr] =
-        parts;
+      const [hash, shortHash, parentsStr, message, body, author, authorEmail, dateStr] = parts;
+
+      // Last field is %D, optionally followed by the --shortstat block.
+      const tail = parts[8];
+      const nl = tail.indexOf("\n");
+      const refsStr = nl === -1 ? tail : tail.slice(0, nl);
+      const stats = nl === -1 ? undefined : this.parseShortStat(tail.slice(nl));
+
       const parents = parentsStr.trim() ? parentsStr.trim().split(" ") : [];
       const refs = this.parseRefs(refsStr.trim());
       commits.push({
@@ -238,9 +256,23 @@ export class GitService {
         authorEmail,
         date: new Date(dateStr),
         refs,
+        stats,
       });
     }
     return commits;
+  }
+
+  /** Parses ` 4 files changed, 13 insertions(+), 3 deletions(-)` (both counts optional). */
+  private parseShortStat(text: string): CommitStats | undefined {
+    const match = text.match(
+      /(\d+) files? changed(?:, (\d+) insertions?\(\+\))?(?:, (\d+) deletions?\(-\))?/,
+    );
+    if (!match) return undefined;
+    return {
+      filesChanged: parseInt(match[1]),
+      additions: match[2] ? parseInt(match[2]) : 0,
+      deletions: match[3] ? parseInt(match[3]) : 0,
+    };
   }
 
   private parseRefs(refsStr: string): RefInfo[] {

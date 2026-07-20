@@ -1,5 +1,5 @@
 import { ItemView, WorkspaceLeaf, setIcon, Menu, Modal, Notice } from "obsidian";
-import { GRAPH_VIEW_TYPE, CommitInfo, GraphNode, GraphEdge } from "../types";
+import { GRAPH_VIEW_TYPE, CommitInfo, CommitStats, GraphNode, GraphEdge } from "../types";
 import { RepoStore } from "../store/repo-store";
 import { GitService } from "../git/git-service";
 import { computeGraphLayout, formatRelativeDate } from "../utils/graph-layout";
@@ -46,6 +46,9 @@ export class GraphView extends ItemView {
   private hasWorkingChanges = false;
   private tooltipEl: HTMLElement | null = null;
   private tooltipTimeout: ReturnType<typeof setTimeout> | null = null;
+  private renderHandle: number | null = null;
+  /** Lazily resolved stats for commits git omits from --shortstat (merges, empty commits). */
+  private statsFallback = new Map<string, CommitStats>();
 
   constructor(leaf: WorkspaceLeaf, plugin: GitHistoryPlugin) {
     super(leaf);
@@ -74,7 +77,7 @@ export class GraphView extends ItemView {
 
     const scrollWrap = contentEl.createDiv("gs-graph-scroll-wrap");
     this.scrollEl = scrollWrap;
-    this.scrollEl.addEventListener("scroll", () => this.renderVisible());
+    this.scrollEl.addEventListener("scroll", () => this.scheduleRender());
 
     const inner = this.scrollEl.createDiv("gs-graph-inner");
 
@@ -91,8 +94,13 @@ export class GraphView extends ItemView {
     this.registerEvent(this.store.on("log-changed", () => this.rebuildGraph()));
     this.registerEvent(
       this.store.on("status-changed", () => {
+        // The graph layout depends only on the commit list, so a status change
+        // never needs computeGraphLayout() — it only affects the working
+        // changes row. Vault edits fire this constantly while typing.
+        const had = this.hasWorkingChanges;
         this.hasWorkingChanges = this.store.status.length > 0;
-        this.rebuildGraph();
+        if (had !== this.hasWorkingChanges) this.updateLayout();
+        this.scheduleRender();
       }),
     );
 
@@ -181,7 +189,7 @@ export class GraphView extends ItemView {
       }
     }
     this.updateLayout();
-    this.renderVisible();
+    this.scheduleRender();
   }
 
   private rebuildGraph(): void {
@@ -191,7 +199,7 @@ export class GraphView extends ItemView {
     this.maxColumns = result.maxColumns;
     this.filteredIndices = null;
     this.updateLayout();
-    this.renderVisible();
+    this.scheduleRender();
   }
 
   private getVisibleRows(): number[] {
@@ -214,6 +222,15 @@ export class GraphView extends ItemView {
       this.svgLayer.setAttribute("height", String(totalHeight));
     }
     this.contentEl.style.setProperty("--gs-graph-col-width", graphWidth + "px");
+  }
+
+  /** Coalesces scroll bursts (~120/s on a trackpad) into one render per frame. */
+  private scheduleRender(): void {
+    if (this.renderHandle !== null) return;
+    this.renderHandle = requestAnimationFrame(() => {
+      this.renderHandle = null;
+      this.renderVisible();
+    });
   }
 
   private renderVisible(): void {
@@ -432,28 +449,52 @@ export class GraphView extends ItemView {
       this.hideCommitTooltip();
     });
 
-    this.loadFileCount(commit.hash, filesCell);
+    this.renderFileStats(commit, filesCell);
 
     return row;
   }
 
-  private async loadFileCount(hash: string, cell: HTMLElement): Promise<void> {
-    try {
-      const files = await this.git.showCommitFiles(hash);
-      const icon = cell.createSpan("gs-files-icon");
-      setIcon(icon, "file");
-      cell.createSpan("gs-files-count").setText(String(files.length));
-      const totalAdd = files.reduce((s, f) => s + f.additions, 0);
-      const totalDel = files.reduce((s, f) => s + f.deletions, 0);
-      const total = totalAdd + totalDel;
-      if (total > 0) {
-        const bar = cell.createDiv("gs-sg-changes-bar");
-        const addPct = Math.round((totalAdd / total) * 100);
-        bar.createDiv("gs-sg-changes-add").style.width = addPct + "%";
-        bar.createDiv("gs-sg-changes-del").style.width = 100 - addPct + "%";
-      }
-    } catch {
-      // ignore
+  /**
+   * Renders the file/changes column. Stats normally arrive with the commit log,
+   * so this is synchronous and costs no git process. Only commits git omits
+   * from --shortstat fall back to a one-off lookup, cached per hash.
+   */
+  private renderFileStats(commit: CommitInfo, cell: HTMLElement): void {
+    const stats = commit.stats ?? this.statsFallback.get(commit.hash);
+    if (stats) {
+      this.paintFileStats(stats, cell);
+      return;
+    }
+    if (this.statsFallback.has(commit.hash)) return;
+
+    void this.git
+      .showCommitFiles(commit.hash)
+      .then((files) => {
+        const resolved: CommitStats = {
+          filesChanged: files.length,
+          additions: files.reduce((s, f) => s + f.additions, 0),
+          deletions: files.reduce((s, f) => s + f.deletions, 0),
+        };
+        this.statsFallback.set(commit.hash, resolved);
+        // The row may have been recycled away while the lookup ran.
+        if (cell.isConnected) this.paintFileStats(resolved, cell);
+      })
+      .catch(() => {
+        // leave the column empty for commits we cannot stat
+      });
+  }
+
+  private paintFileStats(stats: CommitStats, cell: HTMLElement): void {
+    const icon = cell.createSpan("gs-files-icon");
+    setIcon(icon, "file");
+    cell.createSpan("gs-files-count").setText(String(stats.filesChanged));
+
+    const total = stats.additions + stats.deletions;
+    if (total > 0) {
+      const bar = cell.createDiv("gs-sg-changes-bar");
+      const addPct = Math.round((stats.additions / total) * 100);
+      bar.createDiv("gs-sg-changes-add").style.width = addPct + "%";
+      bar.createDiv("gs-sg-changes-del").style.width = 100 - addPct + "%";
     }
   }
 
@@ -731,7 +772,7 @@ export class GraphView extends ItemView {
 
     const statsPlaceholder = this.el("div", "gs-sg-tip-stats");
     body.appendChild(statsPlaceholder);
-    this.loadTooltipStats(commit.hash, statsPlaceholder);
+    this.loadTooltipStats(commit, statsPlaceholder);
 
     const msgEl = this.el("div", "gs-sg-tip-msg", commit.message);
     body.appendChild(msgEl);
@@ -756,23 +797,32 @@ export class GraphView extends ItemView {
     });
   }
 
-  private async loadTooltipStats(hash: string, container: HTMLElement): Promise<void> {
+  private async loadTooltipStats(commit: CommitInfo, container: HTMLElement): Promise<void> {
     try {
-      const files = await this.git.showCommitFiles(hash);
-      if (!this.tooltipEl || files.length === 0) return;
-      const totalAdd = files.reduce((s, f) => s + f.additions, 0);
-      const totalDel = files.reduce((s, f) => s + f.deletions, 0);
+      let stats = commit.stats ?? this.statsFallback.get(commit.hash);
+      if (!stats) {
+        const files = await this.git.showCommitFiles(commit.hash);
+        stats = {
+          filesChanged: files.length,
+          additions: files.reduce((s, f) => s + f.additions, 0),
+          deletions: files.reduce((s, f) => s + f.deletions, 0),
+        };
+        this.statsFallback.set(commit.hash, stats);
+        if (!this.tooltipEl) return;
+      }
+      if (stats.filesChanged === 0) return;
+
       container.appendChild(
         this.el(
           "span",
           "gs-sg-tip-stats-files",
-          `${files.length} file${files.length !== 1 ? "s" : ""} changed`,
+          `${stats.filesChanged} file${stats.filesChanged !== 1 ? "s" : ""} changed`,
         ),
       );
-      if (totalAdd > 0)
-        container.appendChild(this.el("span", "gs-stat-add", `  ${totalAdd} additions`));
-      if (totalDel > 0)
-        container.appendChild(this.el("span", "gs-stat-del", `  ${totalDel} deletions`));
+      if (stats.additions > 0)
+        container.appendChild(this.el("span", "gs-stat-add", `  ${stats.additions} additions`));
+      if (stats.deletions > 0)
+        container.appendChild(this.el("span", "gs-stat-del", `  ${stats.deletions} deletions`));
     } catch {
       // ignore
     }
@@ -786,6 +836,10 @@ export class GraphView extends ItemView {
   }
 
   async onClose(): Promise<void> {
+    if (this.renderHandle !== null) {
+      cancelAnimationFrame(this.renderHandle);
+      this.renderHandle = null;
+    }
     this.hidePopup();
     this.hideCommitTooltip();
   }
