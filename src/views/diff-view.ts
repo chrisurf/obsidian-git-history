@@ -1,4 +1,5 @@
-import { ItemView, WorkspaceLeaf, setIcon, Notice } from "obsidian";
+import { execFile } from "child_process";
+import { ItemView, WorkspaceLeaf, Notice } from "obsidian";
 import { DIFF_VIEW_TYPE, FileDiff, DiffHunk, DiffLine } from "../types";
 import { GitService } from "../git/git-service";
 import type GitHistoryPlugin from "../main";
@@ -1097,7 +1098,6 @@ export class DiffView extends ItemView {
   private async stageHunk(path: string, hunk: DiffHunk): Promise<void> {
     try {
       const patch = this.buildPatch(path, hunk);
-      const { execFile } = require("child_process") as typeof import("child_process");
       const repoRoot = await this.git.getRepoRoot();
       await new Promise<void>((resolve, reject) => {
         const proc = execFile("git", ["apply", "--cached", "-"], { cwd: repoRoot }, (err) =>
@@ -1117,7 +1117,6 @@ export class DiffView extends ItemView {
   private async revertHunk(path: string, hunk: DiffHunk): Promise<void> {
     try {
       const patch = this.buildPatch(path, hunk, true);
-      const { execFile } = require("child_process") as typeof import("child_process");
       const repoRoot = await this.git.getRepoRoot();
       await new Promise<void>((resolve, reject) => {
         const proc = execFile("git", ["apply", "-R", "-"], { cwd: repoRoot }, (err) =>
