@@ -57,3 +57,21 @@ describe("styles.css — the expanded commit card", () => {
     expect(ruleBody(".gs-commit-popup")).toMatch(/left\s*:\s*calc\(/);
   });
 });
+
+describe("styles.css — the progress bar", () => {
+  it("is set apart from the active tab's underline", () => {
+    // Both are accent-coloured lines a few pixels apart. Without a visible
+    // track and its own margin the bar reads as part of the tab bar, which is
+    // why it went unnoticed while working correctly.
+    expect(ruleBody(".gs-progress")).toMatch(/margin\s*:/);
+    expect(ruleBody(".gs-progress-active")).toMatch(/background\s*:/);
+  });
+
+  it("keeps working when the system asks for reduced motion", () => {
+    // The sweep is switched off there, so the bar has to fill its track
+    // instead — an invisible 0%-wide segment would be no feedback at all.
+    const reduced = css.match(/prefers-reduced-motion[^{]*\{([\s\S]*?)\n\}/);
+    expect(reduced, "no reduced-motion fallback").not.toBeNull();
+    expect(reduced?.[1]).toMatch(/width\s*:\s*100%/);
+  });
+});

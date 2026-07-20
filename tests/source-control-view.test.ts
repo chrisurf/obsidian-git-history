@@ -486,9 +486,18 @@ describe("SourceControlView — toolbar buttons drive the progress bar", () => {
 
       expect(active(view), `clicking ${label} never reached the progress bar`).toBe(true);
 
+      // The bar sits just above the active tab's accent underline, so the
+      // label is what makes it readable as progress rather than decoration.
+      const busyLabel = view.contentEl.querySelector(".gs-sc-busy-label") as HTMLElement;
+      expect(busyLabel.style.display, `${label} showed no running command`).not.toBe("none");
+      expect(busyLabel.textContent).toMatch(/…$/);
+
       calls.release[key]?.();
       await new Promise((r) => setTimeout(r, SourceControlView.PROGRESS_MIN_MS + 50));
       expect(active(view), `the bar kept running after ${label} finished`).toBe(false);
+      expect((view.contentEl.querySelector(".gs-sc-busy-label") as HTMLElement).style.display).toBe(
+        "none",
+      );
     });
   }
 });

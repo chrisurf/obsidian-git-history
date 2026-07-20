@@ -109,6 +109,9 @@ Rules earned from bugs. Break one and the symptom is silent, not a crash.
   anywhere else they resolve to invalid and silently drop the whole rule.
 - **A card that overlays rows needs an opaque layer and a higher `z-index`**
   than `.gs-graph-tbody` — translucent tints alone let text bleed through.
+- **Feedback must not look like existing chrome.** A thin accent line above the
+  tab bar is invisible next to the active tab's accent underline. Pair any
+  indicator with a label naming what runs.
 
 ## Verifying UI changes
 

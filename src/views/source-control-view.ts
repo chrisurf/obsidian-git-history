@@ -40,6 +40,7 @@ export class SourceControlView extends ItemView {
   private tooltipEl: HTMLElement | null = null;
   private tooltipTimeout: ReturnType<typeof setTimeout> | null = null;
   private progressEl: HTMLElement | null = null;
+  private busyLabelEl: HTMLElement | null = null;
   private progressHideTimer: number | null = null;
   private progressShownAt = 0;
 
@@ -146,6 +147,10 @@ export class SourceControlView extends ItemView {
       el.addClass("gs-progress-active");
       el.setAttribute("aria-label", label ?? "Working");
       el.setAttribute("aria-busy", "true");
+      if (this.busyLabelEl) {
+        this.busyLabelEl.setText(`${label ?? "Working"}…`);
+        this.busyLabelEl.style.display = "";
+      }
       return;
     }
 
@@ -157,6 +162,7 @@ export class SourceControlView extends ItemView {
       el.removeClass("gs-progress-active");
       el.setAttribute("aria-busy", "false");
       el.removeAttribute("aria-label");
+      if (this.busyLabelEl) this.busyLabelEl.style.display = "none";
       this.progressHideTimer = null;
     };
     if (wait === 0) hide();
@@ -196,7 +202,13 @@ export class SourceControlView extends ItemView {
 
   private buildHeader(el: HTMLElement): void {
     const bar = el.createDiv("gs-sc-header");
-    bar.createSpan("gs-sc-header-title").setText("SOURCE CONTROL");
+    const titleWrap = bar.createDiv("gs-sc-header-left");
+    titleWrap.createSpan("gs-sc-header-title").setText("SOURCE CONTROL");
+    // The bar alone sits a few pixels above the active tab's accent underline
+    // and reads as part of it. The name of the running command is the part
+    // that is actually noticed.
+    this.busyLabelEl = titleWrap.createSpan("gs-sc-busy-label");
+    this.busyLabelEl.style.display = "none";
 
     const actions = bar.createDiv("gs-sc-header-actions");
     for (const [icon, label, fn] of [

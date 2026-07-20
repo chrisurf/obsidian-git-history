@@ -548,9 +548,13 @@
 }
 
 /* Progress bar between the header and the tabs. The track always occupies its
-   row so the panel never shifts by 2px when a command starts. */
+   row so the panel never shifts when a command starts. It sits a few pixels
+   above the active tab's accent underline, so the visible track and the
+   rounded, glowing segment are what separate the two. */
 .gs-progress {
-  height: 3px;
+  height: 4px;
+  margin: 2px 8px 3px;
+  border-radius: 2px;
   flex-shrink: 0;
   overflow: hidden;
   background: transparent;
@@ -558,14 +562,36 @@
 
 .gs-progress-bar {
   height: 100%;
-  width: 40%;
-  border-radius: 1px;
+  width: 35%;
+  border-radius: 2px;
   background: var(--gs-accent);
   opacity: 0;
 }
 
 .gs-progress-active {
   background: var(--background-modifier-border);
+}
+
+.gs-progress-active .gs-progress-bar {
+  box-shadow: 0 0 6px var(--gs-accent);
+}
+
+/* Name of the running command, next to the panel title. */
+.gs-sc-header-left {
+  display: flex;
+  align-items: baseline;
+  gap: 8px;
+  min-width: 0;
+}
+
+.gs-sc-busy-label {
+  font-size: 10px;
+  font-weight: 600;
+  letter-spacing: 0.04em;
+  color: var(--gs-accent);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
 }
 
 .gs-progress-active .gs-progress-bar {
