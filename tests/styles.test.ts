@@ -30,3 +30,24 @@ describe("styles.css behavioural rules", () => {
     expect(ruleBody(".gs-section-actions")).not.toMatch(/pointer-events\s*:\s*none/);
   });
 });
+
+describe("styles.css — the expanded commit card", () => {
+  const zIndex = (selector: string): number => {
+    const match = ruleBody(selector).match(/z-index\s*:\s*(\d+)/);
+    if (!match) throw new Error(`${selector} has no z-index`);
+    return parseInt(match[1], 10);
+  };
+
+  it("paints above the commit rows and the graph lanes", () => {
+    // The card overlays the rows below the clicked one. A lower z-index lets
+    // their text bleed through it, which is unreadable rather than merely ugly.
+    expect(zIndex(".gs-commit-popup")).toBeGreaterThan(zIndex(".gs-graph-tbody"));
+    expect(zIndex(".gs-commit-popup")).toBeGreaterThan(zIndex(".gs-graph-svg"));
+  });
+
+  it("is opaque, so the rows underneath cannot show through", () => {
+    const body = ruleBody(".gs-commit-popup");
+    expect(body).toMatch(/background\s*:\s*var\(--gs-bg2\)/);
+    expect(body).not.toMatch(/background\s*:\s*(transparent|none)/);
+  });
+});

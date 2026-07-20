@@ -396,6 +396,8 @@
 }
 
 /* Commit popup */
+/* Expanded commit card. It overlays the rows below the one that was clicked,
+   so it has to be opaque and clearly above them — the rows carry z-index 2. */
 .gs-commit-popup {
   position: absolute;
   left: 0;
@@ -403,11 +405,14 @@
   z-index: 100;
   background: var(--gs-bg2);
   border: 1px solid var(--gs-border);
+  border-left: 2px solid var(--gs-accent);
   border-radius: 6px;
-  margin: 0 8px;
+  margin: 2px 8px 0;
   padding: 12px;
   box-shadow: 0 4px 16px rgba(0, 0, 0, 0.3);
   max-width: 600px;
+  /* Long subjects and pasted URLs must not push the card wider than the list. */
+  overflow-wrap: anywhere;
 }
 
 .gs-popup-header {
@@ -474,6 +479,7 @@
 
 .gs-popup-msg {
   margin-top: 10px;
+  white-space: pre-wrap;
   font-size: 13px;
   color: var(--gs-text);
   font-weight: 500;

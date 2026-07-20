@@ -416,3 +416,47 @@ describe("GraphView — file history filter", () => {
     expect(chip(h).style.display).toBe("none");
   });
 });
+
+/**
+ * The expanded commit card is positioned in scroll-content coordinates
+ * (row offset + scrollTop). That arithmetic is only correct while the card
+ * lives inside the scrolled content — as a sibling of the scroll container it
+ * rendered a header's height too high, on top of unrelated rows, and stayed
+ * put while the list scrolled underneath.
+ */
+describe("GraphView — expanded commit card", () => {
+  const popup = (h: Harness): HTMLElement =>
+    h.view.contentEl.querySelector(".gs-commit-popup") as HTMLElement;
+
+  it("lives inside the scrolled content, next to the rows", async () => {
+    const h = await mount();
+    const inner = h.view.contentEl.querySelector(".gs-graph-inner") as HTMLElement;
+
+    expect(popup(h).parentElement, "the card is positioned against the wrong box").toBe(inner);
+    expect(inner.contains(h.tbody)).toBe(true);
+  });
+
+  it("stays hidden until a commit is clicked", async () => {
+    const h = await mount();
+    expect(popup(h).style.display).toBe("none");
+  });
+
+  it("opens with the commit's details and closes again on a second click", async () => {
+    const h = await mount();
+    const row = readRows(h.tbody)[0];
+
+    row.el.dispatchEvent(new MouseEvent("click", { bubbles: true }));
+    await Promise.resolve();
+    await Promise.resolve();
+    flushFrames();
+
+    expect(popup(h).style.display).toBe("block");
+    expect(popup(h).querySelector(".gs-popup-msg")?.textContent).toBe("commit message 0");
+    expect(popup(h).querySelector(".gs-popup-actions")).not.toBeNull();
+
+    readRows(h.tbody)[0].el.dispatchEvent(new MouseEvent("click", { bubbles: true }));
+    await Promise.resolve();
+    flushFrames();
+    expect(popup(h).style.display).toBe("none");
+  });
+});

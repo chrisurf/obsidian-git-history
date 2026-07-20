@@ -131,7 +131,12 @@ export class GraphView extends ItemView {
     this.tableBody = inner.createDiv("gs-graph-tbody");
     this.spacerEl = inner.createDiv("gs-graph-spacer");
 
-    this.popupEl = contentEl.createDiv("gs-commit-popup");
+    // Inside the scrolled content, not next to it: showPopup() positions the
+    // popup in scroll-content coordinates (row offset + scrollTop), which only
+    // lines up when the containing block is .gs-graph-inner. As a child of
+    // contentEl it landed a header's height too high, over unrelated rows, and
+    // stayed put while the list scrolled underneath it.
+    this.popupEl = inner.createDiv("gs-commit-popup");
     this.popupEl.style.display = "none";
 
     this.registerEvent(this.store.on("log-changed", () => this.rebuildGraph()));
