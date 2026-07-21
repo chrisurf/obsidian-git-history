@@ -126,9 +126,6 @@ are used for:
 
 - **Runs the `git` command.** That is how every action works — it is the same
   program you would use in a terminal, run inside your vault's folder only.
-- **Reads files directly.** Obsidian tells plugins about note changes but not
-  about changes to its own configuration, so the plugin watches the config
-  folder to keep the list of changes up to date.
 - **Writes to the clipboard.** Only when you use "Copy SHA" or "Copy path".
 
 Nothing leaves your machine unless you press push, and then only to the backup
