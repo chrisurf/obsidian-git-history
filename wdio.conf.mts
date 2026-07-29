@@ -41,10 +41,16 @@ export const config: WebdriverIO.Config = {
 
   onPrepare() {
     if (!existsSync(path.join(testVault, ".git"))) {
-      execSync("git init && git add . && git commit -m 'initial test vault commit'", {
-        cwd: testVault,
-        stdio: "pipe",
-      });
+      execSync(
+        [
+          "git init",
+          "git config user.email 'test@test.local'",
+          "git config user.name 'Test'",
+          "git add .",
+          "git commit -m 'initial test vault commit'",
+        ].join(" && "),
+        { cwd: testVault, stdio: "pipe" },
+      );
     }
   },
 };

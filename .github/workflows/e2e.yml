@@ -15,6 +15,11 @@ jobs:
           node-version: 22
           cache: npm
 
+      - name: Configure git identity
+        run: |
+          git config --global user.email "ci@test.local"
+          git config --global user.name "CI"
+
       - run: npm ci
 
       - name: Build
