@@ -1,0 +1,49 @@
+name: E2E Tests
+
+on:
+  pull_request:
+    branches: [main]
+
+jobs:
+  e2e:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+
+      - run: npm ci
+
+      - name: Build
+        run: npm run build
+
+      - name: Get Obsidian cache key
+        run: |
+          npx tsx wdio.conf.mts 2>/dev/null | grep 'obsidian-cache-key:' > obsidian-versions-lock.txt || true
+          echo "obsidian-latest" >> obsidian-versions-lock.txt
+
+      - name: Cache Obsidian
+        uses: actions/cache@v4
+        with:
+          path: .obsidian-cache
+          key: obsidian-${{ runner.os }}-${{ hashFiles('obsidian-versions-lock.txt') }}
+          restore-keys: obsidian-${{ runner.os }}-
+
+      - name: Setup virtual display
+        run: |
+          sudo apt-get update -q
+          sudo apt-get install -yq xvfb herbstluftwm
+          export DISPLAY=:99
+          echo "DISPLAY=$DISPLAY" >> "$GITHUB_ENV"
+          Xvfb $DISPLAY -screen 0 1280x1024x24 +extension GLX -noreset &
+          sleep 1
+          herbstluftwm &
+          sleep 1
+
+      - name: Run E2E tests
+        run: npm run test:e2e
+        env:
+          WDIO_MAX_INSTANCES: 2
