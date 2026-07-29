@@ -4,7 +4,6 @@ import {
   Notice,
   PluginSettingTab,
   App,
-  normalizePath,
   Setting,
   type SettingDefinitionItem,
 } from "obsidian";
@@ -22,7 +21,6 @@ import { SourceControlView } from "./views/source-control-view";
 import { GraphView } from "./views/graph-view";
 import { DiffView } from "./views/diff-view";
 import { StatusBarController } from "./components/status-bar";
-import { watchPath, type FileWatcher } from "./utils/node-api";
 import { asVoid } from "./utils/async";
 
 /** View type of the removed history panel, kept only to clean up old workspaces. */
@@ -35,8 +33,6 @@ export default class GitHistoryPlugin extends Plugin {
   private statusBar: StatusBarController | null = null;
   private refreshTimer: number | null = null;
   private debounceTimer: number | null = null;
-  private fsDebounceTimer: number | null = null;
-  private fsWatcher: FileWatcher | null = null;
 
   async onload(): Promise<void> {
     await this.loadSettings();
@@ -75,7 +71,7 @@ export default class GitHistoryPlugin extends Plugin {
     if (isRepo) {
       await this.store.refresh();
       this.setupAutoRefresh();
-      this.setupFileWatcher();
+      this.registerRefreshTriggers();
     }
   }
 
@@ -274,31 +270,22 @@ export default class GitHistoryPlugin extends Plugin {
     return adapter.getBasePath?.() ?? adapter.basePath ?? "";
   }
 
-  private setupFileWatcher(): void {
+  /**
+   * Obsidian's own events are the only source of refreshes.
+   *
+   * There used to be an fs.watch on the config folder, because Obsidian does
+   * not report writes to appearance.json or workspace.json and those show up
+   * as changes in the panel. It cost more than it was worth: workspace.json is
+   * rewritten on every layout change, so dragging a pane around scheduled a
+   * `git status` two seconds later. Those changes now surface on the next
+   * refresh — a note edit, window focus, any git action, or the toolbar
+   * button — and the plugin no longer reaches into the filesystem at all.
+   */
+  private registerRefreshTriggers(): void {
     this.registerEvent(this.app.vault.on("modify", () => this.debouncedRefresh()));
     this.registerEvent(this.app.vault.on("create", () => this.debouncedRefresh()));
     this.registerEvent(this.app.vault.on("delete", () => this.debouncedRefresh()));
     this.registerEvent(this.app.vault.on("rename", () => this.debouncedRefresh()));
-
-    // Obsidian's events cover the notes, but not its own config files —
-    // appearance.json and workspace.json change constantly and show up as
-    // changes in the panel. Watching just the config folder keeps the panel
-    // honest without walking the whole vault.
-    const basePath = this.vaultPath();
-    if (basePath) {
-      const configPath = normalizePath(`${basePath}/${this.app.vault.configDir}`);
-      try {
-        this.fsWatcher = watchPath(configPath, { recursive: true }, () => {
-          if (this.fsDebounceTimer) window.clearTimeout(this.fsDebounceTimer);
-          this.fsDebounceTimer = window.setTimeout(() => {
-            void this.store.refresh();
-          }, 2000);
-        });
-      } catch {
-        // Recursive watching is not available on every platform; the panel
-        // still refreshes on window focus and from the toolbar.
-      }
-    }
   }
 
   private debouncedRefresh(): void {
@@ -320,11 +307,6 @@ export default class GitHistoryPlugin extends Plugin {
   onunload(): void {
     if (this.refreshTimer) window.clearInterval(this.refreshTimer);
     if (this.debounceTimer) window.clearTimeout(this.debounceTimer);
-    if (this.fsDebounceTimer) window.clearTimeout(this.fsDebounceTimer);
-    if (this.fsWatcher) {
-      this.fsWatcher.close();
-      this.fsWatcher = null;
-    }
     this.statusBar?.destroy();
   }
 }

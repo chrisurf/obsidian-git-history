@@ -1,15 +1,14 @@
 /**
  * The Node APIs the plugin needs, behind hand-written types.
  *
- * Git runs through `child_process` and Obsidian's config folder is watched with
- * `fs`, but `@types/node` is not resolvable everywhere this code gets linted —
- * the community review type-checks without it, and every call then reads as
- * `any`, which its rules flag as unsafe. Describing the small surface actually
- * used and asserting it once here keeps every call site properly typed either
- * way, and keeps the assertions to a single reviewable file.
+ * Git runs through `child_process`, but `@types/node` is not resolvable
+ * everywhere this code gets linted — the community review type-checks without
+ * it, and every call then reads as `any`, which its rules flag as unsafe.
+ * Describing the small surface actually used and asserting it once here keeps
+ * every call site properly typed either way, and keeps the assertions to a
+ * single reviewable file.
  */
 import { execFile as nodeExecFile } from "child_process";
-import { watch as nodeWatch } from "fs";
 
 /** The subset of Node's ExecException the plugin reads. */
 export interface ExecFileError extends Error {
@@ -40,18 +39,6 @@ type ExecFileFn = (
 ) => ChildProcessHandle;
 
 export const execFile = nodeExecFile as unknown as ExecFileFn;
-
-export interface FileWatcher {
-  close(): void;
-}
-
-type WatchFn = (
-  path: string,
-  options: { recursive?: boolean },
-  listener: (event: string, filename: string | null) => void,
-) => FileWatcher;
-
-export const watchPath = nodeWatch as unknown as WatchFn;
 
 // Declared rather than imported: git inherits the environment it is spawned
 // with, and this keeps the type local instead of depending on @types/node.
