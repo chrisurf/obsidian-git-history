@@ -24,6 +24,7 @@ Obsidian plugin for Git management: interactive commit graph, source control pan
 - `npm run lint:css` — Stylelint
 - `npm run format` / `npm run format:check` — Prettier
 - `npm run typecheck` — `tsc --noEmit`
+- `npm run test:e2e` — E2E tests via WebdriverIO + Obsidian
 
 ## Testing
 
@@ -45,6 +46,14 @@ ESLint, but Prettier does check them.
 The graph view tests assert virtualization invariants — bounded row count,
 unique row positions, element reuse, no per-row git process — because those
 break silently and are the reason the rendering is fast.
+
+## E2E Testing
+
+- **Framework**: WebdriverIO with `wdio-obsidian-service` (launches real Obsidian Electron instance)
+- **Config**: `wdio.conf.mts`, test TypeScript config: `tsconfig.test.json`
+- **Test vault**: `test/vaults/test-repo/` (git-initialized, copied per test run)
+- **Specs**: `test/specs/*.e2e.ts` — plugin loading, views, status bar, settings, git operations
+- **CI**: Requires Xvfb on Linux (`xvfb-run`) since Electron needs a display server
 
 ## Architecture
 

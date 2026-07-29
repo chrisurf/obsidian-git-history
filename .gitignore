@@ -7,3 +7,5 @@ data.json
 coverage/
 .env
 .env.*
+.obsidian-cache/
+test/vaults/test-repo/.git/
