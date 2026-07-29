@@ -1,3 +1,10 @@
+# [1.1.0](https://github.com/chrisurf/obsidian-git-history/compare/1.0.3...1.1.0) (2026-07-29)
+
+
+### Features
+
+* add WebdriverIO E2E testing suite ([#9](https://github.com/chrisurf/obsidian-git-history/issues/9)) ([cee7811](https://github.com/chrisurf/obsidian-git-history/commit/cee78116c5963068d4569763cf4f0a97503a4541))
+
 ## [1.0.3](https://github.com/chrisurf/obsidian-git-history/compare/1.0.2...1.0.3) (2026-07-29)
 
 
