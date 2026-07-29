@@ -7,3 +7,4 @@ data.json
 coverage/
 .env
 .env.*
+.obsidian-cache/
