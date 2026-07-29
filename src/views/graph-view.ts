@@ -127,6 +127,19 @@ export class GraphView extends ItemView {
     contentEl.empty();
     contentEl.addClass("gs-graph-view");
 
+    const isRepo = await this.git.isRepo();
+    if (!isRepo) {
+      const wrap = contentEl.createDiv("gs-init-view");
+      const iconEl = wrap.createDiv("gs-init-icon");
+      setIcon(iconEl, "git-branch");
+      wrap.createEl("h3", { text: "No Git repository" });
+      wrap.createEl("p", {
+        text: "Initialize a repository in the source control panel to start tracking history.",
+        cls: "gs-init-desc",
+      });
+      return;
+    }
+
     this.buildToolbar(contentEl);
     this.buildColumnHeaders(contentEl);
 

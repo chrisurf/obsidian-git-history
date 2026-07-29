@@ -80,6 +80,47 @@ export class SourceControlView extends ItemView {
   }
 
   async onOpen(): Promise<void> {
+    const isRepo = await this.git.isRepo();
+    if (!isRepo) {
+      this.buildInitView();
+      return;
+    }
+    await this.buildRepoView();
+  }
+
+  private buildInitView(): void {
+    const { contentEl } = this;
+    contentEl.empty();
+    contentEl.addClass("gs-sc-view");
+
+    const wrap = contentEl.createDiv("gs-init-view");
+    const iconEl = wrap.createDiv("gs-init-icon");
+    setIcon(iconEl, "git-branch");
+    wrap.createEl("h3", { text: "No Git repository" });
+    wrap.createEl("p", {
+      text: "This vault is not tracked by Git yet. Initialize a repository to start version control.",
+      cls: "gs-init-desc",
+    });
+    const btn = wrap.createEl("button", {
+      text: "Initialize repository",
+      cls: "mod-cta gs-init-btn",
+    });
+    btn.addEventListener(
+      "click",
+      asVoid(async () => {
+        try {
+          await this.git.init();
+          this.plugin.activatePostInit();
+          await this.buildRepoView();
+          new Notice("Git repository initialized");
+        } catch (e: unknown) {
+          new Notice(`Init failed: ${e instanceof Error ? e.message : String(e)}`);
+        }
+      }),
+    );
+  }
+
+  private async buildRepoView(): Promise<void> {
     const { contentEl } = this;
     contentEl.empty();
     contentEl.addClass("gs-sc-view");
@@ -100,7 +141,6 @@ export class SourceControlView extends ItemView {
     this.registerEvent(
       this.store.on("status-changed", () => {
         this.renderFiles();
-        // Commits are unchanged, so only the working changes row needs updating.
         if (this.activeTab === "graph") this.syncSidebarWorkingRow();
       }),
     );

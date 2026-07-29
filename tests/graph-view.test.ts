@@ -46,6 +46,7 @@ function makeGit(commits: CommitInfo[], status: FileStatus[]): GitService {
       gitCalls.showCommitFiles.push(hash);
       return [];
     },
+    isRepo: async () => true,
   } as unknown as GitService;
 }
 

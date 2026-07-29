@@ -179,8 +179,7 @@ export default class GitHistoryPlugin extends Plugin {
       callback: async () => {
         try {
           await this.git.init();
-          this.setupAutoRefresh();
-          this.registerRefreshTriggers();
+          this.activatePostInit();
           await this.store.refresh();
           new Notice("Git repository initialized");
         } catch (e: unknown) {
@@ -188,6 +187,11 @@ export default class GitHistoryPlugin extends Plugin {
         }
       },
     });
+  }
+
+  activatePostInit(): void {
+    this.setupAutoRefresh();
+    this.registerRefreshTriggers();
   }
 
   async openSourceControlView(): Promise<void> {

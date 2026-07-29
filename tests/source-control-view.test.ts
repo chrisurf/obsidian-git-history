@@ -105,6 +105,7 @@ async function mount(status: FileStatus[]) {
     pull: () => new Promise<void>((r) => (calls.release.pull = r)),
     push: () => new Promise<void>((r) => (calls.release.push = r)),
     stashSave: () => new Promise<void>((r) => (calls.release.stash = r)),
+    isRepo: async () => true,
   } as unknown as GitService;
 
   const store = new RepoStore(git);
