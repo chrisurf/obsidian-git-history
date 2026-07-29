@@ -1,7 +1,10 @@
 import * as path from "path";
+import { execSync } from "child_process";
+import { existsSync } from "fs";
 import { env } from "process";
 
 const cacheDir = path.resolve(".obsidian-cache");
+const testVault = path.resolve("test/vaults/test-repo");
 
 export const config: WebdriverIO.Config = {
   runner: "local",
@@ -35,4 +38,13 @@ export const config: WebdriverIO.Config = {
   logLevel: "warn",
   cacheDir: cacheDir,
   injectGlobals: false,
+
+  onPrepare() {
+    if (!existsSync(path.join(testVault, ".git"))) {
+      execSync("git init && git add . && git commit -m 'initial test vault commit'", {
+        cwd: testVault,
+        stdio: "pipe",
+      });
+    }
+  },
 };
