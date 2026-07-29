@@ -64,6 +64,9 @@
     "wdio-obsidian-reporter": "^3.1.1",
     "wdio-obsidian-service": "^3.1.1"
   },
+  "overrides": {
+    "conventional-commits-filter": "^6.0.1"
+  },
   "nano-staged": {
     "src/**/*.ts": [
       "eslint --fix",
