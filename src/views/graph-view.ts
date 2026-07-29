@@ -864,7 +864,7 @@ export class GraphView extends ItemView {
           try {
             await this.git.createBranch(name, commit.hash);
             await this.store.refresh();
-            await this.store.refreshLog({ all: true });
+            await this.reloadLog();
             new Notice(`Branch '${name}' created`);
           } catch (err: unknown) {
             new Notice(`Error: ${err instanceof Error ? err.message : String(err)}`);
@@ -920,7 +920,7 @@ export class GraphView extends ItemView {
             try {
               await this.git.createBranch(name, commit.hash);
               await this.store.refresh();
-              await this.store.refreshLog({ all: true });
+              await this.reloadLog();
               new Notice(`Branch '${name}' created`);
             } catch (e: unknown) {
               new Notice(`Error: ${e instanceof Error ? e.message : String(e)}`);

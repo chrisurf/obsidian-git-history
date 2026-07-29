@@ -543,7 +543,7 @@
  * which on an active vault is most of the time.
  */
 .gs-loading {
-  opacity: 0.85;
+  opacity: 0.6;
 }
 
 /* Progress bar between the header and the tabs. The track always occupies its
@@ -1197,6 +1197,10 @@
   box-shadow: none;
   outline: none;
 }
+.gs-commit-main-btn.gs-commit-main-btn:disabled {
+  opacity: 0.4;
+  cursor: not-allowed;
+}
 
 .gs-commit-check-icon {
   display: flex;
@@ -1567,6 +1571,7 @@
   align-items: center;
   gap: 3px;
   flex-shrink: 0;
+  margin-left: auto;
 }
 
 .gs-sg-changes-icon {

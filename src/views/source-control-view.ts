@@ -6,6 +6,7 @@ import { computeGraphLayout, formatRelativeDate } from "../utils/graph-layout";
 import type GitHistoryPlugin from "../main";
 import { asVoid } from "../utils/async";
 import { promptText } from "../utils/prompt";
+import { resolveTemplate } from "../utils/template";
 
 interface FileTreeNode {
   name: string;
@@ -24,6 +25,7 @@ export class SourceControlView extends ItemView {
   private store: RepoStore;
   private git: GitService;
   private commitInput: HTMLInputElement | null = null;
+  private commitBtn: HTMLButtonElement | null = null;
   private fileListEl: HTMLElement | null = null;
   private expandedDirs = new Set<string>();
   private activeTab: SidebarTab = "changes";
@@ -105,7 +107,7 @@ export class SourceControlView extends ItemView {
     this.registerEvent(this.store.on("branch-changed", () => this.updateBranch()));
     this.registerEvent(
       this.store.on("log-changed", () => {
-        if (this.activeTab === "graph") this.rebuildSidebarGraph();
+        this.rebuildSidebarGraph();
       }),
     );
     this.registerEvent(
@@ -126,7 +128,7 @@ export class SourceControlView extends ItemView {
 
     await this.store.refresh();
     this.renderFiles();
-    await this.store.refreshBranches();
+    await Promise.all([this.store.refreshBranches(), this.store.refreshLog()]);
   }
 
   /**
@@ -306,19 +308,24 @@ export class SourceControlView extends ItemView {
     this.commitInput.addEventListener("keydown", (e: KeyboardEvent) => {
       if ((e.metaKey || e.ctrlKey) && e.key === "Enter") {
         e.preventDefault();
-        void this.doCommit();
+        if (!this.commitBtn?.disabled) void this.doCommit();
       }
+    });
+
+    this.commitInput.addEventListener("input", () => {
+      this.updateCommitBtnState();
     });
 
     const btnRow = area.createDiv("gs-commit-btn-row");
 
-    const commitBtn = btnRow.createEl("button", { cls: "gs-commit-main-btn" });
-    const checkIcon = commitBtn.createSpan("gs-commit-check-icon");
+    this.commitBtn = btnRow.createEl("button", { cls: "gs-commit-main-btn" });
+    const checkIcon = this.commitBtn.createSpan("gs-commit-check-icon");
     setIcon(checkIcon, "check");
-    commitBtn.appendText(" Commit");
-    commitBtn.addEventListener("click", () => {
+    this.commitBtn.appendText(" Commit");
+    this.commitBtn.addEventListener("click", () => {
       void this.doCommit();
     });
+    this.updateCommitBtnState();
 
     const dropdownBtn = btnRow.createEl("button", { cls: "gs-commit-dropdown-btn" });
     const chevron = dropdownBtn.createSpan();
@@ -396,7 +403,9 @@ export class SourceControlView extends ItemView {
   private async showBranchMenu(event: MouseEvent): Promise<void> {
     await this.store.refreshBranches();
     const menu = new Menu();
-    for (const b of this.store.branches.filter((b) => !b.remote)) {
+    const localBranches = this.store.branches.filter((b) => !b.remote);
+    const remoteBranches = this.store.branches.filter((b) => b.remote);
+    for (const b of localBranches) {
       menu.addItem((i) => {
         i.setTitle(`${b.current ? "✓ " : "  "}${b.name}`);
         i.setIcon("git-branch");
@@ -412,6 +421,25 @@ export class SourceControlView extends ItemView {
           });
         }
       });
+    }
+    if (remoteBranches.length > 0) {
+      menu.addSeparator();
+      for (const b of remoteBranches) {
+        menu.addItem((i) => {
+          i.setTitle(`  ${b.name}`);
+          i.setIcon("globe");
+          i.onClick(async () => {
+            try {
+              const local = b.name.replace(/^[^/]+\//, "");
+              await this.store.runTask(`Checking out ${local}`, () => this.git.checkout(local));
+              await this.store.refresh();
+              new Notice(`Switched to ${local}`);
+            } catch (e: unknown) {
+              new Notice(`${e instanceof Error ? e.message : String(e)}`);
+            }
+          });
+        });
+      }
     }
     menu.addSeparator();
     menu.addItem((i) =>
@@ -443,8 +471,19 @@ export class SourceControlView extends ItemView {
     }
   }
 
+  private updateCommitBtnState(): void {
+    if (!this.commitBtn) return;
+    const hasInput = !!this.commitInput?.value?.trim();
+    const hasTemplate = !!this.plugin.settings.commitTemplate;
+    this.commitBtn.disabled = !hasInput && !hasTemplate;
+  }
+
   private async doCommit(andPush = false): Promise<void> {
-    const msg = this.commitInput?.value?.trim();
+    const msg =
+      this.commitInput?.value?.trim() ||
+      (this.plugin.settings.commitTemplate
+        ? resolveTemplate(this.plugin.settings.commitTemplate)
+        : "");
     if (!msg) {
       new Notice("Please enter a commit message");
       return;

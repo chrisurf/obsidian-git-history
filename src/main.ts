@@ -22,6 +22,7 @@ import { GraphView } from "./views/graph-view";
 import { DiffView } from "./views/diff-view";
 import { StatusBarController } from "./components/status-bar";
 import { asVoid } from "./utils/async";
+import { resolveTemplate } from "./utils/template";
 
 /** View type of the removed history panel, kept only to clean up old workspaces. */
 const LEGACY_HISTORY_VIEW_TYPE = "git-history-history";
@@ -147,9 +148,9 @@ export default class GitHistoryPlugin extends Plugin {
         try {
           await this.store.runTask("Backing up", async () => {
             await this.git.stageAll();
-            const msg =
-              this.settings.commitTemplate ||
-              `vault backup ${new Date().toISOString().split("T")[0]}`;
+            const msg = this.settings.commitTemplate
+              ? resolveTemplate(this.settings.commitTemplate)
+              : `vault backup ${new Date().toISOString().split("T")[0]}`;
             await this.git.commit(msg);
             await this.git.push({ setUpstream: true, remote: "origin", branch: this.store.branch });
           });
@@ -178,6 +179,8 @@ export default class GitHistoryPlugin extends Plugin {
       callback: async () => {
         try {
           await this.git.init();
+          this.setupAutoRefresh();
+          this.registerRefreshTriggers();
           await this.store.refresh();
           new Notice("Git repository initialized");
         } catch (e: unknown) {
@@ -253,7 +256,7 @@ export default class GitHistoryPlugin extends Plugin {
       this.refreshTimer = window.setInterval(
         asVoid(async () => {
           try {
-            await this.git.fetch();
+            await this.store.runTask("Auto-fetching", () => this.git.fetch());
             await this.store.refresh();
           } catch {
             // silent fail for auto-fetch
