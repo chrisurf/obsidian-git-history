@@ -1,3 +1,10 @@
+## [1.0.3](https://github.com/chrisurf/obsidian-git-history/compare/1.0.2...1.0.3) (2026-07-29)
+
+
+### Bug Fixes
+
+* trigger patch release for all conventional commit types ([#8](https://github.com/chrisurf/obsidian-git-history/issues/8)) ([45f746e](https://github.com/chrisurf/obsidian-git-history/commit/45f746e4146363766bc1a480ba149f925b9e443c))
+
 ## [1.0.2](https://github.com/chrisurf/obsidian-git-history/compare/1.0.1...1.0.2) (2026-07-20)
 
 
