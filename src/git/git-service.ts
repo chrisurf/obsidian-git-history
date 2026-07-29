@@ -411,6 +411,10 @@ export class GitService {
     await this.enqueue(() => this.exec(["revert", "--no-edit", hash]));
   }
 
+  async restoreFile(ref: string, filePath: string): Promise<void> {
+    await this.enqueue(() => this.exec(["checkout", ref, "--", filePath]));
+  }
+
   async abortMerge(): Promise<void> {
     await this.enqueue(() => this.exec(["merge", "--abort"]));
   }

@@ -5,7 +5,7 @@ import { GitService } from "../git/git-service";
 import { computeGraphLayout, formatRelativeDate } from "../utils/graph-layout";
 import type GitHistoryPlugin from "../main";
 import { asVoid } from "../utils/async";
-import { promptText } from "../utils/prompt";
+import { confirmChoice, promptText } from "../utils/prompt";
 import { resolveTemplate } from "../utils/template";
 
 interface FileTreeNode {
@@ -382,6 +382,22 @@ export class SourceControlView extends ItemView {
           }
         }),
     );
+    if (this.store.merging) {
+      menu.addItem((i) =>
+        i
+          .setTitle("Abort merge")
+          .setIcon("x")
+          .onClick(async () => {
+            try {
+              await this.store.runTask("Aborting merge", () => this.git.abortMerge());
+              await this.store.refresh();
+              new Notice("Merge aborted");
+            } catch (e: unknown) {
+              new Notice(`${e instanceof Error ? e.message : String(e)}`);
+            }
+          }),
+      );
+    }
     menu.addSeparator();
     menu.addItem((i) =>
       i
@@ -459,6 +475,79 @@ export class SourceControlView extends ItemView {
           }
         }),
     );
+    menu.addItem((i) =>
+      i
+        .setTitle("Delete branch...")
+        .setIcon("trash")
+        .onClick(async () => {
+          const deletable = localBranches.filter((b) => !b.current);
+          if (deletable.length === 0) {
+            new Notice("No branches to delete");
+            return;
+          }
+          const delMenu = new Menu();
+          for (const b of deletable) {
+            delMenu.addItem((di) =>
+              di
+                .setTitle(b.name)
+                .setIcon("git-branch")
+                .onClick(async () => {
+                  const choice = await confirmChoice(
+                    this.app,
+                    "Delete branch",
+                    `Delete branch "${b.name}"?`,
+                    [
+                      { label: "Delete", value: "delete" },
+                      { label: "Cancel", value: "cancel" },
+                    ],
+                  );
+                  if (choice === "delete") {
+                    try {
+                      await this.store.runTask("Deleting branch", () =>
+                        this.git.deleteBranch(b.name),
+                      );
+                      await this.store.refreshBranches();
+                      new Notice(`Branch '${b.name}' deleted`);
+                    } catch (e: unknown) {
+                      new Notice(`${e instanceof Error ? e.message : String(e)}`);
+                    }
+                  }
+                }),
+            );
+          }
+          delMenu.showAtMouseEvent(event);
+        }),
+    );
+    menu.addItem((i) =>
+      i
+        .setTitle("Merge into current...")
+        .setIcon("git-merge")
+        .onClick(async () => {
+          const mergeable = localBranches.filter((b) => !b.current);
+          if (mergeable.length === 0) {
+            new Notice("No branches to merge");
+            return;
+          }
+          const mergeMenu = new Menu();
+          for (const b of mergeable) {
+            mergeMenu.addItem((mi) =>
+              mi
+                .setTitle(b.name)
+                .setIcon("git-branch")
+                .onClick(async () => {
+                  try {
+                    await this.store.runTask(`Merging ${b.name}`, () => this.git.merge(b.name));
+                    await this.store.refresh();
+                    new Notice(`Merged '${b.name}'`);
+                  } catch (e: unknown) {
+                    new Notice(`Merge failed: ${e instanceof Error ? e.message : String(e)}`);
+                  }
+                }),
+            );
+          }
+          mergeMenu.showAtMouseEvent(event);
+        }),
+    );
     menu.showAtMouseEvent(event);
   }
 
@@ -476,6 +565,33 @@ export class SourceControlView extends ItemView {
     const hasInput = !!this.commitInput?.value?.trim();
     const hasTemplate = !!this.plugin.settings.commitTemplate;
     this.commitBtn.disabled = !hasInput && !hasTemplate;
+  }
+
+  private async restoreFile(filePath: string, ref: string): Promise<void> {
+    const dirty = this.store.status.some((f) => f.path === filePath);
+    if (dirty) {
+      const choice = await confirmChoice(
+        this.app,
+        "Uncommitted changes",
+        `"${filePath}" has uncommitted changes that will be overwritten.`,
+        [
+          { label: "Stash & restore", value: "stash", cta: true },
+          { label: "Overwrite", value: "overwrite" },
+          { label: "Cancel", value: "cancel" },
+        ],
+      );
+      if (!choice || choice === "cancel") return;
+      if (choice === "stash") {
+        await this.store.runTask("Stashing", () => this.git.stashSave());
+      }
+    }
+    try {
+      await this.store.runTask("Restoring", () => this.git.restoreFile(ref, filePath));
+      await this.store.refresh();
+      new Notice(`Restored ${filePath} from ${ref.substring(0, 7)}`);
+    } catch (e: unknown) {
+      new Notice(`Restore failed: ${e instanceof Error ? e.message : String(e)}`);
+    }
   }
 
   private async doCommit(andPush = false): Promise<void> {
@@ -1134,6 +1250,23 @@ export class SourceControlView extends ItemView {
 
         fileRow.addEventListener("click", () => {
           void this.plugin.openDiff(f.path, commit.hash);
+        });
+        fileRow.addEventListener("contextmenu", (e) => {
+          e.preventDefault();
+          const m = new Menu();
+          m.addItem((i) =>
+            i
+              .setTitle("Restore this file")
+              .setIcon("undo")
+              .onClick(() => this.restoreFile(f.path, commit.hash)),
+          );
+          m.addItem((i) =>
+            i
+              .setTitle("View diff")
+              .setIcon("diff")
+              .onClick(() => this.plugin.openDiff(f.path, commit.hash)),
+          );
+          m.showAtMouseEvent(e);
         });
       }
     } catch {
