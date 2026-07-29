@@ -20,7 +20,7 @@ describe("Git operations", function () {
 
   it("should return commit log", async function () {
     const commits = await browser.executeObsidian(async ({ plugins }) => {
-      const log = await plugins.gitHistory.git.log(10);
+      const log = await plugins.gitHistory.git.log({ maxCount: 10 });
       return log.map((c: { hash: string; message: string }) => ({
         hash: c.hash,
         message: c.message,
@@ -50,12 +50,12 @@ describe("Git operations", function () {
 
   it("should stage and commit a file", async function () {
     await browser.executeObsidian(async ({ plugins }) => {
-      await plugins.gitHistory.git.stage("test-file.md");
+      await plugins.gitHistory.git.stage(["test-file.md"]);
       await plugins.gitHistory.git.commit("test: add test file");
     });
 
     const commits = await browser.executeObsidian(async ({ plugins }) => {
-      const log = await plugins.gitHistory.git.log(5);
+      const log = await plugins.gitHistory.git.log({ maxCount: 5 });
       return log.map((c: { message: string }) => c.message);
     });
 
@@ -66,18 +66,11 @@ describe("Git operations", function () {
     await obsidianPage.write("test-file.md", "# Test\n\nModified content");
     await browser.pause(1000);
 
-    const diff = await browser.executeObsidian(async ({ plugins }) => {
-      const result = await plugins.gitHistory.git.diff("test-file.md");
-      return {
-        path: result.path,
-        hasHunks: result.hunks.length > 0,
-        additions: result.additions,
-        deletions: result.deletions,
-      };
+    const rawDiff = await browser.executeObsidian(async ({ plugins }) => {
+      return await plugins.gitHistory.git.diff("test-file.md");
     });
 
-    expect(diff.path).toBe("test-file.md");
-    expect(diff.hasHunks).toBe(true);
-    expect(diff.additions).toBeGreaterThan(0);
+    expect(typeof rawDiff).toBe("string");
+    expect(rawDiff.length).toBeGreaterThan(0);
   });
 });

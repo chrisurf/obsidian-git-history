@@ -11,19 +11,17 @@ describe("Plugin loading", function () {
     expect(pluginLoaded).toBe(true);
   });
 
-  it("should register all four view types", async function () {
+  it("should register all view types", async function () {
     const viewTypes = await browser.executeObsidian(({ app }) => {
       // eslint-disable-next-line @typescript-eslint/no-explicit-any
       const registry = (app as any).viewRegistry?.viewByType ?? {};
       return {
         sourceControl: "git-history-source-control" in registry,
-        history: "git-history-history" in registry,
         graph: "git-history-graph" in registry,
         diff: "git-history-diff" in registry,
       };
     });
     expect(viewTypes.sourceControl).toBe(true);
-    expect(viewTypes.history).toBe(true);
     expect(viewTypes.graph).toBe(true);
     expect(viewTypes.diff).toBe(true);
   });
@@ -34,7 +32,6 @@ describe("Plugin loading", function () {
       const cmds = (app as any).commands?.commands ?? {};
       const ids = [
         "git-history:open-source-control",
-        "git-history:open-history",
         "git-history:open-graph",
         "git-history:commit",
         "git-history:push",
@@ -53,7 +50,7 @@ describe("Plugin loading", function () {
   });
 
   it("should display the ribbon icon", async function () {
-    const ribbon = browser.$('.side-dock-ribbon-action[aria-label="Git History"]');
+    const ribbon = browser.$('.side-dock-ribbon-action[aria-label="Git history"]');
     await expect(ribbon).toExist();
   });
 });
