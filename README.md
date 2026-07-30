@@ -5,6 +5,12 @@
   </picture>
 </p>
 
+<p align="center">
+  <a href="https://www.buymeacoffee.com/chrisurf" target="_blank">
+    <img src="./docs/screenshots/buymeacoffee.png" alt="Buy me a coffee" height="48">
+  </a>
+</p>
+
 # 🌿 Git History for Obsidian
 
 Version control for your vault, with an intuitive interface and no terminal

@@ -21,8 +21,10 @@ import { SourceControlView } from "./views/source-control-view";
 import { GraphView } from "./views/graph-view";
 import { DiffView } from "./views/diff-view";
 import { StatusBarController } from "./components/status-bar";
+import { WhatsNewModal } from "./components/whats-new-modal";
 import { asVoid } from "./utils/async";
 import { resolveTemplate } from "./utils/template";
+import { shouldShowWhatsNew } from "./utils/whats-new";
 
 /** View type of the removed history panel, kept only to clean up old workspaces. */
 const LEGACY_HISTORY_VIEW_TYPE = "git-history-history";
@@ -74,6 +76,32 @@ export default class GitHistoryPlugin extends Plugin {
       this.setupAutoRefresh();
       this.registerRefreshTriggers();
     }
+
+    // Once the workspace is up, surface the "what's new" note — a modal during
+    // layout restore would fight with Obsidian for the screen.
+    this.app.workspace.onLayoutReady(() => this.maybeShowWhatsNew());
+  }
+
+  /** Opens the "what's new" note for the installed version. */
+  private showWhatsNew(): void {
+    new WhatsNewModal(
+      this.app,
+      this.manifest.version,
+      this,
+      () => void this.openSourceControlView(),
+    ).open();
+  }
+
+  /**
+   * Shows the note once per install or update, then records the version so the
+   * same one is never shown twice.
+   */
+  private maybeShowWhatsNew(): void {
+    const current = this.manifest.version;
+    if (!shouldShowWhatsNew(current, this.settings.lastWhatsNewVersion)) return;
+    this.settings.lastWhatsNewVersion = current;
+    void this.saveSettings();
+    this.showWhatsNew();
   }
 
   private registerCommands(): void {
@@ -171,6 +199,12 @@ export default class GitHistoryPlugin extends Plugin {
         if (checking) return true;
         void this.openFileHistory(file.path);
       },
+    });
+
+    this.addCommand({
+      id: "show-whats-new",
+      name: "Show what's new",
+      callback: () => this.showWhatsNew(),
     });
 
     this.addCommand({
