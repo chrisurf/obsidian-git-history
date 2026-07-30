@@ -1,3 +1,5 @@
+## [1.2.3](https://github.com/chrisurf/obsidian-git-history/compare/1.2.2...1.2.3) (2026-07-30)
+
 ## [1.2.2](https://github.com/chrisurf/obsidian-git-history/compare/1.2.1...1.2.2) (2026-07-30)
 
 
