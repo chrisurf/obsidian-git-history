@@ -423,6 +423,7 @@ export class DiffView extends ItemView {
   private ref: string | null = null;
   /** Show the index against HEAD instead of the worktree against the index. */
   private staged = false;
+  private untracked = false;
   private mode: "side-by-side" | "inline" = "side-by-side";
   private diffContainer: HTMLElement | null = null;
   private minimapCanvas: HTMLCanvasElement | null = null;
@@ -449,10 +450,11 @@ export class DiffView extends ItemView {
     return "file-diff";
   }
 
-  setFile(path: string, ref?: string, staged = false): void {
+  setFile(path: string, ref?: string, staged = false, untracked = false): void {
     this.filePath = path;
     this.ref = ref ?? null;
     this.staged = staged;
+    this.untracked = untracked;
     this.tokenize = getTokenizer(path);
     (this.leaf as WorkspaceLeaf & { updateHeader?: () => void }).updateHeader?.();
     if (this.diffContainer) void this.loadDiff();
@@ -544,6 +546,9 @@ export class DiffView extends ItemView {
         rawDiff = await this.git.diff(this.filePath);
         if (!rawDiff) {
           rawDiff = await this.git.diff(this.filePath, true);
+        }
+        if (!rawDiff && this.untracked) {
+          rawDiff = await this.git.diffUntracked(this.filePath);
         }
       }
 
