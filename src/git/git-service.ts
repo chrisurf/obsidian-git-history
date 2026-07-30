@@ -426,6 +426,24 @@ export class GitService {
     return this.exec(args);
   }
 
+  async diffUntracked(path: string): Promise<string> {
+    return new Promise((resolve) => {
+      execFile(
+        "git",
+        ["diff", "--no-index", "--", "/dev/null", path],
+        {
+          cwd: this.repoPath,
+          maxBuffer: 50 * 1024 * 1024,
+          timeout: 30000,
+          env: { ...processEnv(), GIT_TERMINAL_PROMPT: "0" },
+        },
+        (_error, stdout) => {
+          resolve(stdout || "");
+        },
+      );
+    });
+  }
+
   async diffCommit(ref1: string, ref2?: string, path?: string): Promise<string> {
     const args = ["diff", ref1];
     if (ref2) args.push(ref2);

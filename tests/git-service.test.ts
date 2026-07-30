@@ -276,6 +276,23 @@ describe("log for a single file", () => {
   });
 });
 
+describe("GitService.diffUntracked", () => {
+  it("produces a diff for an untracked file", async () => {
+    writeFileSync(join(repo, "brand-new.txt"), "hello\nworld\n");
+    const raw = await git.diffUntracked("brand-new.txt");
+    expect(raw).toContain("+hello");
+    expect(raw).toContain("+world");
+    const diffs = await git.parseDiff(raw);
+    expect(diffs).toHaveLength(1);
+    expect(diffs[0].additions).toBe(2);
+  });
+
+  it("returns empty for a nonexistent file", async () => {
+    const raw = await git.diffUntracked("does-not-exist.txt");
+    expect(raw).toBe("");
+  });
+});
+
 describe("GitService.gitignore", () => {
   it("reads an empty string when no .gitignore exists", async () => {
     const content = await git.readGitignore();

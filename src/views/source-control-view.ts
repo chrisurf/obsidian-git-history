@@ -995,7 +995,7 @@ export class SourceControlView extends ItemView {
       openBtn.setAttribute("aria-label", "Open changes");
       openBtn.addEventListener("click", (e) => {
         e.stopPropagation();
-        void this.plugin.openDiff(file.path);
+        void this.plugin.openDiff(file.path, undefined, false, file.workingStatus === "?");
       });
       this.addOpenFileButton(actions, file);
     }
@@ -1059,7 +1059,8 @@ export class SourceControlView extends ItemView {
 
     // A file can appear in both sections at once; each row opens its own half.
     row.addEventListener("click", () => {
-      void this.plugin.openDiff(file.path, undefined, group === "staged");
+      const isUntracked = group !== "staged" && file.workingStatus === "?";
+      void this.plugin.openDiff(file.path, undefined, group === "staged", isUntracked);
     });
     row.addEventListener("contextmenu", (e) => {
       const menu = new Menu();
@@ -1079,7 +1080,10 @@ export class SourceControlView extends ItemView {
         i
           .setTitle("Open diff")
           .setIcon("file-diff")
-          .onClick(() => this.plugin.openDiff(file.path, undefined, group === "staged")),
+          .onClick(() => {
+            const isUntracked = group !== "staged" && file.workingStatus === "?";
+            void this.plugin.openDiff(file.path, undefined, group === "staged", isUntracked);
+          }),
       );
       menu.addSeparator();
       menu.addItem((i) =>
