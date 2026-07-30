@@ -5,7 +5,7 @@ import { GitService } from "../git/git-service";
 import { computeGraphLayout, formatRelativeDate } from "../utils/graph-layout";
 import type GitHistoryPlugin from "../main";
 import { asVoid } from "../utils/async";
-import { promptText } from "../utils/prompt";
+import { confirmChoice, promptText } from "../utils/prompt";
 
 /** Built at runtime so the key name keeps its capital letter — the UI text
  *  rule lowercases every word after the first, and "Enter" is a key. */
@@ -975,9 +975,20 @@ export class GraphView extends ItemView {
         .setTitle("Revert")
         .setIcon("undo")
         .onClick(async () => {
+          const choice = await confirmChoice(
+            this.app,
+            "Revert commit",
+            `Create a new commit that undoes "${commit.message}" (${commit.shortHash})?`,
+            [
+              { label: "Revert", value: "revert" },
+              { label: "Cancel", value: "cancel" },
+            ],
+          );
+          if (choice !== "revert") return;
           try {
             await this.git.revert(commit.hash);
             await this.store.refresh();
+            await this.reloadLog();
             new Notice("Reverted " + commit.shortHash);
           } catch (e: unknown) {
             new Notice(`Error: ${e instanceof Error ? e.message : String(e)}`);

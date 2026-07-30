@@ -1091,6 +1091,21 @@ export class SourceControlView extends ItemView {
             new Notice("Path copied");
           }),
       );
+      menu.addSeparator();
+      menu.addItem((i) =>
+        i
+          .setTitle("Add to .gitignore")
+          .setIcon("eye-off")
+          .onClick(async () => {
+            try {
+              await this.git.addToGitignore(file.path);
+              await this.store.refresh();
+              new Notice(`Added "${file.path}" to .gitignore`);
+            } catch (e: unknown) {
+              new Notice(`Failed: ${e instanceof Error ? e.message : String(e)}`);
+            }
+          }),
+      );
       menu.showAtMouseEvent(e);
     });
 

@@ -275,3 +275,30 @@ describe("log for a single file", () => {
     expect(messages).toContain("touch other only");
   });
 });
+
+describe("GitService.gitignore", () => {
+  it("reads an empty string when no .gitignore exists", async () => {
+    const content = await git.readGitignore();
+    expect(content).toBe("");
+  });
+
+  it("adds a pattern to .gitignore", async () => {
+    await git.addToGitignore("*.log");
+    const content = await git.readGitignore();
+    expect(content).toContain("*.log");
+  });
+
+  it("does not duplicate an existing pattern", async () => {
+    await git.addToGitignore("*.log");
+    const content = await git.readGitignore();
+    const matches = content.split("\n").filter((l) => l.trim() === "*.log");
+    expect(matches.length).toBe(1);
+  });
+
+  it("appends a second pattern", async () => {
+    await git.addToGitignore("node_modules/");
+    const content = await git.readGitignore();
+    expect(content).toContain("*.log");
+    expect(content).toContain("node_modules/");
+  });
+});

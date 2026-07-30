@@ -1,4 +1,4 @@
-import { execFile, processEnv } from "../utils/node-api";
+import { execFile, processEnv, readFile, writeFile } from "../utils/node-api";
 import {
   FileStatus,
   FileStatusCode,
@@ -602,6 +602,33 @@ export class GitService {
   async hasChanges(): Promise<boolean> {
     const s = await this.status();
     return s.length > 0;
+  }
+
+  private gitignorePath(): string {
+    return `${this.repoPath}/.gitignore`;
+  }
+
+  async readGitignore(): Promise<string> {
+    try {
+      return await readFile(this.gitignorePath(), "utf-8");
+    } catch {
+      return "";
+    }
+  }
+
+  async writeGitignore(content: string): Promise<void> {
+    await writeFile(this.gitignorePath(), content, "utf-8");
+  }
+
+  async addToGitignore(pattern: string): Promise<void> {
+    const current = await this.readGitignore();
+    const lines = current.split("\n");
+    if (lines.some((l) => l.trim() === pattern.trim())) return;
+    const newContent =
+      current.endsWith("\n") || current === ""
+        ? current + pattern + "\n"
+        : current + "\n" + pattern + "\n";
+    await this.writeGitignore(newContent);
   }
 }
 
