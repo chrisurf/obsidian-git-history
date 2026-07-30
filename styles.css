@@ -1401,14 +1401,23 @@
   display: flex;
   align-items: center;
   gap: 6px;
-  padding: 4px 10px;
+  padding: 6px 10px;
+  margin: 1px 4px;
+  border-radius: 4px;
   cursor: pointer;
   font-size: 12px;
   color: var(--gs-text);
-  transition: background 0.1s;
+  transition: background 0.15s ease;
 }
 .gs-sg-changes-file-row:hover {
   background: var(--gs-bg-hover);
+}
+.gs-sg-changes-file-row.is-active {
+  background: var(--gs-bg-active, hsl(var(--interactive-accent-hsl) / 0.15));
+  color: var(--interactive-accent);
+}
+.gs-sg-changes-file-row.is-active .gs-sg-changes-file-icon {
+  color: var(--interactive-accent);
 }
 .gs-sg-changes-file-icon {
   flex-shrink: 0;
