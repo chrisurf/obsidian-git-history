@@ -1462,12 +1462,7 @@ export class SourceControlView extends ItemView {
 
       row.addEventListener("click", () => {
         this.hideCommitTooltip();
-        if (this.graphSelectedHash === commit.hash) {
-          this.graphSelectedHash = null;
-        } else {
-          this.graphSelectedHash = commit.hash;
-        }
-        this.renderSidebarGraphList();
+        this.toggleCommitSelection(commit, row);
       });
 
       row.addEventListener("contextmenu", (e) => {
@@ -1520,51 +1515,76 @@ export class SourceControlView extends ItemView {
       });
 
       if (this.graphSelectedHash === commit.hash) {
-        const detail = this.graphListEl.createDiv("gs-sg-detail");
-        detail.createDiv("gs-sg-detail-msg").setText(commit.message);
-        if (commit.body) detail.createDiv("gs-sg-detail-body").setText(commit.body);
-
-        const detailMeta = detail.createDiv("gs-sg-detail-meta");
-        detailMeta.createSpan().setText(`${commit.author} <${commit.authorEmail}>`);
-        detailMeta.createEl("br");
-        detailMeta.createSpan().setText(commit.date.toLocaleString());
-        detailMeta.createEl("br");
-        detailMeta.createSpan("gs-sg-detail-sha").setText(commit.hash);
-
-        const detailActions = detail.createDiv("gs-sg-detail-actions");
-        const copyBtn = detailActions.createEl("button", {
-          cls: "gs-sg-detail-btn",
-          text: "Copy SHA",
-        });
-        copyBtn.addEventListener("click", (e) => {
-          e.stopPropagation();
-          void navigator.clipboard.writeText(commit.hash);
-          new Notice("SHA copied");
-        });
-        const viewBtn = detailActions.createEl("button", {
-          cls: "gs-sg-detail-btn",
-          text: "View changes",
-        });
-        viewBtn.addEventListener(
-          "click",
-          asVoid(async (e) => {
-            e.stopPropagation();
-            try {
-              const files = await this.git.showCommitFiles(commit.hash);
-              if (files.length > 0) void this.plugin.openDiff(files[0].path, commit.hash);
-            } catch {
-              new Notice("Could not load changes");
-            }
-          }),
-        );
-
-        void this.loadSidebarCommitFiles(commit.hash, detail);
+        row.addClass("gs-sg-row-selected");
+        this.insertCommitDetail(commit, row);
       }
     }
 
     if (this.graphNodes.length === 0 && !hasWC) {
       this.graphListEl.createDiv("gs-sg-empty").setText("No commits");
     }
+  }
+
+  private toggleCommitSelection(commit: CommitInfo, clickedRow: HTMLElement): void {
+    if (!this.graphListEl) return;
+
+    const prevDetail = this.graphListEl.querySelector(".gs-sg-detail");
+    const prevSelected = this.graphListEl.querySelector(".gs-sg-row-selected");
+
+    if (prevSelected) prevSelected.removeClass("gs-sg-row-selected");
+    if (prevDetail) prevDetail.remove();
+
+    if (this.graphSelectedHash === commit.hash) {
+      this.graphSelectedHash = null;
+      return;
+    }
+
+    this.graphSelectedHash = commit.hash;
+    clickedRow.addClass("gs-sg-row-selected");
+    this.insertCommitDetail(commit, clickedRow);
+  }
+
+  private insertCommitDetail(commit: CommitInfo, afterRow: HTMLElement): void {
+    const detail = createDiv("gs-sg-detail");
+    detail.createDiv("gs-sg-detail-msg").setText(commit.message);
+    if (commit.body) detail.createDiv("gs-sg-detail-body").setText(commit.body);
+
+    const detailMeta = detail.createDiv("gs-sg-detail-meta");
+    detailMeta.createSpan().setText(`${commit.author} <${commit.authorEmail}>`);
+    detailMeta.createEl("br");
+    detailMeta.createSpan().setText(commit.date.toLocaleString());
+    detailMeta.createEl("br");
+    detailMeta.createSpan("gs-sg-detail-sha").setText(commit.hash);
+
+    const detailActions = detail.createDiv("gs-sg-detail-actions");
+    const copyBtn = detailActions.createEl("button", {
+      cls: "gs-sg-detail-btn",
+      text: "Copy SHA",
+    });
+    copyBtn.addEventListener("click", (e) => {
+      e.stopPropagation();
+      void navigator.clipboard.writeText(commit.hash);
+      new Notice("SHA copied");
+    });
+    const viewBtn = detailActions.createEl("button", {
+      cls: "gs-sg-detail-btn",
+      text: "View changes",
+    });
+    viewBtn.addEventListener(
+      "click",
+      asVoid(async (e) => {
+        e.stopPropagation();
+        try {
+          const files = await this.git.showCommitFiles(commit.hash);
+          if (files.length > 0) void this.plugin.openDiff(files[0].path, commit.hash);
+        } catch {
+          new Notice("Could not load changes");
+        }
+      }),
+    );
+
+    afterRow.after(detail);
+    void this.loadSidebarCommitFiles(commit.hash, detail);
   }
 
   private async loadSidebarCommitFiles(hash: string, detail: HTMLElement): Promise<void> {
@@ -1584,6 +1604,10 @@ export class SourceControlView extends ItemView {
         if (f.deletions > 0) stats.createSpan("gs-stat-del").setText(` -${f.deletions}`);
         fileRow.addEventListener("click", (e) => {
           e.stopPropagation();
+          filesEl
+            .querySelectorAll(".gs-sg-detail-file")
+            .forEach((el) => el.removeClass("is-active"));
+          fileRow.addClass("is-active");
           void this.plugin.openDiff(f.path, hash);
         });
       }
