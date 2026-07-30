@@ -5,7 +5,7 @@ import { GitService } from "../git/git-service";
 import { computeGraphLayout, formatRelativeDate } from "../utils/graph-layout";
 import type GitHistoryPlugin from "../main";
 import { asVoid } from "../utils/async";
-import { promptText } from "../utils/prompt";
+import { confirmChoice, promptText } from "../utils/prompt";
 
 /** Built at runtime so the key name keeps its capital letter — the UI text
  *  rule lowercases every word after the first, and "Enter" is a key. */
@@ -126,6 +126,19 @@ export class GraphView extends ItemView {
     const { contentEl } = this;
     contentEl.empty();
     contentEl.addClass("gs-graph-view");
+
+    const isRepo = await this.git.isRepo();
+    if (!isRepo) {
+      const wrap = contentEl.createDiv("gs-init-view");
+      const iconEl = wrap.createDiv("gs-init-icon");
+      setIcon(iconEl, "git-branch");
+      wrap.createEl("h3", { text: "No Git repository" });
+      wrap.createEl("p", {
+        text: "Initialize a repository in the source control panel to start tracking history.",
+        cls: "gs-init-desc",
+      });
+      return;
+    }
 
     this.buildToolbar(contentEl);
     this.buildColumnHeaders(contentEl);
@@ -864,7 +877,7 @@ export class GraphView extends ItemView {
           try {
             await this.git.createBranch(name, commit.hash);
             await this.store.refresh();
-            await this.store.refreshLog({ all: true });
+            await this.reloadLog();
             new Notice(`Branch '${name}' created`);
           } catch (err: unknown) {
             new Notice(`Error: ${err instanceof Error ? err.message : String(err)}`);
@@ -920,7 +933,7 @@ export class GraphView extends ItemView {
             try {
               await this.git.createBranch(name, commit.hash);
               await this.store.refresh();
-              await this.store.refreshLog({ all: true });
+              await this.reloadLog();
               new Notice(`Branch '${name}' created`);
             } catch (e: unknown) {
               new Notice(`Error: ${e instanceof Error ? e.message : String(e)}`);
@@ -962,9 +975,20 @@ export class GraphView extends ItemView {
         .setTitle("Revert")
         .setIcon("undo")
         .onClick(async () => {
+          const choice = await confirmChoice(
+            this.app,
+            "Revert commit",
+            `Create a new commit that undoes "${commit.message}" (${commit.shortHash})?`,
+            [
+              { label: "Revert", value: "revert" },
+              { label: "Cancel", value: "cancel" },
+            ],
+          );
+          if (choice !== "revert") return;
           try {
             await this.git.revert(commit.hash);
             await this.store.refresh();
+            await this.reloadLog();
             new Notice("Reverted " + commit.shortHash);
           } catch (e: unknown) {
             new Notice(`Error: ${e instanceof Error ? e.message : String(e)}`);

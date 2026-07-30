@@ -1,4 +1,4 @@
-import { App, Modal } from "obsidian";
+import { App, Modal, Setting } from "obsidian";
 
 /**
  * Asks for a single line of text in an Obsidian modal.
@@ -47,5 +47,44 @@ export function promptText(app: App, label: string, placeholder = ""): Promise<s
 
     modal.open();
     input.focus();
+  });
+}
+
+export interface ConfirmChoice {
+  label: string;
+  value: string;
+  cta?: boolean;
+}
+
+export function confirmChoice(
+  app: App,
+  title: string,
+  message: string,
+  choices: ConfirmChoice[],
+): Promise<string | null> {
+  return new Promise((resolve) => {
+    const modal = new Modal(app);
+    let settled = false;
+    const done = (value: string | null): void => {
+      if (settled) return;
+      settled = true;
+      modal.close();
+      resolve(value);
+    };
+
+    modal.titleEl.setText(title);
+    modal.contentEl.createEl("p", { text: message });
+    const setting = new Setting(modal.contentEl);
+    for (const choice of choices) {
+      setting.addButton((btn) => {
+        btn.setButtonText(choice.label).onClick(() => done(choice.value));
+        if (choice.cta) btn.setCta();
+      });
+    }
+
+    modal.onClose = (): void => {
+      done(null);
+    };
+    modal.open();
   });
 }

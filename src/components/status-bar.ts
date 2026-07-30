@@ -42,7 +42,7 @@ export class StatusBarController {
 
   update(): void {
     if (this.branchEl) {
-      this.branchEl.setText(this.store.branch || "no branch");
+      this.branchEl.setText(this.store.branch || "no repo");
     }
     if (this.syncEl) {
       const parts: string[] = [];

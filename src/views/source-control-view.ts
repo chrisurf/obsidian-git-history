@@ -5,7 +5,8 @@ import { GitService } from "../git/git-service";
 import { computeGraphLayout, formatRelativeDate } from "../utils/graph-layout";
 import type GitHistoryPlugin from "../main";
 import { asVoid } from "../utils/async";
-import { promptText } from "../utils/prompt";
+import { confirmChoice, promptText } from "../utils/prompt";
+import { resolveTemplate } from "../utils/template";
 
 interface FileTreeNode {
   name: string;
@@ -24,6 +25,7 @@ export class SourceControlView extends ItemView {
   private store: RepoStore;
   private git: GitService;
   private commitInput: HTMLInputElement | null = null;
+  private commitBtn: HTMLButtonElement | null = null;
   private fileListEl: HTMLElement | null = null;
   private expandedDirs = new Set<string>();
   private activeTab: SidebarTab = "changes";
@@ -78,6 +80,47 @@ export class SourceControlView extends ItemView {
   }
 
   async onOpen(): Promise<void> {
+    const isRepo = await this.git.isRepo();
+    if (!isRepo) {
+      this.buildInitView();
+      return;
+    }
+    await this.buildRepoView();
+  }
+
+  private buildInitView(): void {
+    const { contentEl } = this;
+    contentEl.empty();
+    contentEl.addClass("gs-sc-view");
+
+    const wrap = contentEl.createDiv("gs-init-view");
+    const iconEl = wrap.createDiv("gs-init-icon");
+    setIcon(iconEl, "git-branch");
+    wrap.createEl("h3", { text: "No Git repository" });
+    wrap.createEl("p", {
+      text: "This vault is not tracked by Git yet. Initialize a repository to start version control.",
+      cls: "gs-init-desc",
+    });
+    const btn = wrap.createEl("button", {
+      text: "Initialize repository",
+      cls: "mod-cta gs-init-btn",
+    });
+    btn.addEventListener(
+      "click",
+      asVoid(async () => {
+        try {
+          await this.git.init();
+          this.plugin.activatePostInit();
+          await this.buildRepoView();
+          new Notice("Git repository initialized");
+        } catch (e: unknown) {
+          new Notice(`Init failed: ${e instanceof Error ? e.message : String(e)}`);
+        }
+      }),
+    );
+  }
+
+  private async buildRepoView(): Promise<void> {
     const { contentEl } = this;
     contentEl.empty();
     contentEl.addClass("gs-sc-view");
@@ -98,14 +141,13 @@ export class SourceControlView extends ItemView {
     this.registerEvent(
       this.store.on("status-changed", () => {
         this.renderFiles();
-        // Commits are unchanged, so only the working changes row needs updating.
         if (this.activeTab === "graph") this.syncSidebarWorkingRow();
       }),
     );
     this.registerEvent(this.store.on("branch-changed", () => this.updateBranch()));
     this.registerEvent(
       this.store.on("log-changed", () => {
-        if (this.activeTab === "graph") this.rebuildSidebarGraph();
+        this.rebuildSidebarGraph();
       }),
     );
     this.registerEvent(
@@ -126,7 +168,7 @@ export class SourceControlView extends ItemView {
 
     await this.store.refresh();
     this.renderFiles();
-    await this.store.refreshBranches();
+    await Promise.all([this.store.refreshBranches(), this.store.refreshLog()]);
   }
 
   /**
@@ -306,19 +348,24 @@ export class SourceControlView extends ItemView {
     this.commitInput.addEventListener("keydown", (e: KeyboardEvent) => {
       if ((e.metaKey || e.ctrlKey) && e.key === "Enter") {
         e.preventDefault();
-        void this.doCommit();
+        if (!this.commitBtn?.disabled) void this.doCommit();
       }
+    });
+
+    this.commitInput.addEventListener("input", () => {
+      this.updateCommitBtnState();
     });
 
     const btnRow = area.createDiv("gs-commit-btn-row");
 
-    const commitBtn = btnRow.createEl("button", { cls: "gs-commit-main-btn" });
-    const checkIcon = commitBtn.createSpan("gs-commit-check-icon");
+    this.commitBtn = btnRow.createEl("button", { cls: "gs-commit-main-btn" });
+    const checkIcon = this.commitBtn.createSpan("gs-commit-check-icon");
     setIcon(checkIcon, "check");
-    commitBtn.appendText(" Commit");
-    commitBtn.addEventListener("click", () => {
+    this.commitBtn.appendText(" Commit");
+    this.commitBtn.addEventListener("click", () => {
       void this.doCommit();
     });
+    this.updateCommitBtnState();
 
     const dropdownBtn = btnRow.createEl("button", { cls: "gs-commit-dropdown-btn" });
     const chevron = dropdownBtn.createSpan();
@@ -375,6 +422,22 @@ export class SourceControlView extends ItemView {
           }
         }),
     );
+    if (this.store.merging) {
+      menu.addItem((i) =>
+        i
+          .setTitle("Abort merge")
+          .setIcon("x")
+          .onClick(async () => {
+            try {
+              await this.store.runTask("Aborting merge", () => this.git.abortMerge());
+              await this.store.refresh();
+              new Notice("Merge aborted");
+            } catch (e: unknown) {
+              new Notice(`${e instanceof Error ? e.message : String(e)}`);
+            }
+          }),
+      );
+    }
     menu.addSeparator();
     menu.addItem((i) =>
       i
@@ -396,7 +459,9 @@ export class SourceControlView extends ItemView {
   private async showBranchMenu(event: MouseEvent): Promise<void> {
     await this.store.refreshBranches();
     const menu = new Menu();
-    for (const b of this.store.branches.filter((b) => !b.remote)) {
+    const localBranches = this.store.branches.filter((b) => !b.remote);
+    const remoteBranches = this.store.branches.filter((b) => b.remote);
+    for (const b of localBranches) {
       menu.addItem((i) => {
         i.setTitle(`${b.current ? "✓ " : "  "}${b.name}`);
         i.setIcon("git-branch");
@@ -412,6 +477,25 @@ export class SourceControlView extends ItemView {
           });
         }
       });
+    }
+    if (remoteBranches.length > 0) {
+      menu.addSeparator();
+      for (const b of remoteBranches) {
+        menu.addItem((i) => {
+          i.setTitle(`  ${b.name}`);
+          i.setIcon("globe");
+          i.onClick(async () => {
+            try {
+              const local = b.name.replace(/^[^/]+\//, "");
+              await this.store.runTask(`Checking out ${local}`, () => this.git.checkout(local));
+              await this.store.refresh();
+              new Notice(`Switched to ${local}`);
+            } catch (e: unknown) {
+              new Notice(`${e instanceof Error ? e.message : String(e)}`);
+            }
+          });
+        });
+      }
     }
     menu.addSeparator();
     menu.addItem((i) =>
@@ -431,6 +515,79 @@ export class SourceControlView extends ItemView {
           }
         }),
     );
+    menu.addItem((i) =>
+      i
+        .setTitle("Delete branch...")
+        .setIcon("trash")
+        .onClick(async () => {
+          const deletable = localBranches.filter((b) => !b.current);
+          if (deletable.length === 0) {
+            new Notice("No branches to delete");
+            return;
+          }
+          const delMenu = new Menu();
+          for (const b of deletable) {
+            delMenu.addItem((di) =>
+              di
+                .setTitle(b.name)
+                .setIcon("git-branch")
+                .onClick(async () => {
+                  const choice = await confirmChoice(
+                    this.app,
+                    "Delete branch",
+                    `Delete branch "${b.name}"?`,
+                    [
+                      { label: "Delete", value: "delete" },
+                      { label: "Cancel", value: "cancel" },
+                    ],
+                  );
+                  if (choice === "delete") {
+                    try {
+                      await this.store.runTask("Deleting branch", () =>
+                        this.git.deleteBranch(b.name),
+                      );
+                      await this.store.refreshBranches();
+                      new Notice(`Branch '${b.name}' deleted`);
+                    } catch (e: unknown) {
+                      new Notice(`${e instanceof Error ? e.message : String(e)}`);
+                    }
+                  }
+                }),
+            );
+          }
+          delMenu.showAtMouseEvent(event);
+        }),
+    );
+    menu.addItem((i) =>
+      i
+        .setTitle("Merge into current...")
+        .setIcon("git-merge")
+        .onClick(async () => {
+          const mergeable = localBranches.filter((b) => !b.current);
+          if (mergeable.length === 0) {
+            new Notice("No branches to merge");
+            return;
+          }
+          const mergeMenu = new Menu();
+          for (const b of mergeable) {
+            mergeMenu.addItem((mi) =>
+              mi
+                .setTitle(b.name)
+                .setIcon("git-branch")
+                .onClick(async () => {
+                  try {
+                    await this.store.runTask(`Merging ${b.name}`, () => this.git.merge(b.name));
+                    await this.store.refresh();
+                    new Notice(`Merged '${b.name}'`);
+                  } catch (e: unknown) {
+                    new Notice(`Merge failed: ${e instanceof Error ? e.message : String(e)}`);
+                  }
+                }),
+            );
+          }
+          mergeMenu.showAtMouseEvent(event);
+        }),
+    );
     menu.showAtMouseEvent(event);
   }
 
@@ -443,8 +600,46 @@ export class SourceControlView extends ItemView {
     }
   }
 
+  private updateCommitBtnState(): void {
+    if (!this.commitBtn) return;
+    const hasInput = !!this.commitInput?.value?.trim();
+    const hasTemplate = !!this.plugin.settings.commitTemplate;
+    this.commitBtn.disabled = !hasInput && !hasTemplate;
+  }
+
+  private async restoreFile(filePath: string, ref: string): Promise<void> {
+    const dirty = this.store.status.some((f) => f.path === filePath);
+    if (dirty) {
+      const choice = await confirmChoice(
+        this.app,
+        "Uncommitted changes",
+        `"${filePath}" has uncommitted changes that will be overwritten.`,
+        [
+          { label: "Stash & restore", value: "stash", cta: true },
+          { label: "Overwrite", value: "overwrite" },
+          { label: "Cancel", value: "cancel" },
+        ],
+      );
+      if (!choice || choice === "cancel") return;
+      if (choice === "stash") {
+        await this.store.runTask("Stashing", () => this.git.stashSave());
+      }
+    }
+    try {
+      await this.store.runTask("Restoring", () => this.git.restoreFile(ref, filePath));
+      await this.store.refresh();
+      new Notice(`Restored ${filePath} from ${ref.substring(0, 7)}`);
+    } catch (e: unknown) {
+      new Notice(`Restore failed: ${e instanceof Error ? e.message : String(e)}`);
+    }
+  }
+
   private async doCommit(andPush = false): Promise<void> {
-    const msg = this.commitInput?.value?.trim();
+    const msg =
+      this.commitInput?.value?.trim() ||
+      (this.plugin.settings.commitTemplate
+        ? resolveTemplate(this.plugin.settings.commitTemplate)
+        : "");
     if (!msg) {
       new Notice("Please enter a commit message");
       return;
@@ -896,6 +1091,21 @@ export class SourceControlView extends ItemView {
             new Notice("Path copied");
           }),
       );
+      menu.addSeparator();
+      menu.addItem((i) =>
+        i
+          .setTitle("Add to .gitignore")
+          .setIcon("eye-off")
+          .onClick(async () => {
+            try {
+              await this.git.addToGitignore(file.path);
+              await this.store.refresh();
+              new Notice(`Added "${file.path}" to .gitignore`);
+            } catch (e: unknown) {
+              new Notice(`Failed: ${e instanceof Error ? e.message : String(e)}`);
+            }
+          }),
+      );
       menu.showAtMouseEvent(e);
     });
 
@@ -1095,6 +1305,23 @@ export class SourceControlView extends ItemView {
 
         fileRow.addEventListener("click", () => {
           void this.plugin.openDiff(f.path, commit.hash);
+        });
+        fileRow.addEventListener("contextmenu", (e) => {
+          e.preventDefault();
+          const m = new Menu();
+          m.addItem((i) =>
+            i
+              .setTitle("Restore this file")
+              .setIcon("undo")
+              .onClick(() => this.restoreFile(f.path, commit.hash)),
+          );
+          m.addItem((i) =>
+            i
+              .setTitle("View diff")
+              .setIcon("diff")
+              .onClick(() => this.plugin.openDiff(f.path, commit.hash)),
+          );
+          m.showAtMouseEvent(e);
         });
       }
     } catch {

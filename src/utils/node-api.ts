@@ -9,6 +9,7 @@
  * single reviewable file.
  */
 import { execFile as nodeExecFile } from "child_process";
+import { readFile as nodeReadFile, writeFile as nodeWriteFile } from "fs/promises";
 
 /** The subset of Node's ExecException the plugin reads. */
 export interface ExecFileError extends Error {
@@ -48,3 +49,9 @@ declare const process: { env?: Record<string, string | undefined> } | undefined;
 export function processEnv(): Record<string, string | undefined> {
   return typeof process === "undefined" ? {} : (process?.env ?? {});
 }
+
+type ReadFileFn = (path: string, encoding: "utf-8") => Promise<string>;
+type WriteFileFn = (path: string, data: string, encoding: "utf-8") => Promise<void>;
+
+export const readFile = nodeReadFile as unknown as ReadFileFn;
+export const writeFile = nodeWriteFile as unknown as WriteFileFn;

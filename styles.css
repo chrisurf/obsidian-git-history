@@ -543,7 +543,39 @@
  * which on an active vault is most of the time.
  */
 .gs-loading {
-  opacity: 0.85;
+  opacity: 0.6;
+}
+
+.gs-init-view {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  padding: 40px 20px;
+  text-align: center;
+  gap: 8px;
+  height: 100%;
+}
+.gs-init-icon {
+  color: var(--text-muted);
+}
+.gs-init-icon svg {
+  width: 48px;
+  height: 48px;
+}
+.gs-init-view h3 {
+  margin: 0;
+  font-size: 16px;
+  font-weight: 600;
+}
+.gs-init-desc {
+  color: var(--text-muted);
+  font-size: 13px;
+  max-width: 280px;
+  margin: 0 0 8px;
+}
+.gs-init-btn {
+  margin-top: 4px;
 }
 
 /* Progress bar between the header and the tabs. The track always occupies its
@@ -1197,6 +1229,10 @@
   box-shadow: none;
   outline: none;
 }
+.gs-commit-main-btn.gs-commit-main-btn:disabled {
+  opacity: 0.4;
+  cursor: not-allowed;
+}
 
 .gs-commit-check-icon {
   display: flex;
@@ -1567,6 +1603,7 @@
   align-items: center;
   gap: 3px;
   flex-shrink: 0;
+  margin-left: auto;
 }
 
 .gs-sg-changes-icon {
@@ -2321,6 +2358,51 @@
   display: flex;
   gap: 8px;
   justify-content: flex-end;
+}
+
+/* ================================================================
+   WHAT'S NEW MODAL
+   ================================================================ */
+
+.gs-whats-new-modal {
+  max-width: 640px;
+}
+
+/* Hero and coffee button are fetched from GitHub, so both are laid out to
+   survive the image never arriving — the elements hide themselves on error. */
+.gs-whats-new-hero {
+  display: block;
+  width: 100%;
+  height: auto;
+  border-radius: var(--radius-m);
+  margin-bottom: 12px;
+}
+
+.gs-whats-new-support {
+  display: flex;
+  justify-content: center;
+  margin-bottom: 12px;
+}
+
+.gs-bmc-button {
+  height: 48px;
+  width: auto;
+  border-radius: var(--radius-s);
+}
+
+/* The note is longer than a modal can be, so the body scrolls and the buttons
+   below it stay reachable. */
+.gs-whats-new-body {
+  max-height: 50vh;
+  overflow-y: auto;
+}
+
+.gs-whats-new-body h2 {
+  margin-top: 1em;
+}
+
+.gs-whats-new-body h2:first-child {
+  margin-top: 0;
 }
 
 /* ================================================================

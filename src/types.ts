@@ -130,9 +130,10 @@ export interface GitHistorySettings {
   diffViewMode: "side-by-side" | "inline";
   showStatusBar: boolean;
   treeView: boolean;
-  ignoredPaths: string[];
   debounceMs: number;
   showNestedRepos: boolean;
+  /** Version whose "what's new" note the user has already seen. */
+  lastWhatsNewVersion: string;
 }
 
 export const DEFAULT_SETTINGS: GitHistorySettings = {
@@ -143,7 +144,7 @@ export const DEFAULT_SETTINGS: GitHistorySettings = {
   diffViewMode: "side-by-side",
   showStatusBar: true,
   treeView: false,
-  ignoredPaths: [],
   debounceMs: 1000,
   showNestedRepos: false,
+  lastWhatsNewVersion: "",
 };
