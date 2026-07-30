@@ -1401,8 +1401,8 @@
   display: flex;
   align-items: center;
   gap: 6px;
-  padding: 6px 10px;
-  margin: 1px 4px;
+  padding: 5px 8px;
+  margin: 2px 4px;
   border-radius: 4px;
   cursor: pointer;
   font-size: 12px;
@@ -1413,11 +1413,11 @@
   background: var(--gs-bg-hover);
 }
 .gs-sg-changes-file-row.is-active {
-  background: var(--gs-bg-active, hsl(var(--interactive-accent-hsl) / 0.15));
-  color: var(--interactive-accent);
+  background: var(--gs-bg-active);
+  box-shadow: inset 2px 0 0 var(--gs-accent);
 }
 .gs-sg-changes-file-row.is-active .gs-sg-changes-file-icon {
-  color: var(--interactive-accent);
+  color: var(--gs-accent);
 }
 .gs-sg-changes-file-icon {
   flex-shrink: 0;
@@ -1727,13 +1727,24 @@
   display: flex;
   justify-content: space-between;
   align-items: center;
-  padding: 2px 4px;
+  padding: 5px 8px;
+  margin: 2px 0;
   cursor: pointer;
-  border-radius: 3px;
+  border-radius: 4px;
+  transition: background 0.15s ease;
 }
 
 .gs-sg-detail-file:hover {
   background: var(--gs-bg-hover);
+}
+
+.gs-sg-detail-file.is-active {
+  background: var(--gs-bg-active);
+  box-shadow: inset 2px 0 0 var(--gs-accent);
+}
+
+.gs-sg-detail-file.is-active .gs-sg-detail-filename {
+  color: var(--gs-accent);
 }
 
 .gs-sg-detail-filename {

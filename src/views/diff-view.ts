@@ -539,16 +539,13 @@ export class DiffView extends ItemView {
       let rawDiff: string;
       if (this.ref) {
         const parentRef = this.ref + "^";
-        rawDiff = await this.git.diffCommit(parentRef, this.ref, this.filePath, true);
+        rawDiff = await this.git.diffCommit(parentRef, this.ref, this.filePath);
       } else if (this.staged) {
-        rawDiff = await this.git.diff(this.filePath, true, true);
+        rawDiff = await this.git.diff(this.filePath, true);
       } else {
-        rawDiff = await this.git.diff(this.filePath, false, true);
+        rawDiff = await this.git.diff(this.filePath);
         if (!rawDiff) {
-          rawDiff = await this.git.diff(this.filePath, true, true);
-        }
-        if (!rawDiff && this.untracked) {
-          rawDiff = await this.git.diffUntracked(this.filePath, true);
+          rawDiff = await this.git.diff(this.filePath, true);
         }
         if (!rawDiff && this.untracked) {
           rawDiff = await this.git.diffUntracked(this.filePath);
@@ -637,6 +634,12 @@ export class DiffView extends ItemView {
     const rightCode = rightPane.createDiv("git-diff-code");
     this.codeScrollEl = leftCode;
 
+    const allPaired: Array<{
+      type: "context" | "modify" | "add" | "del";
+      left?: DiffLine;
+      right?: DiffLine;
+    }> = [];
+
     for (const hunk of fileDiff.hunks) {
       const leftHunkHeader = leftCode.createDiv("git-diff-hunk-header");
       leftHunkHeader.setText(
@@ -667,59 +670,50 @@ export class DiffView extends ItemView {
         });
       }
 
-      const paired = this.pairLines(hunk.lines);
+      allPaired.push(...this.pairLines(hunk.lines));
+    }
 
-      for (const pair of paired) {
-        if (pair.type === "context") {
-          const leftLine = leftCode.createDiv("git-diff-line git-diff-context");
-          leftLine.createSpan("git-diff-linenum").setText(String(pair.left?.oldLineNo ?? ""));
-          const leftContent = leftLine.createSpan("git-diff-content");
-          this.highlightContent(leftContent, pair.left?.content ?? "");
+    const CHUNK = 500;
+    const renderChunk = (start: number): void => {
+      const end = Math.min(start + CHUNK, allPaired.length);
+      for (let i = start; i < end; i++) {
+        const pair = allPaired[i];
+        const leftLine = leftCode.createDiv(
+          `git-diff-line ${pair.type === "modify" || pair.type === "del" ? "git-diff-del" : pair.type === "add" ? "git-diff-empty" : "git-diff-context"}`,
+        );
+        const rightLine = rightCode.createDiv(
+          `git-diff-line ${pair.type === "modify" || pair.type === "add" ? "git-diff-add" : pair.type === "del" ? "git-diff-empty" : "git-diff-context"}`,
+        );
 
-          const rightLine = rightCode.createDiv("git-diff-line git-diff-context");
-          rightLine.createSpan("git-diff-linenum").setText(String(pair.left?.newLineNo ?? ""));
-          const rightContent = rightLine.createSpan("git-diff-content");
-          this.highlightContent(rightContent, pair.left?.content ?? "");
-        } else if (pair.type === "modify") {
-          const leftLine = leftCode.createDiv("git-diff-line git-diff-del");
-          leftLine.createSpan("git-diff-linenum").setText(String(pair.left?.oldLineNo ?? ""));
-          const leftContent = leftLine.createSpan("git-diff-content");
-          this.renderInlineHighlight(
-            leftContent,
-            pair.left?.content ?? "",
-            pair.right?.content ?? "",
-            "del",
-          );
+        const leftNo = leftLine.createSpan("git-diff-linenum");
+        leftNo.setText(pair.left ? String(pair.left.oldLineNo ?? "") : "");
+        const rightNo = rightLine.createSpan("git-diff-linenum");
+        rightNo.setText(pair.right ? String(pair.right.newLineNo ?? "") : "");
 
-          const rightLine = rightCode.createDiv("git-diff-line git-diff-add");
-          rightLine.createSpan("git-diff-linenum").setText(String(pair.right?.newLineNo ?? ""));
-          const rightContent = rightLine.createSpan("git-diff-content");
-          this.renderInlineHighlight(
-            rightContent,
-            pair.right?.content ?? "",
-            pair.left?.content ?? "",
-            "add",
-          );
-        } else if (pair.type === "del") {
-          const leftLine = leftCode.createDiv("git-diff-line git-diff-del");
-          leftLine.createSpan("git-diff-linenum").setText(String(pair.left?.oldLineNo ?? ""));
-          const leftContent = leftLine.createSpan("git-diff-content");
-          this.highlightContent(leftContent, pair.left?.content ?? "");
+        const leftSign = leftLine.createSpan("git-diff-sign");
+        leftSign.setText(pair.left?.type === "del" ? "−" : pair.left?.type === "add" ? "+" : " ");
+        const rightSign = rightLine.createSpan("git-diff-sign");
+        rightSign.setText(
+          pair.right?.type === "add" ? "+" : pair.right?.type === "del" ? "−" : " ",
+        );
 
-          const rightLine = rightCode.createDiv("git-diff-line git-diff-empty");
-          rightLine.createSpan("git-diff-linenum");
-          rightLine.createSpan("git-diff-content");
-        } else if (pair.type === "add") {
-          const leftLine = leftCode.createDiv("git-diff-line git-diff-empty");
-          leftLine.createSpan("git-diff-linenum");
-          leftLine.createSpan("git-diff-content");
+        const leftContent = leftLine.createSpan("git-diff-content");
+        const rightContent = rightLine.createSpan("git-diff-content");
 
-          const rightLine = rightCode.createDiv("git-diff-line git-diff-add");
-          rightLine.createSpan("git-diff-linenum").setText(String(pair.right?.newLineNo ?? ""));
-          const rightContent = rightLine.createSpan("git-diff-content");
-          this.highlightContent(rightContent, pair.right?.content ?? "");
+        if (pair.type === "modify" && pair.left && pair.right) {
+          this.renderInlineHighlight(leftContent, pair.left.content, pair.right.content, "del");
+          this.renderInlineHighlight(rightContent, pair.right.content, pair.left.content, "add");
+        } else {
+          if (pair.left) this.highlightContent(leftContent, pair.left.content);
+          if (pair.right) this.highlightContent(rightContent, pair.right.content);
         }
       }
+      if (end < allPaired.length) {
+        window.requestAnimationFrame(() => renderChunk(end));
+      }
+    };
+    if (allPaired.length > 0) {
+      renderChunk(0);
     }
 
     leftCode.addEventListener("scroll", () => {
@@ -748,6 +742,8 @@ export class DiffView extends ItemView {
     const code = wrapper.createDiv("git-diff-code");
     this.codeScrollEl = code;
 
+    const allLines: DiffLine[] = [];
+
     for (const hunk of fileDiff.hunks) {
       const hunkHeader = code.createDiv("git-diff-hunk-header");
       hunkHeader.setText(
@@ -765,7 +761,14 @@ export class DiffView extends ItemView {
         });
       }
 
-      for (const line of hunk.lines) {
+      allLines.push(...hunk.lines);
+    }
+
+    const CHUNK = 500;
+    const renderChunk = (start: number): void => {
+      const end = Math.min(start + CHUNK, allLines.length);
+      for (let i = start; i < end; i++) {
+        const line = allLines[i];
         const cls =
           line.type === "add"
             ? "git-diff-add"
@@ -789,6 +792,12 @@ export class DiffView extends ItemView {
         const content = lineEl.createSpan("git-diff-content");
         this.highlightContent(content, line.content);
       }
+      if (end < allLines.length) {
+        window.requestAnimationFrame(() => renderChunk(end));
+      }
+    };
+    if (allLines.length > 0) {
+      renderChunk(0);
     }
 
     code.addEventListener("scroll", () => this.updateMinimapViewport());
