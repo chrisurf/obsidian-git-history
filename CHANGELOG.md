@@ -1,3 +1,10 @@
+## [1.2.2](https://github.com/chrisurf/obsidian-git-history/compare/1.2.1...1.2.2) (2026-07-30)
+
+
+### Bug Fixes
+
+* show full file context in diffs and support untracked file diffs ([#12](https://github.com/chrisurf/obsidian-git-history/issues/12)) ([9850078](https://github.com/chrisurf/obsidian-git-history/commit/9850078216e07d0a71b4ded5473a0cf63a0b717a))
+
 ## [1.2.1](https://github.com/chrisurf/obsidian-git-history/compare/1.2.0...1.2.1) (2026-07-30)
 
 
