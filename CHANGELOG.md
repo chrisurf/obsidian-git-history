@@ -1,3 +1,10 @@
+# [1.2.0](https://github.com/chrisurf/obsidian-git-history/compare/1.1.0...1.2.0) (2026-07-30)
+
+
+### Features
+
+* repository init UI, file restore, branch management, and .gitignore controls ([#10](https://github.com/chrisurf/obsidian-git-history/issues/10)) ([4d86c03](https://github.com/chrisurf/obsidian-git-history/commit/4d86c038853397bc5c51239cc67184dc1f9bb1b1))
+
 # [1.1.0](https://github.com/chrisurf/obsidian-git-history/compare/1.0.3...1.1.0) (2026-07-29)
 
 
