@@ -1308,6 +1308,10 @@ export class SourceControlView extends ItemView {
         if (f.deletions > 0) fileStats.createSpan("gs-stat-del").setText(` -${f.deletions}`);
 
         fileRow.addEventListener("click", () => {
+          filesContainer
+            .querySelectorAll(".gs-sg-changes-file-row")
+            .forEach((el) => el.removeClass("is-active"));
+          fileRow.addClass("is-active");
           void this.plugin.openDiff(f.path, commit.hash);
         });
         fileRow.addEventListener("contextmenu", (e) => {
