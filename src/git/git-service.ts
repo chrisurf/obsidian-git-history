@@ -419,18 +419,20 @@ export class GitService {
     await this.enqueue(() => this.exec(["merge", "--abort"]));
   }
 
-  async diff(path?: string, staged = false): Promise<string> {
+  async diff(path?: string, staged = false, fullContext = false): Promise<string> {
     const args = ["diff"];
+    if (fullContext) args.push("-U99999");
     if (staged) args.push("--cached");
     if (path) args.push("--", path);
     return this.exec(args);
   }
 
-  async diffUntracked(path: string): Promise<string> {
+  async diffUntracked(path: string, fullContext = false): Promise<string> {
+    const ctxArgs = fullContext ? ["-U99999"] : [];
     return new Promise((resolve) => {
       execFile(
         "git",
-        ["diff", "--no-index", "--", "/dev/null", path],
+        ["diff", "--no-index", ...ctxArgs, "--", "/dev/null", path],
         {
           cwd: this.repoPath,
           maxBuffer: 50 * 1024 * 1024,
@@ -444,8 +446,15 @@ export class GitService {
     });
   }
 
-  async diffCommit(ref1: string, ref2?: string, path?: string): Promise<string> {
-    const args = ["diff", ref1];
+  async diffCommit(
+    ref1: string,
+    ref2?: string,
+    path?: string,
+    fullContext = false,
+  ): Promise<string> {
+    const args = ["diff"];
+    if (fullContext) args.push("-U99999");
+    args.push(ref1);
     if (ref2) args.push(ref2);
     if (path) args.push("--", path);
     return this.exec(args);
