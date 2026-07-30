@@ -1,3 +1,10 @@
+## [1.2.4](https://github.com/chrisurf/obsidian-git-history/compare/1.2.3...1.2.4) (2026-07-30)
+
+
+### Bug Fixes
+
+* improve file row UX and eliminate diff view performance bottlenecks ([#14](https://github.com/chrisurf/obsidian-git-history/issues/14)) ([3dea5f6](https://github.com/chrisurf/obsidian-git-history/commit/3dea5f64585f9d6e4e85e1a13a4f1eb16c751172))
+
 ## [1.2.3](https://github.com/chrisurf/obsidian-git-history/compare/1.2.2...1.2.3) (2026-07-30)
 
 ## [1.2.2](https://github.com/chrisurf/obsidian-git-history/compare/1.2.1...1.2.2) (2026-07-30)
