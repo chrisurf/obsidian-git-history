@@ -108,9 +108,24 @@ export class TerminalView extends ItemView {
 
     const shell = this.detectShell();
     const cwd = this.vaultPath();
+    const env = { ...processEnv(), TERM: "xterm-256color" };
 
     try {
-      this.shellProcess = spawn(shell, [], { cwd, env: processEnv() });
+      if (Platform.isWin) {
+        this.shellProcess = spawn(shell, [], { cwd, env });
+      } else if (Platform.isMacOS) {
+        // `script` creates a real PTY so the shell runs interactively.
+        this.shellProcess = spawn("script", ["-q", "/dev/null", shell, "-il"], {
+          cwd,
+          env,
+        });
+      } else {
+        // Linux `script` uses -qc syntax.
+        this.shellProcess = spawn("script", ["-qc", `${shell} -il`, "/dev/null"], {
+          cwd,
+          env,
+        });
+      }
     } catch (e: unknown) {
       this.terminal.writeln(
         `\x1b[31mFailed to start shell: ${e instanceof Error ? e.message : String(e)}\x1b[0m`,
@@ -144,7 +159,10 @@ export class TerminalView extends ItemView {
   }
 
   private vaultPath(): string {
-    const adapter = this.app.vault.adapter as { basePath?: string; getBasePath?: () => string };
+    const adapter = this.app.vault.adapter as {
+      basePath?: string;
+      getBasePath?: () => string;
+    };
     return adapter.getBasePath?.() ?? adapter.basePath ?? "";
   }
 

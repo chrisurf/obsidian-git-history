@@ -81,6 +81,7 @@ export interface SpawnOptions {
   cwd?: string;
   env?: Record<string, string | undefined>;
   shell?: boolean;
+  stdio?: string | string[];
 }
 
 type SpawnFn = (command: string, args: readonly string[], options: SpawnOptions) => SpawnedProcess;
