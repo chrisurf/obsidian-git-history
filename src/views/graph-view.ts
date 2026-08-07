@@ -264,6 +264,13 @@ export class GraphView extends ItemView {
       void this.reloadLog(FULL_LOG_COUNT);
     });
 
+    const termBtn = right.createEl("button", { cls: "gs-tbtn" });
+    setIcon(termBtn, "terminal");
+    termBtn.setAttribute("aria-label", "Open terminal");
+    termBtn.addEventListener("click", () => {
+      void this.plugin.openTerminalView();
+    });
+
     const refreshBtn = right.createEl("button", { cls: "gs-tbtn" });
     setIcon(refreshBtn, "refresh-cw");
     refreshBtn.setAttribute("aria-label", "Refresh");

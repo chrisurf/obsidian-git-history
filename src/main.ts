@@ -67,6 +67,10 @@ export default class GitHistoryPlugin extends Plugin {
       void this.openSourceControlView();
     });
 
+    this.addRibbonIcon("terminal", "Open terminal", () => {
+      void this.openTerminalView();
+    });
+
     this.registerCommands();
 
     const statusBarEl = this.addStatusBarItem();
