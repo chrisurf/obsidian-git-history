@@ -112,16 +112,13 @@ export class TerminalView extends ItemView {
 
     try {
       if (Platform.isWin) {
-        this.shellProcess = spawn(shell, [], { cwd, env });
-      } else if (Platform.isMacOS) {
-        // `script` creates a real PTY so the shell runs interactively.
-        this.shellProcess = spawn("script", ["-q", "/dev/null", shell, "-il"], {
-          cwd,
-          env,
-        });
+        this.shellProcess = spawn(shell, ["-i"], { cwd, env });
       } else {
-        // Linux `script` uses -qc syntax.
-        this.shellProcess = spawn("script", ["-qc", `${shell} -il`, "/dev/null"], {
+        // Python's pty module creates a real pseudo-terminal, which is
+        // required for interactive shells (prompt, line editing, colors).
+        // This is the same approach used by other Obsidian terminal plugins.
+        const pyCmd = "import pty,sys;pty.spawn(sys.argv[1:])";
+        this.shellProcess = spawn("python3", ["-c", pyCmd, shell, "-il"], {
           cwd,
           env,
         });
