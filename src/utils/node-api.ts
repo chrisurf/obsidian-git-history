@@ -8,7 +8,7 @@
  * every call site properly typed either way, and keeps the assertions to a
  * single reviewable file.
  */
-import { execFile as nodeExecFile } from "child_process";
+import { execFile as nodeExecFile, spawn as nodeSpawn } from "child_process";
 import { readFile as nodeReadFile, writeFile as nodeWriteFile } from "fs/promises";
 
 /** The subset of Node's ExecException the plugin reads. */
@@ -55,3 +55,34 @@ type WriteFileFn = (path: string, data: string, encoding: "utf-8") => Promise<vo
 
 export const readFile = nodeReadFile as unknown as ReadFileFn;
 export const writeFile = nodeWriteFile as unknown as WriteFileFn;
+
+/** Subset of Node's Readable the terminal reads from. */
+export interface ReadableStream {
+  on(event: "data", listener: (chunk: Uint8Array | string) => void): void;
+  on(event: "close", listener: () => void): void;
+}
+
+/** Subset of Node's Writable the terminal writes to. */
+export interface WritableStream {
+  write(chunk: string): void;
+}
+
+export interface SpawnedProcess {
+  stdout: ReadableStream | null;
+  stderr: ReadableStream | null;
+  stdin: WritableStream | null;
+  pid?: number;
+  on(event: "close", listener: (code: number | null) => void): void;
+  on(event: "error", listener: (err: Error) => void): void;
+  kill(signal?: string): boolean;
+}
+
+export interface SpawnOptions {
+  cwd?: string;
+  env?: Record<string, string | undefined>;
+  shell?: boolean;
+}
+
+type SpawnFn = (command: string, args: readonly string[], options: SpawnOptions) => SpawnedProcess;
+
+export const spawn = nodeSpawn as unknown as SpawnFn;

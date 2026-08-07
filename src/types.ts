@@ -1,6 +1,7 @@
 export const SOURCE_CONTROL_VIEW_TYPE = "git-history-source-control";
 export const GRAPH_VIEW_TYPE = "git-history-graph";
 export const DIFF_VIEW_TYPE = "git-history-diff";
+export const TERMINAL_VIEW_TYPE = "git-history-terminal";
 
 /**
  * Status letters git can report per side. "." is porcelain v2's "unchanged"
@@ -134,6 +135,8 @@ export interface GitHistorySettings {
   showNestedRepos: boolean;
   /** Version whose "what's new" note the user has already seen. */
   lastWhatsNewVersion: string;
+  /** Override for the shell binary used by the embedded terminal. */
+  terminalShell: string;
 }
 
 export const DEFAULT_SETTINGS: GitHistorySettings = {
@@ -147,4 +150,5 @@ export const DEFAULT_SETTINGS: GitHistorySettings = {
   debounceMs: 1000,
   showNestedRepos: false,
   lastWhatsNewVersion: "",
+  terminalShell: "",
 };
