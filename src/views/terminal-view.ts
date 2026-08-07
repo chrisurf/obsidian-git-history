@@ -6,6 +6,50 @@ import { spawn, processEnv } from "../utils/node-api";
 import type { SpawnedProcess } from "../utils/node-api";
 import type GitHistoryPlugin from "../main";
 
+const PTY_BRIDGE = [
+  "import pty,os,sys,fcntl,struct,termios,select,signal",
+  "R=int(os.environ.get('LINES','24'));C=int(os.environ.get('COLUMNS','80'))",
+  "m,s=pty.openpty()",
+  "fcntl.ioctl(m,termios.TIOCSWINSZ,struct.pack('HHHH',R,C,0,0))",
+  "p=os.fork()",
+  "if p==0:",
+  " os.close(m);os.setsid();fcntl.ioctl(s,termios.TIOCSCTTY,0)",
+  " os.dup2(s,0);os.dup2(s,1);os.dup2(s,2)",
+  " if s>2:os.close(s)",
+  " os.execvp(sys.argv[1],sys.argv[1:])",
+  "os.close(s);bf=b''",
+  "ES=b'\\x1b]7770;';ST=b'\\x07'",
+  "def rz(r,c):",
+  " try:fcntl.ioctl(m,termios.TIOCSWINSZ,struct.pack('HHHH',r,c,0,0));os.kill(p,signal.SIGWINCH)",
+  " except:pass",
+  "try:",
+  " while 1:",
+  "  try:rl,_,_=select.select([0,m],[],[])",
+  "  except InterruptedError:continue",
+  "  except:break",
+  "  if 0 in rl:",
+  "   d=os.read(0,4096)",
+  "   if not d:break",
+  "   bf+=d",
+  "   while ES in bf:",
+  "    i=bf.index(ES)",
+  "    if i>0:os.write(m,bf[:i])",
+  "    bf=bf[i+7:];e=bf.find(ST)",
+  "    if e<0:break",
+  "    ps=bf[:e].decode().split(';');bf=bf[e+1:]",
+  "    if len(ps)==2:rz(int(ps[0]),int(ps[1]))",
+  "   if bf and ES not in bf:os.write(m,bf);bf=b''",
+  "  if m in rl:",
+  "   try:d=os.read(m,4096)",
+  "   except OSError:break",
+  "   if not d:break",
+  "   os.write(1,d)",
+  "finally:",
+  " os.close(m)",
+  " try:os.kill(p,signal.SIGHUP);os.waitpid(p,0)",
+  " except:pass",
+].join("\n");
+
 export class TerminalView extends ItemView {
   private plugin: GitHistoryPlugin;
   private terminal: Terminal | null = null;
@@ -48,7 +92,7 @@ export class TerminalView extends ItemView {
     this.terminal = new Terminal({
       cursorBlink: true,
       fontSize: 14,
-      fontFamily: "Menlo, Monaco, 'Courier New', monospace",
+      fontFamily: "'MesloLGS NF', Menlo, Monaco, 'Courier New', monospace",
       theme: this.getThemeColors(),
       allowProposedApi: true,
     });
@@ -70,7 +114,15 @@ export class TerminalView extends ItemView {
     });
     this.resizeObserver.observe(termEl);
 
+    this.terminal.onResize(({ cols, rows }) => {
+      this.sendResize(rows, cols);
+    });
+
     this.spawnShell();
+  }
+
+  private sendResize(rows: number, cols: number): void {
+    this.shellProcess?.stdin?.write(`\x1b]7770;${rows};${cols}\x07`);
   }
 
   private getThemeColors(): Record<string, string> {
@@ -108,17 +160,20 @@ export class TerminalView extends ItemView {
 
     const shell = this.detectShell();
     const cwd = this.vaultPath();
-    const env = { ...processEnv(), TERM: "xterm-256color" };
+    const cols = this.terminal.cols;
+    const rows = this.terminal.rows;
+    const env = {
+      ...processEnv(),
+      TERM: "xterm-256color",
+      COLUMNS: String(cols),
+      LINES: String(rows),
+    };
 
     try {
       if (Platform.isWin) {
         this.shellProcess = spawn(shell, ["-i"], { cwd, env });
       } else {
-        // Python's pty module creates a real pseudo-terminal, which is
-        // required for interactive shells (prompt, line editing, colors).
-        // This is the same approach used by other Obsidian terminal plugins.
-        const pyCmd = "import pty,sys;pty.spawn(sys.argv[1:])";
-        this.shellProcess = spawn("python3", ["-c", pyCmd, shell, "-il"], {
+        this.shellProcess = spawn("python3", ["-c", PTY_BRIDGE, shell, "-il"], {
           cwd,
           env,
         });
