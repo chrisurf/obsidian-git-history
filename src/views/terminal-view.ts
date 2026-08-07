@@ -170,6 +170,7 @@ export class TerminalView extends ItemView {
       TERM: "xterm-256color",
       COLUMNS: String(cols),
       LINES: String(rows),
+      POWERLEVEL9K_INSTANT_PROMPT: "off",
     };
 
     try {
