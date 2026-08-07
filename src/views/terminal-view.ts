@@ -1,6 +1,7 @@
 import { ItemView, WorkspaceLeaf, Platform } from "obsidian";
 import { Terminal } from "@xterm/xterm";
 import { FitAddon } from "@xterm/addon-fit";
+import { Unicode11Addon } from "@xterm/addon-unicode11";
 import { TERMINAL_VIEW_TYPE } from "../types";
 import { spawn, processEnv } from "../utils/node-api";
 import type { SpawnedProcess } from "../utils/node-api";
@@ -99,7 +100,9 @@ export class TerminalView extends ItemView {
 
     this.fitAddon = new FitAddon();
     this.terminal.loadAddon(this.fitAddon);
+    this.terminal.loadAddon(new Unicode11Addon());
     this.terminal.open(termEl);
+    this.terminal.unicode.activeVersion = "11";
 
     this.fitAddon.fit();
 
