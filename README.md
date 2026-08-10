@@ -84,6 +84,31 @@ See exactly what changed in a note: old and new side by side, or as one
 annotated text. You can stage or undo a single block of changes instead of the
 whole file.
 
+### 💻 Terminal — Alpha
+
+> **Alpha.** This one is early and I am still working on it. I am shipping it
+> so you can try it — please
+> [tell me what breaks](https://github.com/chrisurf/obsidian-git-history/issues).
+> Expect rough edges, and do not rely on it for anything you cannot redo by
+> hand.
+
+A shell inside Obsidian, opened in a panel below your note, starting in your
+vault's folder.
+
+<p align="center">
+  <img src="docs/screenshots/terminal.png" alt="Terminal panel inside Obsidian" width="100%" />
+</p>
+
+- Opens from the terminal ribbon icon, the commit graph toolbar, or the **Open
+  terminal** command
+- Starts in your vault's folder, so `git` and everything else act on your notes
+- Uses your own login shell, with your prompt, colours, and aliases
+- Resizes with the panel
+- Desktop only, like the rest of the plugin
+
+Everything the plugin does through its buttons still works without it — the
+terminal is there for the occasional command that has no button yet.
+
 ---
 
 ## 🧩 Requirements
@@ -109,6 +134,7 @@ Available from Obsidian's command palette (`Ctrl/Cmd + P`).
 | Backup: stage all, commit & push | Snapshots and uploads the whole vault in one step |
 | Show file history | Shows the history of the note you have open |
 | Initialize Git repository | Sets up version control for a vault that has none |
+| Open terminal | Opens the shell panel in your vault's folder (Alpha) |
 
 ## ⚙️ Settings
 
@@ -122,6 +148,7 @@ Available from Obsidian's command palette (`Ctrl/Cmd + P`).
 | Show status bar | on | Branch and change count in Obsidian's status bar |
 | Show nested repositories | off | List folders that are repositories of their own. They cannot be committed together with the rest of the vault |
 | File watcher debounce | 1000ms | How long to wait after an edit before refreshing |
+| Terminal shell | _(auto-detect)_ | Path to the shell the Alpha terminal starts. Empty uses your system default |
 
 ---
 
@@ -133,6 +160,10 @@ are used for:
 - **Runs the `git` command.** That is how every action works — it is the same
   program you would use in a terminal, run inside your vault's folder only.
 - **Writes to the clipboard.** Only when you use "Copy SHA" or "Copy path".
+- **Starts a shell, if you open the Alpha terminal.** Only then, and only the
+  shell you already use, started in your vault's folder. Whatever you type into
+  that panel runs with your own user account, exactly as it would in Terminal
+  or iTerm. Nothing runs there on its own.
 
 Nothing leaves your machine unless you press push, and then only to the backup
 location you set up yourself.

@@ -27,7 +27,20 @@ describe("shouldShowWhatsNew", () => {
 });
 
 describe("what's new content", () => {
-  it("leads with the repository setup screen, the entry point for a new vault", () => {
+  it("leads with the terminal, the newest feature", () => {
+    expect(WHATS_NEW.indexOf("Open terminal")).toBeLessThan(
+      WHATS_NEW.indexOf("Initialize repository"),
+    );
+  });
+
+  it("labels the terminal Alpha wherever it is mentioned, so nobody relies on it yet", () => {
+    const mentions = WHATS_NEW.match(/[Tt]erminal/g) ?? [];
+    expect(mentions.length).toBeGreaterThan(0);
+    expect(WHATS_NEW).toMatch(/Alpha/);
+    expect(WHATS_NEW).not.toMatch(/[Bb]eta/);
+  });
+
+  it("still covers the repository setup screen, the entry point for a new vault", () => {
     expect(WHATS_NEW).toMatch(/Initialize repository/);
   });
 
