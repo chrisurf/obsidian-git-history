@@ -32,7 +32,22 @@ export const BUY_ME_A_COFFEE_IMAGE_URL =
  * what the plugin does, so a first-time reader and someone upgrading from an
  * early version both come away knowing where to click.
  */
-export const WHATS_NEW = `## 🌱 Start without a terminal
+export const WHATS_NEW = `## 💻 A terminal inside Obsidian — Alpha
+
+There is now a shell panel in Obsidian, opened from the terminal ribbon icon,
+the commit graph toolbar, or the **Open terminal** command. It starts in your
+vault's folder and uses your own login shell, so your prompt, colours, and
+aliases are there.
+
+**This one is Alpha.** It is early and I am still working on it. I am shipping
+it now so you can try it and tell me what breaks. Expect rough edges, and keep
+anything you cannot redo by hand out of it for the moment.
+
+You do not need it for anything else in the plugin — every button still does
+its own work. Pick the shell yourself under **Terminal shell** in the settings
+if the automatic one is not the one you want.
+
+## 🌱 Start without a terminal
 
 No Git repository in your vault yet? The source control panel now offers to
 create one for you. Open it, press **Initialize repository**, and the panel
@@ -85,6 +100,9 @@ in history.
 
 **Backup in one step** — stage everything, commit with your template, and push,
 from a single command.
+
+**Terminal (Alpha)** — a shell in your vault's folder, for the occasional
+command that has no button yet.
 
 Open it from the 🌿 ribbon icon on the left, or from the **Git history: Open
 source control** command.`;

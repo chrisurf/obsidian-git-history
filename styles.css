@@ -2426,6 +2426,303 @@
 }
 
 /* ================================================================
+   TERMINAL
+   ================================================================ */
+
+.gs-terminal-container {
+  display: flex;
+  flex-direction: column;
+  height: 100%;
+  overflow: hidden;
+}
+
+.gs-terminal-wrapper {
+  flex: 1 1 auto;
+  min-height: 0;
+  overflow: hidden;
+}
+
+.gs-terminal-wrapper .xterm {
+  cursor: text;
+  position: relative;
+  user-select: none;
+  height: 100%;
+  padding: 4px;
+}
+
+.gs-terminal-wrapper .xterm.focus,
+.gs-terminal-wrapper .xterm:focus {
+  outline: none;
+}
+
+.gs-terminal-wrapper .xterm .xterm-helpers {
+  position: absolute;
+  top: 0;
+  z-index: 5;
+}
+
+.gs-terminal-wrapper .xterm .xterm-helper-textarea {
+  padding: 0;
+  border: 0;
+  margin: 0;
+  position: absolute;
+  opacity: 0;
+  left: -9999em;
+  top: 0;
+  width: 0;
+  height: 0;
+  z-index: -5;
+  white-space: nowrap;
+  overflow: hidden;
+  resize: none;
+}
+
+.gs-terminal-wrapper .xterm .composition-view {
+  background: #000;
+  color: #fff;
+  display: none;
+  position: absolute;
+  white-space: nowrap;
+  z-index: 1;
+}
+
+.gs-terminal-wrapper .xterm .composition-view.active {
+  display: block;
+}
+
+.gs-terminal-wrapper .xterm .xterm-viewport {
+  overflow-y: scroll;
+  cursor: default;
+  position: absolute;
+  inset: 0;
+}
+
+.gs-terminal-wrapper .xterm .xterm-screen {
+  position: relative;
+}
+
+.gs-terminal-wrapper .xterm .xterm-screen canvas {
+  position: absolute;
+  left: 0;
+  top: 0;
+}
+
+/* xterm.js measures glyph advance widths by writing char.repeat(32) into these
+   probe spans and reading offsetWidth. They live inside .xterm-helpers, which
+   is absolutely positioned over row 0 — without this rule they stay in flow
+   and paint the measured characters on top of the first line. */
+.gs-terminal-wrapper .xterm .xterm-char-measure-element {
+  display: inline-block;
+  visibility: hidden;
+  position: absolute;
+  top: 0;
+  left: -9999em;
+  line-height: normal;
+}
+
+.gs-terminal-wrapper .xterm.enable-mouse-events {
+  cursor: default;
+}
+
+.gs-terminal-wrapper .xterm.xterm-cursor-pointer,
+.gs-terminal-wrapper .xterm .xterm-cursor-pointer {
+  cursor: pointer;
+}
+
+.gs-terminal-wrapper .xterm.column-select.focus {
+  cursor: crosshair;
+}
+
+.gs-terminal-wrapper .xterm .xterm-accessibility:not(.debug),
+.gs-terminal-wrapper .xterm .xterm-message {
+  position: absolute;
+  inset: 0;
+  z-index: 10;
+  color: transparent;
+  pointer-events: none;
+}
+
+.gs-terminal-wrapper .xterm .xterm-accessibility-tree:not(.debug) *::selection {
+  color: transparent;
+}
+
+.gs-terminal-wrapper .xterm .xterm-accessibility-tree {
+  font-family: monospace;
+  user-select: text;
+  white-space: pre;
+}
+
+.gs-terminal-wrapper .xterm .xterm-accessibility-tree > div {
+  transform-origin: left;
+  width: fit-content;
+}
+
+.gs-terminal-wrapper .xterm .live-region {
+  position: absolute;
+  left: -9999px;
+  width: 1px;
+  height: 1px;
+  overflow: hidden;
+}
+
+/* Dim applies to the foreground only; the renderer bakes the reduced opacity
+   into the generated color rule, so the element itself stays fully opaque.
+   Upstream uses !important here — specificity carries it instead. */
+.gs-terminal-wrapper .xterm .xterm-dim {
+  opacity: 1;
+}
+
+.gs-terminal-wrapper .xterm .xterm-underline-1 {
+  text-decoration-line: underline;
+}
+
+.gs-terminal-wrapper .xterm .xterm-underline-2 {
+  text-decoration-line: underline;
+  text-decoration-style: double;
+}
+
+.gs-terminal-wrapper .xterm .xterm-underline-3 {
+  text-decoration-line: underline;
+  text-decoration-style: wavy;
+}
+
+.gs-terminal-wrapper .xterm .xterm-underline-4 {
+  text-decoration-line: underline;
+  text-decoration-style: dotted;
+}
+
+.gs-terminal-wrapper .xterm .xterm-underline-5 {
+  text-decoration-line: underline;
+  text-decoration-style: dashed;
+}
+
+.gs-terminal-wrapper .xterm .xterm-overline {
+  text-decoration-line: overline;
+}
+
+.gs-terminal-wrapper .xterm .xterm-overline.xterm-underline-1 {
+  text-decoration-line: overline underline;
+}
+
+.gs-terminal-wrapper .xterm .xterm-overline.xterm-underline-2 {
+  text-decoration-line: overline underline;
+  text-decoration-style: double;
+}
+
+.gs-terminal-wrapper .xterm .xterm-overline.xterm-underline-3 {
+  text-decoration-line: overline underline;
+  text-decoration-style: wavy;
+}
+
+.gs-terminal-wrapper .xterm .xterm-overline.xterm-underline-4 {
+  text-decoration-line: overline underline;
+  text-decoration-style: dotted;
+}
+
+.gs-terminal-wrapper .xterm .xterm-overline.xterm-underline-5 {
+  text-decoration-line: overline underline;
+  text-decoration-style: dashed;
+}
+
+.gs-terminal-wrapper .xterm .xterm-strikethrough {
+  text-decoration-line: line-through;
+}
+
+.gs-terminal-wrapper .xterm-screen .xterm-decoration-container .xterm-decoration {
+  z-index: 6;
+  position: absolute;
+}
+
+.gs-terminal-wrapper
+  .xterm-screen
+  .xterm-decoration-container
+  .xterm-decoration.xterm-decoration-top-layer {
+  z-index: 7;
+}
+
+.gs-terminal-wrapper .xterm-decoration-top {
+  z-index: 2;
+  position: relative;
+}
+
+.gs-terminal-wrapper .xterm .xterm-decoration-overview-ruler {
+  z-index: 8;
+  position: absolute;
+  top: 0;
+  right: 0;
+  pointer-events: none;
+}
+
+.gs-terminal-wrapper .xterm .xterm-scrollable-element > .visible {
+  opacity: 1;
+  background: rgb(0 0 0 / 0%);
+  transition: opacity 100ms linear;
+  z-index: 11;
+}
+
+.gs-terminal-wrapper .xterm .xterm-scrollable-element > .invisible {
+  opacity: 0;
+  pointer-events: none;
+}
+
+.gs-terminal-wrapper .xterm .xterm-scrollable-element > .invisible.fade {
+  transition: opacity 800ms linear;
+}
+
+.gs-terminal-wrapper .xterm .xterm-scrollable-element > .scrollbar {
+  cursor: default;
+}
+
+.gs-terminal-wrapper .xterm .xterm-scrollable-element > .scrollbar > .scra {
+  cursor: pointer;
+  font-size: 11px;
+}
+
+.gs-terminal-wrapper .xterm .xterm-scrollable-element > .shadow {
+  position: absolute;
+  display: none;
+}
+
+.gs-terminal-wrapper .xterm .xterm-scrollable-element > .shadow.top {
+  display: block;
+  top: 0;
+  left: 3px;
+  height: 3px;
+  width: 100%;
+  box-shadow: var(--vscode-scrollbar-shadow, #000) 0 6px 6px -6px inset;
+}
+
+.gs-terminal-wrapper .xterm .xterm-scrollable-element > .shadow.left {
+  display: block;
+  top: 3px;
+  left: 0;
+  height: 100%;
+  width: 3px;
+  box-shadow: var(--vscode-scrollbar-shadow, #000) 6px 0 6px -6px inset;
+}
+
+.gs-terminal-wrapper .xterm .xterm-scrollable-element > .shadow.top-left-corner {
+  display: block;
+  top: 0;
+  left: 0;
+  height: 3px;
+  width: 3px;
+}
+
+.gs-terminal-wrapper .xterm .xterm-scrollable-element > .shadow.top.left {
+  box-shadow: var(--vscode-scrollbar-shadow, #000) 6px 0 6px -6px inset;
+}
+
+.gs-terminal-unavailable {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  height: 100%;
+  color: var(--text-muted);
+  font-size: var(--font-ui-medium);
+}
+
+/* ================================================================
    UTILITIES
    ================================================================ */
 

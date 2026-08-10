@@ -11,6 +11,7 @@ import {
   SOURCE_CONTROL_VIEW_TYPE,
   GRAPH_VIEW_TYPE,
   DIFF_VIEW_TYPE,
+  TERMINAL_VIEW_TYPE,
   GitHistorySettings,
   DEFAULT_SETTINGS,
   CommitInfo,
@@ -20,6 +21,7 @@ import { RepoStore } from "./store/repo-store";
 import { SourceControlView } from "./views/source-control-view";
 import { GraphView } from "./views/graph-view";
 import { DiffView } from "./views/diff-view";
+import { TerminalView } from "./views/terminal-view";
 import { StatusBarController } from "./components/status-bar";
 import { WhatsNewModal } from "./components/whats-new-modal";
 import { asVoid } from "./utils/async";
@@ -54,6 +56,7 @@ export default class GitHistoryPlugin extends Plugin {
     this.registerView(SOURCE_CONTROL_VIEW_TYPE, (leaf) => new SourceControlView(leaf, this));
     this.registerView(GRAPH_VIEW_TYPE, (leaf) => new GraphView(leaf, this));
     this.registerView(DIFF_VIEW_TYPE, (leaf) => new DiffView(leaf, this));
+    this.registerView(TERMINAL_VIEW_TYPE, (leaf) => new TerminalView(leaf, this));
 
     // The standalone history panel was replaced by the Graph tab. A workspace
     // saved by an older version still restores its leaf, which would now open
@@ -62,6 +65,10 @@ export default class GitHistoryPlugin extends Plugin {
 
     this.addRibbonIcon("git-branch", "Git history", () => {
       void this.openSourceControlView();
+    });
+
+    this.addRibbonIcon("terminal", "Open terminal", () => {
+      void this.openTerminalView();
     });
 
     this.registerCommands();
@@ -208,6 +215,12 @@ export default class GitHistoryPlugin extends Plugin {
     });
 
     this.addCommand({
+      id: "open-terminal",
+      name: "Open terminal",
+      callback: () => this.openTerminalView(),
+    });
+
+    this.addCommand({
       id: "init-repo",
       name: "Initialize Git repository",
       callback: async () => {
@@ -286,6 +299,20 @@ export default class GitHistoryPlugin extends Plugin {
       const view = leaf.view as DiffView;
       view.setFile(path, ref, staged, untracked);
       void this.app.workspace.revealLeaf(leaf);
+    }
+  }
+
+  async openTerminalView(): Promise<void> {
+    const existing = this.app.workspace.getLeavesOfType(TERMINAL_VIEW_TYPE);
+    if (existing.length > 0) {
+      void this.app.workspace.revealLeaf(existing[0]);
+      return;
+    }
+    const activeLeaf = this.app.workspace.getMostRecentLeaf();
+    if (activeLeaf) {
+      const newLeaf = this.app.workspace.createLeafBySplit(activeLeaf, "horizontal");
+      await newLeaf.setViewState({ type: TERMINAL_VIEW_TYPE, active: true });
+      void this.app.workspace.revealLeaf(newLeaf);
     }
   }
 
@@ -414,6 +441,15 @@ class GitHistorySettingTab extends PluginSettingTab {
         desc: "Milliseconds to wait before refreshing status after file changes.",
         control: { type: "number", key: "debounceMs", min: 100 },
       },
+      {
+        name: "Terminal shell",
+        desc: "Path to the shell binary for the embedded terminal. Leave empty for auto-detect.",
+        control: {
+          type: "text",
+          key: "terminalShell",
+          placeholder: "/bin/zsh",
+        },
+      },
     ];
   }
 
@@ -511,6 +547,19 @@ class GitHistorySettingTab extends PluginSettingTab {
             await this.plugin.saveSettings();
           }
         }),
+      );
+
+    new Setting(containerEl)
+      .setName("Terminal shell")
+      .setDesc("Path to the shell binary for the embedded terminal. Leave empty for auto-detect.")
+      .addText((text) =>
+        text
+          .setPlaceholder("/bin/zsh")
+          .setValue(this.plugin.settings.terminalShell)
+          .onChange(async (v) => {
+            this.plugin.settings.terminalShell = v;
+            await this.plugin.saveSettings();
+          }),
       );
   }
 }
