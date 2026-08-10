@@ -1,3 +1,10 @@
+# [1.3.0](https://github.com/chrisurf/obsidian-git-history/compare/1.2.4...1.3.0) (2026-08-10)
+
+
+### Features
+
+* embedded terminal (Alpha) ([#15](https://github.com/chrisurf/obsidian-git-history/issues/15)) ([1bc473c](https://github.com/chrisurf/obsidian-git-history/commit/1bc473ce4106f1b160dfe478a3ba0ca3e1eb43c4))
+
 ## [1.2.4](https://github.com/chrisurf/obsidian-git-history/compare/1.2.3...1.2.4) (2026-07-30)
 
 
