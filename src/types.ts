@@ -129,6 +129,12 @@ export interface GitHistorySettings {
   autoFetchEnabled: boolean;
   autoFetchInterval: number;
   diffViewMode: "side-by-side" | "inline";
+  /**
+   * Hide files Obsidian has no viewer for from a commit's file list. On by
+   * default: a commit's list is for getting to a note, and rows that cannot be
+   * opened only get in the way.
+   */
+  onlySupportedFileTypes: boolean;
   showStatusBar: boolean;
   treeView: boolean;
   debounceMs: number;
@@ -145,6 +151,7 @@ export const DEFAULT_SETTINGS: GitHistorySettings = {
   autoFetchEnabled: false,
   autoFetchInterval: 300,
   diffViewMode: "side-by-side",
+  onlySupportedFileTypes: true,
   showStatusBar: true,
   treeView: false,
   debounceMs: 1000,

@@ -6,6 +6,7 @@ import { computeGraphLayout, formatRelativeDate } from "../utils/graph-layout";
 import type GitHistoryPlugin from "../main";
 import { asVoid } from "../utils/async";
 import { confirmChoice, promptText } from "../utils/prompt";
+import { supportedFileFilter } from "../utils/file-types";
 
 /** Built at runtime so the key name keeps its capital letter — the UI text
  *  rule lowercases every word after the first, and "Enter" is a key. */
@@ -775,8 +776,8 @@ export class GraphView extends ItemView {
   }
 
   private paintFileStats(stats: CommitStats, cell: HTMLElement): void {
-    const icon = cell.createSpan("gs-files-icon");
-    setIcon(icon, "file");
+    // No per-row file glyph: the column header already carries one, and in the
+    // full-width graph it only repeated itself down every row.
     cell.createSpan("gs-files-count").setText(String(stats.filesChanged));
 
     const total = stats.additions + stats.deletions;
@@ -865,7 +866,8 @@ export class GraphView extends ItemView {
       asVoid(async (e) => {
         e.stopPropagation();
         try {
-          const files = await this.git.showCommitFiles(commit.hash);
+          const keep = supportedFileFilter(this.app, this.plugin.settings.onlySupportedFileTypes);
+          const files = (await this.git.showCommitFiles(commit.hash)).filter((f) => keep(f.path));
           if (files.length > 0) {
             void this.plugin.openDiff(files[0].path, commit.hash);
           }

@@ -326,14 +326,6 @@
   font-size: 11px;
 }
 
-.gs-files-icon {
-  display: flex;
-}
-.gs-files-icon svg {
-  width: 12px;
-  height: 12px;
-}
-
 .gs-commit-msg {
   color: var(--gs-text);
 }
@@ -1416,18 +1408,9 @@
   background: var(--gs-bg-active);
   box-shadow: inset 2px 0 0 var(--gs-accent);
 }
-.gs-sg-changes-file-row.is-active .gs-sg-changes-file-icon {
-  color: var(--gs-accent);
-}
-.gs-sg-changes-file-icon {
-  flex-shrink: 0;
+.gs-sg-changes-hidden {
   color: var(--gs-text-faint);
-  width: 14px;
-  height: 14px;
-}
-.gs-sg-changes-file-icon svg {
-  width: 14px;
-  height: 14px;
+  font-weight: 400;
 }
 .gs-sg-changes-file-name {
   flex: 1;
@@ -1440,6 +1423,25 @@
   flex-shrink: 0;
   font-size: 11px;
   white-space: nowrap;
+}
+
+/* Per-file actions on a commit's file rows. The container keeps its width at
+   rest so revealing the buttons does not reflow the row; only the opacity
+   changes. Focus-within keeps them reachable by keyboard. */
+.gs-cf-actions {
+  display: flex;
+  gap: 2px;
+  flex-shrink: 0;
+  opacity: 0;
+  transition: opacity 0.1s;
+}
+.gs-sg-changes-file-row:hover .gs-cf-actions,
+.gs-sg-changes-file-row.is-active .gs-cf-actions,
+.gs-sg-changes-file-row:focus-within .gs-cf-actions,
+.gs-sg-detail-file:hover .gs-cf-actions,
+.gs-sg-detail-file.is-active .gs-cf-actions,
+.gs-sg-detail-file:focus-within .gs-cf-actions {
+  opacity: 1;
 }
 .gs-sg-changes-empty {
   padding: 20px 10px;
@@ -1727,6 +1729,7 @@
   display: flex;
   justify-content: space-between;
   align-items: center;
+  gap: 6px;
   padding: 5px 8px;
   margin: 2px 0;
   cursor: pointer;
