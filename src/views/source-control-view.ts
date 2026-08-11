@@ -84,25 +84,43 @@ export class SourceControlView extends ItemView {
   }
 
   async onOpen(): Promise<void> {
-    const isRepo = await this.git.isRepo();
-    if (!isRepo) {
-      this.buildInitView();
-      return;
-    }
-    await this.buildRepoView();
+    await this.buildForRepoState();
   }
 
-  private buildInitView(): void {
+  /**
+   * Picks the view the vault's Git state calls for. Called on open and again
+   * after an initialization, so the panel never shows commit controls for a
+   * vault that has no repository of its own.
+   */
+  private async buildForRepoState(): Promise<void> {
+    if (await this.git.isRepo()) {
+      await this.buildRepoView();
+      return;
+    }
+    await this.buildInitView();
+  }
+
+  private async buildInitView(): Promise<void> {
     const { contentEl } = this;
     contentEl.empty();
     contentEl.addClass("gs-sc-view");
+
+    // A vault can sit inside someone else's repository — a home directory
+    // under Git is the common accident. Naming it beats leaving the reader to
+    // wonder why the panel offers to initialize something that git already
+    // answers questions about.
+    const outer = await this.git.enclosingRepoRoot();
 
     const wrap = contentEl.createDiv("gs-init-view");
     const iconEl = wrap.createDiv("gs-init-icon");
     setIcon(iconEl, "git-branch");
     wrap.createEl("h3", { text: "No Git repository" });
     wrap.createEl("p", {
-      text: "This vault is not tracked by Git yet. Initialize a repository to start version control.",
+      text: outer
+        ? `This vault is not a Git repository. It sits inside the repository at ${outer}, ` +
+          "which tracks more than your vault, so this panel leaves it alone. " +
+          "Initialize a repository for the vault itself to start version control."
+        : "This vault is not tracked by Git yet. Initialize a repository to start version control.",
       cls: "gs-init-desc",
     });
     const btn = wrap.createEl("button", {
@@ -113,11 +131,16 @@ export class SourceControlView extends ItemView {
       "click",
       asVoid(async () => {
         try {
+          btn.disabled = true;
           await this.git.init();
           this.plugin.activatePostInit();
-          await this.buildRepoView();
+          // Through the same check that got us here, so a failed init leaves
+          // the panel on this screen rather than on empty commit controls.
+          await this.buildForRepoState();
+          await this.store.refresh();
           new Notice("Git repository initialized");
         } catch (e: unknown) {
+          btn.disabled = false;
           new Notice(`Init failed: ${e instanceof Error ? e.message : String(e)}`);
         }
       }),

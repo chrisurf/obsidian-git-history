@@ -54,12 +54,38 @@ export class GitService {
     return p;
   }
 
+  /**
+   * Whether the vault itself is a repository.
+   *
+   * Asking git alone answers a different question: `rev-parse` walks up the
+   * directory tree, so a vault under a home directory that happens to be a
+   * repository reports yes, and every command then runs against that outer
+   * repository instead. The vault has to be the root for this to be its
+   * history.
+   */
   async isRepo(): Promise<boolean> {
     try {
-      await this.exec(["rev-parse", "--git-dir"]);
-      return true;
+      // `--show-prefix` is the vault's path relative to the repository root,
+      // and empty exactly when the vault is that root. Git answers it itself,
+      // which beats comparing paths: on macOS the vault may be reached through
+      // a symlink git resolves away, and the filesystem may be case-folded.
+      const prefix = await this.exec(["rev-parse", "--show-prefix"]);
+      return prefix.trim() === "";
     } catch {
       return false;
+    }
+  }
+
+  /**
+   * Root of the repository the vault sits in, which may be an ancestor of the
+   * vault or the vault itself. Null when there is no repository above it.
+   */
+  async enclosingRepoRoot(): Promise<string | null> {
+    try {
+      const out = (await this.exec(["rev-parse", "--show-toplevel"])).trim();
+      return out === "" ? null : out;
+    } catch {
+      return null;
     }
   }
 
