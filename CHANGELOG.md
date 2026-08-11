@@ -1,3 +1,10 @@
+# [1.4.0](https://github.com/chrisurf/obsidian-git-history/compare/1.3.0...1.4.0) (2026-08-11)
+
+
+### Features
+
+* reach a note from a commit, and fix what stood in the way ([#16](https://github.com/chrisurf/obsidian-git-history/issues/16)) ([1e7ba91](https://github.com/chrisurf/obsidian-git-history/commit/1e7ba918afbb15226b2065ddd6fc737212230aa0))
+
 # [1.3.0](https://github.com/chrisurf/obsidian-git-history/compare/1.2.4...1.3.0) (2026-08-10)
 
 

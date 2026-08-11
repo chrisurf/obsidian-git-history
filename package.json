@@ -1,6 +1,6 @@
 {
   "name": "obsidian-git-history",
-  "version": "1.3.0",
+  "version": "1.4.0",
   "description": "Git History for Obsidian – Full Git management with an intuitive UI and commit graph",
   "main": "main.js",
   "scripts": {
