@@ -29,7 +29,13 @@ export class GitService {
     return new Promise((resolve, reject) => {
       execFile(
         "git",
-        args,
+        // Without this git renders any path outside ASCII as an octal escape
+        // inside double quotes — `"Studies/00 \342\200\224 Welcome.md"` for a
+        // name holding an em dash. Every path git hands back would then have
+        // to be unquoted before it could be opened, staged or diffed. The
+        // commands reading NUL-separated output are unaffected by it either
+        // way, so this is safe to set for all of them.
+        ["-c", "core.quotepath=false", ...args],
         {
           cwd: this.repoPath,
           maxBuffer: 50 * 1024 * 1024,
@@ -486,6 +492,33 @@ export class GitService {
     return this.exec(args);
   }
 
+  /**
+   * What a commit did to one file, against its first parent.
+   *
+   * A root commit has no parent, so `<ref>^` is not a revision and git fails
+   * the whole diff — the first commit of a vault rendered as "No differences
+   * found" for every file in it. `show` handles that case, printing the commit
+   * as the additions it is.
+   */
+  async diffCommitAgainstParent(ref: string, path: string, fullContext = false): Promise<string> {
+    if (await this.hasParent(ref)) {
+      return this.diffCommit(`${ref}^`, ref, path, fullContext);
+    }
+    const args = ["show", "--format="];
+    if (fullContext) args.push("-U99999");
+    args.push(ref, "--", path);
+    return this.exec(args);
+  }
+
+  private async hasParent(ref: string): Promise<boolean> {
+    try {
+      await this.exec(["rev-parse", "--verify", "--quiet", `${ref}^`]);
+      return true;
+    } catch {
+      return false;
+    }
+  }
+
   async show(ref: string, path: string): Promise<string> {
     try {
       return await this.exec(["show", `${ref}:${path}`]);
@@ -497,7 +530,11 @@ export class GitService {
   async showCommitFiles(
     hash: string,
   ): Promise<{ path: string; additions: number; deletions: number }[]> {
-    const out = await this.exec(["diff-tree", "--no-commit-id", "-r", "--numstat", hash]);
+    // `--root` is what makes the first commit of a repository list anything.
+    // Without it diff-tree compares against a parent, and a root commit has
+    // none, so it prints nothing at all — a freshly initialized vault showed
+    // "No files changed" for the very commit that added every file.
+    const out = await this.exec(["diff-tree", "--no-commit-id", "-r", "--numstat", "--root", hash]);
     return out
       .split("\n")
       .filter(Boolean)
