@@ -420,6 +420,13 @@ class GitHistorySettingTab extends PluginSettingTab {
         },
       },
       {
+        name: "Only list files Obsidian can open",
+        desc:
+          "A commit's file list leaves out files no Obsidian view can render, such as .json " +
+          "or .parquet. Turn this off to list everything a commit touched.",
+        control: { type: "toggle", key: "onlySupportedFileTypes" },
+      },
+      {
         name: "Auto-fetch",
         desc: "Automatically fetch from remotes.",
         control: { type: "toggle", key: "autoFetchEnabled" },
@@ -501,6 +508,19 @@ class GitHistorySettingTab extends PluginSettingTab {
           await this.plugin.saveSettings();
         }),
     );
+
+    new Setting(containerEl)
+      .setName("Only list files Obsidian can open")
+      .setDesc(
+        "A commit's file list leaves out files no Obsidian view can render, such as .json " +
+          "or .parquet. Turn this off to list everything a commit touched.",
+      )
+      .addToggle((t) =>
+        t.setValue(this.plugin.settings.onlySupportedFileTypes).onChange(async (v) => {
+          this.plugin.settings.onlySupportedFileTypes = v;
+          await this.plugin.saveSettings();
+        }),
+      );
 
     new Setting(containerEl)
       .setName("Auto-fetch")

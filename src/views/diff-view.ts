@@ -538,8 +538,7 @@ export class DiffView extends ItemView {
     try {
       let rawDiff: string;
       if (this.ref) {
-        const parentRef = this.ref + "^";
-        rawDiff = await this.git.diffCommit(parentRef, this.ref, this.filePath);
+        rawDiff = await this.git.diffCommitAgainstParent(this.ref, this.filePath);
       } else if (this.staged) {
         rawDiff = await this.git.diff(this.filePath, true);
       } else {

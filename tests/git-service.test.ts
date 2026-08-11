@@ -1,7 +1,7 @@
 // @vitest-environment node
 import { describe, it, expect, beforeAll, afterAll } from "vitest";
 import { execFileSync } from "child_process";
-import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from "fs";
+import { mkdirSync, mkdtempSync, realpathSync, rmSync, writeFileSync } from "fs";
 import { tmpdir } from "os";
 import { join } from "path";
 import { GitService } from "../src/git/git-service";
@@ -349,5 +349,156 @@ describe("GitService.gitignore", () => {
     const content = await git.readGitignore();
     expect(content).toContain("*.log");
     expect(content).toContain("node_modules/");
+  });
+});
+
+/**
+ * The panel manages the vault's own repository. Git answers "is there a
+ * repository above this folder", which is a different and much broader
+ * question: a vault under a home directory that happens to be a repository
+ * used to report as tracked, and every command then ran against that outer
+ * repository instead of the vault.
+ */
+describe("isRepo", () => {
+  let outer: string;
+
+  beforeAll(() => {
+    outer = mkdtempSync(join(tmpdir(), "git-history-outer-"));
+    execFileSync("git", ["init", "-q", "-b", "main", "."], { cwd: outer });
+    mkdirSync(join(outer, "vault", "nested"), { recursive: true });
+  });
+
+  afterAll(() => rmSync(outer, { recursive: true, force: true }));
+
+  it("is true at the root of a repository", async () => {
+    expect(await new GitService(repo).isRepo()).toBe(true);
+  });
+
+  it("is false for a folder that merely sits inside one", async () => {
+    expect(await new GitService(join(outer, "vault")).isRepo()).toBe(false);
+    expect(await new GitService(join(outer, "vault", "nested")).isRepo()).toBe(false);
+  });
+
+  it("is true once that folder gets a repository of its own", async () => {
+    const vault = join(outer, "vault");
+    execFileSync("git", ["init", "-q", "-b", "main", "."], { cwd: vault });
+    try {
+      expect(await new GitService(vault).isRepo()).toBe(true);
+      // The folder below it is still not a root of anything.
+      expect(await new GitService(join(vault, "nested")).isRepo()).toBe(false);
+    } finally {
+      rmSync(join(vault, ".git"), { recursive: true, force: true });
+    }
+  });
+
+  it("is false where git finds no repository at all", async () => {
+    const bare = mkdtempSync(join(tmpdir(), "git-history-norepo-"));
+    try {
+      expect(await new GitService(bare).isRepo()).toBe(false);
+    } finally {
+      rmSync(bare, { recursive: true, force: true });
+    }
+  });
+});
+
+describe("enclosingRepoRoot", () => {
+  it("names the repository a folder sits in, so the panel can say which one", async () => {
+    const outer = mkdtempSync(join(tmpdir(), "git-history-encl-"));
+    execFileSync("git", ["init", "-q", "-b", "main", "."], { cwd: outer });
+    mkdirSync(join(outer, "vault"));
+    try {
+      const root = await new GitService(join(outer, "vault")).enclosingRepoRoot();
+      expect(root).not.toBeNull();
+      expect(realpathSync(root!)).toBe(realpathSync(outer));
+    } finally {
+      rmSync(outer, { recursive: true, force: true });
+    }
+  });
+
+  it("is null outside any repository", async () => {
+    const bare = mkdtempSync(join(tmpdir(), "git-history-noencl-"));
+    try {
+      expect(await new GitService(bare).enclosingRepoRoot()).toBeNull();
+    } finally {
+      rmSync(bare, { recursive: true, force: true });
+    }
+  });
+});
+
+/**
+ * The shapes a freshly initialized vault produces. Every one of these was
+ * wrong at once when a vault got its first commit: the file list was empty,
+ * and opening any file from it found no differences.
+ */
+describe("the first commit of a repository", () => {
+  let fresh: string;
+  let service: GitService;
+  let head: string;
+
+  const git = (...args: string[]): string =>
+    execFileSync("git", args, { cwd: fresh, encoding: "utf8" }).trim();
+
+  beforeAll(() => {
+    fresh = mkdtempSync(join(tmpdir(), "git-history-fresh-"));
+    execFileSync("git", ["init", "-q", "-b", "main", "."], { cwd: fresh });
+    git("config", "user.email", "test@example.com");
+    git("config", "user.name", "Test User");
+
+    mkdirSync(join(fresh, "Studies"));
+    // An em dash, exactly what git escapes into octal when quotepath is on.
+    writeFileSync(join(fresh, "Studies", "00 — Welcome to Voice.md"), "one\ntwo\n");
+    writeFileSync(join(fresh, "plain.md"), "hello\n");
+    // A binary file: numstat reports "-" for both counts.
+    writeFileSync(join(fresh, "Studies", "00 — Welcome to Voice.mp3"), Buffer.from([0, 1, 2, 255]));
+    git("add", "-A");
+    git("commit", "-qm", "Initial commit");
+    head = git("rev-parse", "HEAD");
+    service = new GitService(fresh);
+  });
+
+  afterAll(() => rmSync(fresh, { recursive: true, force: true }));
+
+  it("lists the files it added, having no parent to compare against", async () => {
+    const files = await service.showCommitFiles(head);
+    expect(files.map((f) => f.path).sort()).toEqual([
+      "Studies/00 — Welcome to Voice.md",
+      "Studies/00 — Welcome to Voice.mp3",
+      "plain.md",
+    ]);
+  });
+
+  it("keeps non-ASCII paths readable instead of octal-escaping them", async () => {
+    const files = await service.showCommitFiles(head);
+    const md = files.find((f) => f.path.endsWith("Welcome to Voice.md"));
+    expect(md?.path).toBe("Studies/00 — Welcome to Voice.md");
+    expect(md?.path).not.toContain("\\342");
+    expect(md?.path).not.toContain('"');
+  });
+
+  it("counts additions, and reads a binary file as no line changes", async () => {
+    const files = await service.showCommitFiles(head);
+    expect(files.find((f) => f.path === "plain.md")?.additions).toBe(1);
+    const binary = files.find((f) => f.path.endsWith(".mp3"));
+    expect(binary?.additions).toBe(0);
+    expect(binary?.deletions).toBe(0);
+  });
+
+  it("diffs a file from it, rather than failing on a parent that is not there", async () => {
+    const raw = await service.diffCommitAgainstParent(head, "plain.md");
+    expect(raw).toContain("+hello");
+  });
+
+  it("diffs a file whose name is not ASCII", async () => {
+    const raw = await service.diffCommitAgainstParent(head, "Studies/00 — Welcome to Voice.md");
+    expect(raw).toContain("+one");
+  });
+
+  it("still diffs against the parent once there is one", async () => {
+    writeFileSync(join(fresh, "plain.md"), "hello\nagain\n");
+    git("commit", "-qam", "second");
+    const second = git("rev-parse", "HEAD");
+    const raw = await service.diffCommitAgainstParent(second, "plain.md");
+    expect(raw).toContain("+again");
+    expect(raw).not.toContain("+hello");
   });
 });

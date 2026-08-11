@@ -7,6 +7,7 @@ import type GitHistoryPlugin from "../main";
 import { asVoid } from "../utils/async";
 import { confirmChoice, promptText } from "../utils/prompt";
 import { resolveTemplate } from "../utils/template";
+import { supportedFileFilter } from "../utils/file-types";
 
 interface FileTreeNode {
   name: string;
@@ -76,29 +77,50 @@ export class SourceControlView extends ItemView {
     return "Source control";
   }
   getIcon(): string {
-    return "git-commit-horizontal";
+    // Same mark as the ribbon entry that opens this view, the status bar, and
+    // the empty-vault screen. `git-commit-horizontal` stays reserved for the
+    // per-commit avatars inside the view, where it means one commit.
+    return "git-branch";
   }
 
   async onOpen(): Promise<void> {
-    const isRepo = await this.git.isRepo();
-    if (!isRepo) {
-      this.buildInitView();
-      return;
-    }
-    await this.buildRepoView();
+    await this.buildForRepoState();
   }
 
-  private buildInitView(): void {
+  /**
+   * Picks the view the vault's Git state calls for. Called on open and again
+   * after an initialization, so the panel never shows commit controls for a
+   * vault that has no repository of its own.
+   */
+  private async buildForRepoState(): Promise<void> {
+    if (await this.git.isRepo()) {
+      await this.buildRepoView();
+      return;
+    }
+    await this.buildInitView();
+  }
+
+  private async buildInitView(): Promise<void> {
     const { contentEl } = this;
     contentEl.empty();
     contentEl.addClass("gs-sc-view");
+
+    // A vault can sit inside someone else's repository — a home directory
+    // under Git is the common accident. Naming it beats leaving the reader to
+    // wonder why the panel offers to initialize something that git already
+    // answers questions about.
+    const outer = await this.git.enclosingRepoRoot();
 
     const wrap = contentEl.createDiv("gs-init-view");
     const iconEl = wrap.createDiv("gs-init-icon");
     setIcon(iconEl, "git-branch");
     wrap.createEl("h3", { text: "No Git repository" });
     wrap.createEl("p", {
-      text: "This vault is not tracked by Git yet. Initialize a repository to start version control.",
+      text: outer
+        ? `This vault is not a Git repository. It sits inside the repository at ${outer}, ` +
+          "which tracks more than your vault, so this panel leaves it alone. " +
+          "Initialize a repository for the vault itself to start version control."
+        : "This vault is not tracked by Git yet. Initialize a repository to start version control.",
       cls: "gs-init-desc",
     });
     const btn = wrap.createEl("button", {
@@ -109,11 +131,16 @@ export class SourceControlView extends ItemView {
       "click",
       asVoid(async () => {
         try {
+          btn.disabled = true;
           await this.git.init();
           this.plugin.activatePostInit();
-          await this.buildRepoView();
+          // Through the same check that got us here, so a failed init leaves
+          // the panel on this screen rather than on empty commit controls.
+          await this.buildForRepoState();
+          await this.store.refresh();
           new Notice("Git repository initialized");
         } catch (e: unknown) {
+          btn.disabled = false;
           new Notice(`Init failed: ${e instanceof Error ? e.message : String(e)}`);
         }
       }),
@@ -1122,25 +1149,88 @@ export class SourceControlView extends ItemView {
    * `.obsidian/*` config files are not part of the vault index.
    */
   private addOpenFileButton(actions: HTMLElement, file: FileStatus): void {
-    const target = this.vaultFile(file.path);
-    if (!target) return;
+    this.addOpenCurrentButton(actions, file.path);
+  }
 
+  /**
+   * The "open the note as it is right now" button. It is rendered for every
+   * file row, unconditionally — it is the action reached for most often, and a
+   * button that appears on some rows and not others is harder to use than one
+   * that is always in the same place. Whether the file still exists is decided
+   * on click, not on render, so a file restored in the meantime just works.
+   */
+  private addOpenCurrentButton(actions: HTMLElement, path: string): void {
     const btn = actions.createEl("button", { cls: "gs-action-btn" });
     setIcon(btn, "file");
-    btn.setAttribute("aria-label", "Open file");
+    btn.setAttribute("aria-label", "Open current file");
     btn.addEventListener(
       "click",
       asVoid(async (e) => {
         e.stopPropagation();
-        const current = this.vaultFile(file.path);
-        if (current) await this.app.workspace.getLeaf(false).openFile(current);
+        await this.openCurrentFile(path);
       }),
     );
+  }
+
+  /**
+   * Opens the vault's current copy of a path. A commit can name a file the
+   * vault no longer holds — deleted since, or never part of this vault at all
+   * when the repository reaches beyond it — and saying so is more use than a
+   * button that quietly does nothing.
+   */
+  private async openCurrentFile(path: string): Promise<void> {
+    const current = this.vaultFile(path);
+    if (!current) {
+      new Notice(`"${path}" does not exist in this vault right now`);
+      return;
+    }
+    await this.app.workspace.getLeaf(false).openFile(current);
   }
 
   private vaultFile(path: string): TFile | null {
     const found = this.app.vault.getAbstractFileByPath(path);
     return found instanceof TFile ? found : null;
+  }
+
+  /**
+   * Whether a commit's file list shows this path. Resolved per render rather
+   * than cached, so flipping the setting takes effect on the next refresh.
+   */
+  private showsFile(path: string): boolean {
+    return supportedFileFilter(this.app, this.plugin.settings.onlySupportedFileTypes)(path);
+  }
+
+  /**
+   * The three things worth doing with one file of a commit, as buttons in the
+   * row itself: read what that commit did to it, open the note as it stands
+   * now, and put the note back to that commit. They used to be reachable only
+   * through a right-click menu, which hid them.
+   *
+   * Shared by both commit file lists — the Changes sub-tab and the expanded
+   * commit in the sidebar graph — so the two cannot drift apart.
+   */
+  private addCommitFileActions(row: HTMLElement, path: string, hash: string): void {
+    const actions = row.createDiv("gs-cf-actions");
+
+    // Leftmost, and first for a reason: opening the note as it stands now is
+    // the action wanted most often.
+    this.addOpenCurrentButton(actions, path);
+
+    const diffBtn = actions.createEl("button", { cls: "gs-action-btn" });
+    setIcon(diffBtn, "file-diff");
+    diffBtn.setAttribute("aria-label", "View changes in this commit");
+    diffBtn.addEventListener("click", (e) => {
+      e.stopPropagation();
+      void this.plugin.openDiff(path, hash);
+    });
+
+    const restoreBtn = actions.createEl("button", { cls: "gs-action-btn" });
+    setIcon(restoreBtn, "undo");
+    restoreBtn.setAttribute("aria-label", "Restore this file to this commit");
+    restoreBtn.addEventListener("click", (e) => {
+      e.stopPropagation();
+      void this.restoreFile(path, hash);
+    });
   }
 
   private async loadFileStats(file: FileStatus, el: HTMLElement, group: string): Promise<void> {
@@ -1266,7 +1356,8 @@ export class SourceControlView extends ItemView {
       asVoid(async () => {
         try {
           const files = await this.git.showCommitFiles(commit.hash);
-          if (files.length > 0) void this.plugin.openDiff(files[0].path, commit.hash);
+          const shown = files.filter((f) => this.showsFile(f.path));
+          if (shown.length > 0) void this.plugin.openDiff(shown[0].path, commit.hash);
         } catch {
           new Notice("Could not load changes");
         }
@@ -1278,11 +1369,21 @@ export class SourceControlView extends ItemView {
     loadingEl.setText("Loading files...");
 
     try {
-      const files = await this.git.showCommitFiles(commit.hash);
+      const all = await this.git.showCommitFiles(commit.hash);
       filesContainer.empty();
 
-      if (files.length === 0) {
+      if (all.length === 0) {
         filesContainer.createDiv("gs-sg-changes-empty").setText("No files changed");
+        return;
+      }
+
+      const files = all.filter((f) => this.showsFile(f.path));
+      const hidden = all.length - files.length;
+
+      if (files.length === 0) {
+        filesContainer
+          .createDiv("gs-sg-changes-empty")
+          .setText(`${hidden} file${hidden !== 1 ? "s" : ""} changed, none Obsidian can open`);
         return;
       }
 
@@ -1293,12 +1394,15 @@ export class SourceControlView extends ItemView {
       summaryEl.createSpan().setText(`${files.length} FILES CHANGED`);
       if (totalAdd > 0) summaryEl.createSpan("gs-stat-add").setText(` +${totalAdd}`);
       if (totalDel > 0) summaryEl.createSpan("gs-stat-del").setText(` -${totalDel}`);
+      // Say so rather than silently showing a shorter list than the commit has.
+      if (hidden > 0) {
+        const hiddenEl = summaryEl.createSpan("gs-sg-changes-hidden");
+        hiddenEl.setText(` · ${hidden} hidden`);
+        hiddenEl.setAttribute("aria-label", "Files Obsidian cannot open, hidden by a setting");
+      }
 
       for (const f of files) {
         const fileRow = filesContainer.createDiv("gs-sg-changes-file-row");
-
-        const fileIcon = fileRow.createSpan("gs-sg-changes-file-icon");
-        setIcon(fileIcon, "file");
 
         const fileName = fileRow.createSpan("gs-sg-changes-file-name");
         fileName.setText(f.path);
@@ -1306,6 +1410,8 @@ export class SourceControlView extends ItemView {
         const fileStats = fileRow.createSpan("gs-sg-changes-file-stats");
         if (f.additions > 0) fileStats.createSpan("gs-stat-add").setText(`+${f.additions}`);
         if (f.deletions > 0) fileStats.createSpan("gs-stat-del").setText(` -${f.deletions}`);
+
+        this.addCommitFileActions(fileRow, f.path, commit.hash);
 
         fileRow.addEventListener("click", () => {
           filesContainer
@@ -1316,18 +1422,26 @@ export class SourceControlView extends ItemView {
         });
         fileRow.addEventListener("contextmenu", (e) => {
           e.preventDefault();
+          // Same three actions as the row buttons, in the same order and with
+          // the same icons, for anyone who reaches for the right button first.
           const m = new Menu();
+          m.addItem((i) =>
+            i
+              .setTitle("Open current file")
+              .setIcon("file")
+              .onClick(asVoid(() => this.openCurrentFile(f.path))),
+          );
+          m.addItem((i) =>
+            i
+              .setTitle("View changes in this commit")
+              .setIcon("file-diff")
+              .onClick(() => this.plugin.openDiff(f.path, commit.hash)),
+          );
           m.addItem((i) =>
             i
               .setTitle("Restore this file")
               .setIcon("undo")
               .onClick(() => this.restoreFile(f.path, commit.hash)),
-          );
-          m.addItem((i) =>
-            i
-              .setTitle("View diff")
-              .setIcon("diff")
-              .onClick(() => this.plugin.openDiff(f.path, commit.hash)),
           );
           m.showAtMouseEvent(e);
         });
@@ -1484,7 +1598,8 @@ export class SourceControlView extends ItemView {
             .onClick(async () => {
               try {
                 const files = await this.git.showCommitFiles(commit.hash);
-                if (files.length > 0) void this.plugin.openDiff(files[0].path, commit.hash);
+                const shown = files.filter((f) => this.showsFile(f.path));
+                if (shown.length > 0) void this.plugin.openDiff(shown[0].path, commit.hash);
               } catch {
                 new Notice("Could not load changes");
               }
@@ -1576,7 +1691,8 @@ export class SourceControlView extends ItemView {
         e.stopPropagation();
         try {
           const files = await this.git.showCommitFiles(commit.hash);
-          if (files.length > 0) void this.plugin.openDiff(files[0].path, commit.hash);
+          const shown = files.filter((f) => this.showsFile(f.path));
+          if (shown.length > 0) void this.plugin.openDiff(shown[0].path, commit.hash);
         } catch {
           new Notice("Could not load changes");
         }
@@ -1589,12 +1705,17 @@ export class SourceControlView extends ItemView {
 
   private async loadSidebarCommitFiles(hash: string, detail: HTMLElement): Promise<void> {
     try {
-      const files = await this.git.showCommitFiles(hash);
+      const all = await this.git.showCommitFiles(hash);
+      const files = all.filter((f) => this.showsFile(f.path));
       if (files.length === 0) return;
+      const hidden = all.length - files.length;
       const filesEl = detail.createDiv("gs-sg-detail-files");
       filesEl
         .createDiv("gs-sg-detail-files-header")
-        .setText(`${files.length} file${files.length !== 1 ? "s" : ""} changed`);
+        .setText(
+          `${files.length} file${files.length !== 1 ? "s" : ""} changed` +
+            (hidden > 0 ? ` · ${hidden} hidden` : ""),
+        );
       for (const f of files) {
         const fileRow = filesEl.createDiv("gs-sg-detail-file");
         const name = fileRow.createSpan("gs-sg-detail-filename");
@@ -1602,6 +1723,9 @@ export class SourceControlView extends ItemView {
         const stats = fileRow.createSpan("gs-sg-detail-filestats");
         if (f.additions > 0) stats.createSpan("gs-stat-add").setText(`+${f.additions}`);
         if (f.deletions > 0) stats.createSpan("gs-stat-del").setText(` -${f.deletions}`);
+
+        this.addCommitFileActions(fileRow, f.path, hash);
+
         fileRow.addEventListener("click", (e) => {
           e.stopPropagation();
           filesEl

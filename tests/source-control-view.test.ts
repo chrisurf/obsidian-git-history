@@ -538,7 +538,12 @@ describe("SourceControlView — Open File", () => {
     const labels = Array.from(rowFor(view, "Testing.md")!.querySelectorAll("button")).map((b) =>
       b.getAttribute("aria-label"),
     );
-    expect(labels).toEqual(["Open changes", "Open file", "Discard changes", "Stage changes"]);
+    expect(labels).toEqual([
+      "Open changes",
+      "Open current file",
+      "Discard changes",
+      "Stage changes",
+    ]);
   });
 
   it("opens the file as it currently is", async () => {
@@ -551,21 +556,28 @@ describe("SourceControlView — Open File", () => {
     expandAll(view);
 
     rowFor(view, "Testing.md")
-      ?.querySelector('button[aria-label="Open file"]')
+      ?.querySelector('button[aria-label="Open current file"]')
       ?.dispatchEvent(new MouseEvent("click", { bubbles: true }));
     await Promise.resolve();
 
     expect(openedFiles).toEqual(["Testing.md"]);
   });
 
-  it("is left out for paths the vault does not hold", async () => {
-    // .obsidian/* config files and deletions have nothing to open.
+  it("is offered on every row, whether or not the vault holds the path", async () => {
+    // The button used to be dropped for `.obsidian/*` and deleted files, which
+    // meant it moved around between rows. It is always in the same place now;
+    // whether the file exists is answered on click, not on render.
     const { view } = await mount(screenshotStatus());
     expandAll(view);
 
-    expect(rowFor(view, "workspace.json")?.querySelector('button[aria-label="Open file"]')).toBe(
-      null,
+    const btn = rowFor(view, "workspace.json")?.querySelector(
+      'button[aria-label="Open current file"]',
     );
+    expect(btn).not.toBe(null);
+
+    btn?.dispatchEvent(new MouseEvent("click", { bubbles: true }));
+    await Promise.resolve();
+    expect(openedFiles).toEqual([]);
   });
 });
 
