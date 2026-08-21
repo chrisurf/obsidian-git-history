@@ -70,6 +70,14 @@ export interface RemoteInfo {
   pushUrl: string;
 }
 
+/** Where the current branch stands against its upstream, if it has one. */
+export interface UpstreamState {
+  ahead: number;
+  behind: number;
+  hasUpstream: boolean;
+  hasCommits: boolean;
+}
+
 export interface StashEntry {
   index: number;
   message: string;

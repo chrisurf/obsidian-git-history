@@ -14,6 +14,8 @@ import type GitHistoryPlugin from "../main";
 import { asVoid } from "../utils/async";
 import { confirmChoice, promptText } from "../utils/prompt";
 import { resolveTemplate } from "../utils/template";
+import { commitButtonState } from "../store/commit-action";
+import type { CommitAction, CommitButtonState } from "../store/commit-action";
 import { supportedFileFilter } from "../utils/file-types";
 
 interface FileTreeNode {
@@ -34,6 +36,9 @@ export class SourceControlView extends ItemView {
   private git: GitService;
   private commitInput: HTMLInputElement | null = null;
   private commitBtn: HTMLButtonElement | null = null;
+  private commitBtnLabel: HTMLElement | null = null;
+  private commitBtnIcon: HTMLElement | null = null;
+  private commitState: CommitButtonState | null = null;
   private fileListEl: HTMLElement | null = null;
   private listToolbarEl: HTMLElement | null = null;
   private listSummaryEl: HTMLElement | null = null;
@@ -182,10 +187,16 @@ export class SourceControlView extends ItemView {
     this.registerEvent(
       this.store.on("status-changed", () => {
         this.renderFiles();
+        this.updateCommitBtnState();
         if (this.activeTab === "graph") this.syncSidebarWorkingRow();
       }),
     );
-    this.registerEvent(this.store.on("branch-changed", () => this.updateBranch()));
+    this.registerEvent(
+      this.store.on("branch-changed", () => {
+        this.updateBranch();
+        this.updateCommitBtnState();
+      }),
+    );
     this.registerEvent(
       this.store.on("log-changed", () => {
         this.rebuildSidebarGraph();
@@ -389,7 +400,7 @@ export class SourceControlView extends ItemView {
     this.commitInput.addEventListener("keydown", (e: KeyboardEvent) => {
       if ((e.metaKey || e.ctrlKey) && e.key === "Enter") {
         e.preventDefault();
-        if (!this.commitBtn?.disabled) void this.doCommit();
+        if (!this.commitBtn?.disabled) void this.runPrimaryAction();
       }
     });
 
@@ -400,51 +411,17 @@ export class SourceControlView extends ItemView {
     const btnRow = area.createDiv("gs-commit-btn-row");
 
     this.commitBtn = btnRow.createEl("button", { cls: "gs-commit-main-btn" });
-    const checkIcon = this.commitBtn.createSpan("gs-commit-check-icon");
-    setIcon(checkIcon, "check");
-    this.commitBtn.appendText(" Commit");
+    this.commitBtnIcon = this.commitBtn.createSpan("gs-commit-check-icon");
+    this.commitBtnLabel = this.commitBtn.createSpan("gs-commit-btn-label");
     this.commitBtn.addEventListener("click", () => {
-      void this.doCommit();
+      void this.runPrimaryAction();
     });
     this.updateCommitBtnState();
 
     const dropdownBtn = btnRow.createEl("button", { cls: "gs-commit-dropdown-btn" });
     const chevron = dropdownBtn.createSpan();
     setIcon(chevron, "chevron-down");
-    dropdownBtn.addEventListener("click", (e) => {
-      const menu = new Menu();
-      menu.addItem((i) =>
-        i
-          .setTitle("Commit")
-          .setIcon("check")
-          .onClick(() => this.doCommit()),
-      );
-      menu.addItem((i) =>
-        i
-          .setTitle("Commit & push")
-          .setIcon("upload")
-          .onClick(() => this.doCommit(true)),
-      );
-      menu.addSeparator();
-      menu.addItem((i) => {
-        const isAmend = this.contentEl.querySelector(".gs-commit-input") as HTMLInputElement;
-        i.setTitle("Amend previous commit").setIcon("edit");
-        i.onClick(async () => {
-          try {
-            const msg = isAmend?.value?.trim() || "";
-            await this.store.runTask("Amending", () =>
-              this.git.commit(msg || "amend", { amend: true }),
-            );
-            if (isAmend) isAmend.value = "";
-            await this.store.refresh();
-            new Notice("Amended");
-          } catch (err: unknown) {
-            new Notice(`Amend failed: ${err instanceof Error ? err.message : String(err)}`);
-          }
-        });
-      });
-      menu.showAtMouseEvent(e);
-    });
+    dropdownBtn.addEventListener("click", (e) => this.showCommitMenu(e));
   }
 
   private showMoreMenu(event: MouseEvent): void {
@@ -655,11 +632,155 @@ export class SourceControlView extends ItemView {
     }
   }
 
+  /**
+   * The menu behind the chevron follows the button. With nothing to commit, the
+   * commit entries would all end in the same "No changes to commit" notice, so
+   * the remote actions take their place.
+   */
+  private showCommitMenu(event: MouseEvent): void {
+    const menu = new Menu();
+    const action = this.commitState?.action ?? "commit";
+
+    if (action === "commit") {
+      menu.addItem((i) =>
+        i
+          .setTitle("Commit")
+          .setIcon("check")
+          .onClick(() => this.doCommit()),
+      );
+      menu.addItem((i) =>
+        i
+          .setTitle("Commit & push")
+          .setIcon("upload")
+          .onClick(() => this.doCommit(true)),
+      );
+      menu.addSeparator();
+    } else {
+      menu.addItem((i) =>
+        i
+          .setTitle(this.store.hasUpstream ? "Push" : "Publish branch")
+          .setIcon("upload")
+          .setDisabled(action === "none")
+          .onClick(() => this.doPush()),
+      );
+      menu.addItem((i) =>
+        i
+          .setTitle("Pull")
+          .setIcon("download")
+          .onClick(async () => {
+            try {
+              await this.store.runTask("Pulling", () =>
+                this.git.pull({ strategy: this.plugin.settings.pullStrategy }),
+              );
+              await this.store.refresh();
+              new Notice("Pulled");
+            } catch (err: unknown) {
+              new Notice(`Pull failed: ${err instanceof Error ? err.message : String(err)}`);
+            }
+          }),
+      );
+      menu.addItem((i) =>
+        i
+          .setTitle("Sync (pull, then push)")
+          .setIcon("refresh-cw")
+          .onClick(() => this.doSync()),
+      );
+      menu.addSeparator();
+    }
+
+    menu.addItem((i) => {
+      i.setTitle("Amend previous commit").setIcon("edit");
+      i.onClick(async () => {
+        const input = this.commitInput;
+        try {
+          const msg = input?.value?.trim() || "";
+          await this.store.runTask("Amending", () =>
+            this.git.commit(msg || "amend", { amend: true }),
+          );
+          if (input) input.value = "";
+          await this.store.refresh();
+          new Notice("Amended");
+        } catch (err: unknown) {
+          new Notice(`Amend failed: ${err instanceof Error ? err.message : String(err)}`);
+        }
+      });
+    });
+
+    menu.showAtMouseEvent(event);
+  }
+
   private updateCommitBtnState(): void {
-    if (!this.commitBtn) return;
-    const hasInput = !!this.commitInput?.value?.trim();
-    const hasTemplate = !!this.plugin.settings.commitTemplate;
-    this.commitBtn.disabled = !hasInput && !hasTemplate;
+    const btn = this.commitBtn;
+    if (!btn) return;
+
+    const state = commitButtonState({
+      hasMessage: !!this.commitInput?.value?.trim() || !!this.plugin.settings.commitTemplate,
+      changeCount:
+        this.store.stagedFiles.length +
+        this.store.changedFiles.length +
+        this.store.untrackedFiles.length,
+      ahead: this.store.ahead,
+      behind: this.store.behind,
+      hasUpstream: this.store.hasUpstream,
+      hasCommits: this.store.hasCommits,
+      merging: this.store.merging,
+    });
+
+    this.commitState = state;
+    btn.disabled = !state.enabled;
+    btn.setAttribute("aria-label", state.tooltip);
+    this.commitBtnLabel?.setText(state.label);
+    if (this.commitBtnIcon) setIcon(this.commitBtnIcon, state.icon);
+  }
+
+  /** Runs whatever the primary button currently offers. */
+  private async runPrimaryAction(): Promise<void> {
+    const action: CommitAction = this.commitState?.action ?? "commit";
+    switch (action) {
+      case "commit":
+        await this.doCommit();
+        return;
+      case "push":
+        await this.doPush();
+        return;
+      case "publish":
+        await this.doPush("Publishing branch");
+        return;
+      case "sync":
+        await this.doSync();
+        return;
+      default:
+        return;
+    }
+  }
+
+  private async doPush(label = "Pushing"): Promise<void> {
+    try {
+      await this.store.runTask(label, () =>
+        this.git.push({ setUpstream: true, remote: "origin", branch: this.store.branch }),
+      );
+      await this.store.refresh();
+      new Notice("Pushed");
+    } catch (e: unknown) {
+      new Notice(`Push failed: ${e instanceof Error ? e.message : String(e)}`);
+    }
+  }
+
+  /**
+   * Behind and ahead at once: git refuses the push until the remote commits are
+   * in, so the pull comes first and the push only follows if it worked.
+   */
+  private async doSync(): Promise<void> {
+    try {
+      await this.store.runTask("Pulling", () =>
+        this.git.pull({ strategy: this.plugin.settings.pullStrategy }),
+      );
+    } catch (e: unknown) {
+      await this.store.refresh();
+      new Notice(`Pull failed: ${e instanceof Error ? e.message : String(e)}`);
+      return;
+    }
+    await this.doPush();
   }
 
   private async restoreFile(filePath: string, ref: string): Promise<void> {

@@ -60,7 +60,20 @@ interface Calls {
   showCommitFiles: number;
 }
 
-async function mount(status: FileStatus[], settingsOverride: Record<string, unknown> = {}) {
+interface Upstream {
+  ahead: number;
+  behind: number;
+  hasUpstream: boolean;
+  hasCommits: boolean;
+}
+
+const IN_SYNC: Upstream = { ahead: 0, behind: 0, hasUpstream: true, hasCommits: true };
+
+async function mount(
+  status: FileStatus[],
+  settingsOverride: Record<string, unknown> = {},
+  upstream: Upstream = IN_SYNC,
+) {
   const calls: Calls = {
     release: {},
     stageAll: 0,
@@ -75,7 +88,7 @@ async function mount(status: FileStatus[], settingsOverride: Record<string, unkn
     log: async () => [],
     status: async () => current,
     currentBranch: async () => "main",
-    getAheadBehind: async () => ({ ahead: 0, behind: 0 }),
+    getAheadBehind: async () => upstream,
     branches: async () => [],
     showCommitFiles: async () => {
       calls.showCommitFiles++;
@@ -739,5 +752,60 @@ describe("SourceControlView — changes layout", () => {
   it("counts the changes in the toolbar", async () => {
     const { view } = await mount(nested());
     expect(view.contentEl.querySelector(".gs-sc-list-summary")?.textContent).toBe("3 changes");
+  });
+});
+
+/**
+ * The primary button carries whatever step is actually next. It used to be a
+ * Commit button in every state, lit up by nothing more than text in the message
+ * field — including on a clean tree, where its only answer was a notice.
+ */
+describe("SourceControlView — the primary button", () => {
+  const button = (view: { contentEl: HTMLElement }): HTMLButtonElement =>
+    view.contentEl.querySelector(".gs-commit-main-btn") as HTMLButtonElement;
+  const label = (view: { contentEl: HTMLElement }): string =>
+    view.contentEl.querySelector(".gs-commit-btn-label")?.textContent ?? "";
+
+  it("reads Commit and stays disabled while no message is typed", async () => {
+    const { view } = await mount(screenshotStatus());
+    expect(label(view)).toBe("Commit");
+    expect(button(view).disabled).toBe(true);
+  });
+
+  it("turns into a push once the tree is clean and commits are waiting", async () => {
+    const { view } = await mount([], {}, { ...IN_SYNC, ahead: 2 });
+    expect(label(view)).toBe("Push (2)");
+    expect(button(view).disabled).toBe(false);
+  });
+
+  it("offers to publish a branch that was never pushed", async () => {
+    const { view } = await mount(
+      [],
+      {},
+      { ahead: 0, behind: 0, hasUpstream: false, hasCommits: true },
+    );
+    expect(label(view)).toBe("Publish branch");
+    expect(button(view).disabled).toBe(false);
+  });
+
+  it("greys out with nothing to commit and nothing to push", async () => {
+    const { view } = await mount([]);
+    expect(label(view)).toBe("Commit");
+    expect(button(view).disabled).toBe(true);
+  });
+
+  it("keeps committing ahead of pushing while changes are uncommitted", async () => {
+    const { view } = await mount(screenshotStatus(), {}, { ...IN_SYNC, ahead: 2 });
+    expect(label(view)).toBe("Commit");
+  });
+
+  it("follows the repository, not only the message field", async () => {
+    // The button used to be updated on keystrokes alone, so a status refresh
+    // left it saying whatever it said before.
+    const { view, store } = await mount([], {}, { ...IN_SYNC, ahead: 1 });
+    expect(label(view)).toBe("Push (1)");
+    await store.refresh();
+    flushFrames();
+    expect(label(view)).toBe("Push (1)");
   });
 });

@@ -10,6 +10,7 @@ import {
   FileDiff,
   DiffHunk,
   StashEntry,
+  UpstreamState,
 } from "../types";
 
 export class GitService {
@@ -622,13 +623,30 @@ export class GitService {
     return files;
   }
 
-  async getAheadBehind(): Promise<{ ahead: number; behind: number }> {
+  /**
+   * How far the branch has drifted from its upstream, and whether it has one at
+   * all. The two are reported apart on purpose: a branch that was never pushed
+   * counts zero commits ahead, which otherwise reads exactly like "in sync" —
+   * the one state where pushing matters most.
+   */
+  async getAheadBehind(): Promise<UpstreamState> {
     try {
       const out = await this.exec(["rev-list", "--left-right", "--count", "HEAD...@{upstream}"]);
       const [ahead, behind] = out.trim().split(/\s+/).map(Number);
-      return { ahead: ahead || 0, behind: behind || 0 };
+      return { ahead: ahead || 0, behind: behind || 0, hasUpstream: true, hasCommits: true };
     } catch {
-      return { ahead: 0, behind: 0 };
+      // No upstream. Whether there is anything to publish then depends on the
+      // branch having commits at all — a fresh repository has none.
+      return { ahead: 0, behind: 0, hasUpstream: false, hasCommits: await this.hasCommits() };
+    }
+  }
+
+  private async hasCommits(): Promise<boolean> {
+    try {
+      await this.exec(["rev-parse", "--verify", "HEAD"]);
+      return true;
+    } catch {
+      return false;
     }
   }
 

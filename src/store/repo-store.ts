@@ -9,6 +9,8 @@ export class RepoStore extends Events {
   private _commits: CommitInfo[] = [];
   private _ahead = 0;
   private _behind = 0;
+  private _hasUpstream = false;
+  private _hasCommits = false;
   private _loading = false;
   private _merging = false;
   private _refreshQueued = false;
@@ -130,6 +132,13 @@ export class RepoStore extends Events {
   get behind(): number {
     return this._behind;
   }
+  /** False while the branch has no upstream — nothing pushed there yet. */
+  get hasUpstream(): boolean {
+    return this._hasUpstream;
+  }
+  get hasCommits(): boolean {
+    return this._hasCommits;
+  }
   get loading(): boolean {
     return this._loading;
   }
@@ -160,7 +169,7 @@ export class RepoStore extends Events {
       ]);
 
       const newStatusFp = this.computeFingerprint(status);
-      const newBranchFp = `${branch}:${ab.ahead}:${ab.behind}`;
+      const newBranchFp = `${branch}:${ab.ahead}:${ab.behind}:${ab.hasUpstream}:${ab.hasCommits}`;
       const isFirstLoad = this._statusFingerprint === null;
       const statusChanged = isFirstLoad || newStatusFp !== this._statusFingerprint;
       const branchChanged = isFirstLoad || newBranchFp !== this._branchFingerprint;
@@ -169,6 +178,8 @@ export class RepoStore extends Events {
       this._branch = branch;
       this._ahead = ab.ahead;
       this._behind = ab.behind;
+      this._hasUpstream = ab.hasUpstream;
+      this._hasCommits = ab.hasCommits;
       this._merging = status.some((f) => f.indexStatus === "U" || f.workingStatus === "U");
       this._statusFingerprint = newStatusFp;
       this._branchFingerprint = newBranchFp;
