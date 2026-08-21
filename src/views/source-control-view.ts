@@ -38,7 +38,7 @@ export class SourceControlView extends ItemView {
   private listToolbarEl: HTMLElement | null = null;
   private listSummaryEl: HTMLElement | null = null;
   private foldBtn: HTMLButtonElement | null = null;
-  private modeBtns: Record<string, HTMLElement> = {};
+  private modeBtn: HTMLButtonElement | null = null;
   private expandedDirs = new Set<string>();
   /** Every folder currently in the tree, so "expand all" knows its targets. */
   private allDirPaths: string[] = [];
@@ -742,22 +742,14 @@ export class SourceControlView extends ItemView {
     foldBtn.addEventListener("click", () => this.toggleAllFolders());
     this.foldBtn = foldBtn;
 
-    const seg = actions.createDiv("gs-sc-mode-switch");
-    for (const [mode, icon, label] of [
-      ["tree", "list-tree", "View as tree"],
-      ["list", "list", "View as list"],
-    ] as [FileListMode, string, string][]) {
-      const btn = seg.createEl("button", { cls: "gs-sc-mode-btn" });
-      setIcon(btn, icon);
-      btn.setAttribute("aria-label", label);
-      btn.addEventListener(
-        "click",
-        asVoid(async () => {
-          await this.plugin.setFileListMode(mode);
-        }),
-      );
-      this.modeBtns[mode] = btn;
-    }
+    const modeBtn = actions.createEl("button", { cls: "gs-icon-btn gs-icon-btn-sm" });
+    modeBtn.addEventListener(
+      "click",
+      asVoid(async () => {
+        await this.plugin.setFileListMode(this.fileListMode === "tree" ? "list" : "tree");
+      }),
+    );
+    this.modeBtn = modeBtn;
   }
 
   private get fileListMode(): FileListMode {
@@ -794,8 +786,13 @@ export class SourceControlView extends ItemView {
     this.listSummaryEl?.setText(total === 1 ? "1 change" : `${total} changes`);
 
     const mode = this.fileListMode;
-    for (const [key, btn] of Object.entries(this.modeBtns)) {
-      btn.toggleClass("gs-sc-mode-btn-active", key === mode);
+
+    // The button names where it takes you, not where you are — two icons side
+    // by side would only pose the question of which one is the current state.
+    if (this.modeBtn) {
+      const toTree = mode === "list";
+      setIcon(this.modeBtn, toTree ? "list-tree" : "list");
+      this.modeBtn.setAttribute("aria-label", toTree ? "View as tree" : "View as list");
     }
 
     // Nothing to fold in a flat list, and nothing to fold in a tree that has

@@ -761,40 +761,9 @@
   color: var(--gs-text);
 }
 
-.gs-sc-mode-switch {
-  display: flex;
-  border: 1px solid var(--gs-border);
-  border-radius: 4px;
-  overflow: hidden;
-}
-
-.gs-sc-mode-btn.gs-sc-mode-btn {
-  background: transparent;
-  border: none;
-  border-radius: 0;
-  box-shadow: none;
-  outline: none;
-  color: var(--gs-text-faint);
-  cursor: pointer;
-  padding: 2px 6px;
-  display: flex;
-  align-items: center;
-  height: 20px;
-}
-
-.gs-sc-mode-btn.gs-sc-mode-btn svg {
-  width: 13px;
-  height: 13px;
-}
-
-.gs-sc-mode-btn.gs-sc-mode-btn:hover {
-  background: var(--gs-bg-hover);
-  color: var(--gs-text);
-}
-
-.gs-sc-mode-btn-active.gs-sc-mode-btn-active {
-  background: var(--gs-bg-active);
-  color: var(--gs-text);
+/* Beats the display: flex above, which would otherwise outrank .gs-hidden. */
+.gs-sc-list-actions .gs-icon-btn-sm.gs-icon-btn-sm.gs-hidden {
+  display: none;
 }
 
 /* File list */

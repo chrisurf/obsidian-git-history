@@ -693,11 +693,27 @@ describe("SourceControlView — changes layout", () => {
     expect(openBefore).toBe(3);
 
     for (const label of ["View as list", "View as tree"]) {
-      findButton(view.contentEl, label)?.dispatchEvent(new MouseEvent("click", { bubbles: true }));
+      const btn = findButton(view.contentEl, label);
+      expect(btn, `no "${label}" button`).not.toBeNull();
+      btn?.dispatchEvent(new MouseEvent("click", { bubbles: true }));
       flushFrames();
     }
 
     expect(rows(view, ".gs-tree-file")).toHaveLength(openBefore);
+  });
+
+  it("offers one layout button, naming the layout it switches to", async () => {
+    const { view } = await mount(nested());
+    expect(findButton(view.contentEl, "View as list")).not.toBeNull();
+    expect(findButton(view.contentEl, "View as tree")).toBeNull();
+
+    findButton(view.contentEl, "View as list")?.dispatchEvent(
+      new MouseEvent("click", { bubbles: true }),
+    );
+    flushFrames();
+
+    expect(findButton(view.contentEl, "View as tree")).not.toBeNull();
+    expect(findButton(view.contentEl, "View as list")).toBeNull();
   });
 
   it("offers nothing to fold while the list is flat", async () => {
