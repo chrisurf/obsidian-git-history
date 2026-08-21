@@ -40,7 +40,7 @@ function makeGit(commits: CommitInfo[], status: FileStatus[]): GitService {
     },
     status: async () => status,
     currentBranch: async () => "main",
-    getAheadBehind: async () => ({ ahead: 0, behind: 0 }),
+    getAheadBehind: async () => ({ ahead: 0, behind: 0, hasUpstream: true, hasCommits: true }),
     branches: async () => [],
     showCommitFiles: async (hash: string) => {
       gitCalls.showCommitFiles.push(hash);

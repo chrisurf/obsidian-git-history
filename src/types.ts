@@ -70,6 +70,14 @@ export interface RemoteInfo {
   pushUrl: string;
 }
 
+/** Where the current branch stands against its upstream, if it has one. */
+export interface UpstreamState {
+  ahead: number;
+  behind: number;
+  hasUpstream: boolean;
+  hasCommits: boolean;
+}
+
 export interface StashEntry {
   index: number;
   message: string;
@@ -123,6 +131,8 @@ export interface GraphData {
   maxColumns: number;
 }
 
+export type FileListMode = "tree" | "list";
+
 export interface GitHistorySettings {
   commitTemplate: string;
   pullStrategy: "merge" | "rebase" | "ff-only";
@@ -136,7 +146,16 @@ export interface GitHistorySettings {
    */
   onlySupportedFileTypes: boolean;
   showStatusBar: boolean;
-  treeView: boolean;
+  /**
+   * Layout of the changes list. "tree" nests files under their folders, "list"
+   * gives every file one row with its folder shown next to the name.
+   */
+  fileListMode: FileListMode;
+  /**
+   * Fold a chain of folders that each hold a single subfolder into one row
+   * ("Projects/cloudcourse"). Tree layout only.
+   */
+  compactFolders: boolean;
   debounceMs: number;
   showNestedRepos: boolean;
   /** Version whose "what's new" note the user has already seen. */
@@ -153,7 +172,8 @@ export const DEFAULT_SETTINGS: GitHistorySettings = {
   diffViewMode: "side-by-side",
   onlySupportedFileTypes: true,
   showStatusBar: true,
-  treeView: false,
+  fileListMode: "tree",
+  compactFolders: true,
   debounceMs: 1000,
   showNestedRepos: false,
   lastWhatsNewVersion: "",

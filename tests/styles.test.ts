@@ -31,6 +31,18 @@ describe("styles.css behavioural rules", () => {
   });
 });
 
+describe("styles.css — the list toolbar", () => {
+  it("lets .gs-hidden win over the toolbar's own display rule", () => {
+    // The toolbar styles its buttons through a doubled class to beat Obsidian's
+    // own button rules, and that also outranks .gs-hidden. Without a rule of
+    // equal weight, "expand all" stays on screen in the flat layout, where
+    // there is nothing left to expand.
+    expect(css).toMatch(
+      /\.gs-sc-list-actions\s+\.gs-icon-btn-sm\.gs-icon-btn-sm\.gs-hidden\s*\{[^}]*display:\s*none/,
+    );
+  });
+});
+
 describe("styles.css — the expanded commit card", () => {
   const zIndex = (selector: string): number => {
     const match = ruleBody(selector).match(/z-index\s*:\s*(\d+)/);

@@ -715,6 +715,57 @@
   height: 12px;
 }
 
+/* List toolbar – layout switch and expand/collapse for the whole list */
+.gs-sc-list-toolbar {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 3px 12px;
+  border-bottom: 1px solid var(--gs-border);
+  flex-shrink: 0;
+  min-height: 26px;
+}
+
+.gs-sc-list-summary {
+  font-size: 11px;
+  color: var(--gs-text-faint);
+  flex: 1;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.gs-sc-list-actions {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  flex-shrink: 0;
+}
+
+.gs-sc-list-actions .gs-icon-btn-sm.gs-icon-btn-sm {
+  background: transparent;
+  border: none;
+  box-shadow: none;
+  outline: none;
+  color: var(--gs-text-muted);
+  cursor: pointer;
+  padding: 2px;
+  border-radius: 3px;
+  display: flex;
+  align-items: center;
+}
+
+.gs-sc-list-actions .gs-icon-btn-sm.gs-icon-btn-sm:hover {
+  background: var(--gs-bg-hover);
+  color: var(--gs-text);
+}
+
+/* Beats the display: flex above, which would otherwise outrank .gs-hidden. */
+.gs-sc-list-actions .gs-icon-btn-sm.gs-icon-btn-sm.gs-hidden {
+  display: none;
+}
+
 /* File list */
 .gs-sc-filelist {
   flex: 1;
@@ -1059,6 +1110,24 @@
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
+}
+
+/* Flat layout: the folder follows the name and is the first to be cut off. */
+.gs-sc-tree-flat .gs-tree-filename {
+  flex: 0 1 auto;
+}
+
+.gs-tree-filepath {
+  /* Shrinks far more eagerly than the name: the file is what is being read,
+     the folder only tells two files of the same name apart. */
+  flex: 0 100 auto;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  font-size: 11px;
+  color: var(--gs-text-faint);
+  margin-left: 2px;
 }
 
 .gs-tree-file-right {
@@ -2434,15 +2503,114 @@
 
 .gs-terminal-container {
   display: flex;
-  flex-direction: column;
+  flex-direction: row;
   height: 100%;
   overflow: hidden;
 }
 
 .gs-terminal-wrapper {
   flex: 1 1 auto;
+  min-width: 0;
   min-height: 0;
   overflow: hidden;
+  position: relative;
+}
+
+/* The sessions are stacked, not laid out in a row: each one fills the wrapper
+   and all but the active one are hidden, so a session that is out of sight
+   keeps the size it will be shown at. */
+.gs-terminal-instance {
+  position: absolute;
+  inset: 0;
+}
+
+.gs-terminal-instance.gs-terminal-instance.gs-hidden {
+  display: none;
+}
+
+/* Session strip – VS Code's terminal list, on the right edge */
+.gs-terminal-strip {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  padding: 4px 3px;
+  flex-shrink: 0;
+  border-left: 1px solid var(--gs-border);
+  background: var(--gs-bg2);
+  overflow-y: auto;
+}
+
+.gs-terminal-strip.gs-terminal-strip.gs-hidden {
+  display: none;
+}
+
+.gs-terminal-tab {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 26px;
+  height: 26px;
+  border-radius: 4px;
+  color: var(--gs-text-muted);
+  cursor: pointer;
+  flex-shrink: 0;
+  border-left: 2px solid transparent;
+}
+
+.gs-terminal-tab:hover {
+  background: var(--gs-bg-hover);
+  color: var(--gs-text);
+}
+
+.gs-terminal-tab-active {
+  background: var(--gs-bg-active);
+  color: var(--gs-text);
+  border-left-color: var(--gs-accent);
+}
+
+/* The shell behind this one is gone; the buffer is still worth reading. */
+.gs-terminal-tab-exited .gs-terminal-tab-icon {
+  opacity: 0.4;
+}
+
+.gs-terminal-tab-icon {
+  display: flex;
+}
+
+.gs-terminal-tab-icon svg {
+  width: 15px;
+  height: 15px;
+}
+
+.gs-terminal-tab-dragging {
+  opacity: 0.4;
+}
+
+.gs-terminal-tab-drop {
+  box-shadow: inset 0 2px 0 0 var(--gs-accent);
+}
+
+/* Narrow pane: a column of icons on the right would leave nothing for the
+   terminal, so the strip lies down above it instead. */
+.gs-terminal-narrow {
+  flex-direction: column;
+}
+
+.gs-terminal-narrow .gs-terminal-strip {
+  flex-direction: row;
+  order: -1;
+  border-left: none;
+  border-bottom: 1px solid var(--gs-border);
+  overflow: auto hidden;
+}
+
+.gs-terminal-narrow .gs-terminal-tab {
+  border-left: none;
+  border-bottom: 2px solid transparent;
+}
+
+.gs-terminal-narrow .gs-terminal-tab-active {
+  border-bottom-color: var(--gs-accent);
 }
 
 .gs-terminal-wrapper .xterm {

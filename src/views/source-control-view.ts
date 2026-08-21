@@ -1,5 +1,12 @@
 import { ItemView, WorkspaceLeaf, setIcon, Menu, Notice, TFile } from "obsidian";
-import { SOURCE_CONTROL_VIEW_TYPE, FileStatus, GraphNode, CommitInfo, CommitStats } from "../types";
+import {
+  SOURCE_CONTROL_VIEW_TYPE,
+  FileStatus,
+  FileListMode,
+  GraphNode,
+  CommitInfo,
+  CommitStats,
+} from "../types";
 import { RepoStore } from "../store/repo-store";
 import { GitService } from "../git/git-service";
 import { computeGraphLayout, formatRelativeDate } from "../utils/graph-layout";
@@ -7,6 +14,8 @@ import type GitHistoryPlugin from "../main";
 import { asVoid } from "../utils/async";
 import { confirmChoice, promptText } from "../utils/prompt";
 import { resolveTemplate } from "../utils/template";
+import { commitButtonState } from "../store/commit-action";
+import type { CommitAction, CommitButtonState } from "../store/commit-action";
 import { supportedFileFilter } from "../utils/file-types";
 
 interface FileTreeNode {
@@ -27,8 +36,17 @@ export class SourceControlView extends ItemView {
   private git: GitService;
   private commitInput: HTMLInputElement | null = null;
   private commitBtn: HTMLButtonElement | null = null;
+  private commitBtnLabel: HTMLElement | null = null;
+  private commitBtnIcon: HTMLElement | null = null;
+  private commitState: CommitButtonState | null = null;
   private fileListEl: HTMLElement | null = null;
+  private listToolbarEl: HTMLElement | null = null;
+  private listSummaryEl: HTMLElement | null = null;
+  private foldBtn: HTMLButtonElement | null = null;
+  private modeBtn: HTMLButtonElement | null = null;
   private expandedDirs = new Set<string>();
+  /** Every folder currently in the tree, so "expand all" knows its targets. */
+  private allDirPaths: string[] = [];
   private activeTab: SidebarTab = "changes";
   private changesPanel: HTMLElement | null = null;
   private graphPanel: HTMLElement | null = null;
@@ -161,6 +179,7 @@ export class SourceControlView extends ItemView {
     this.graphPanel.addClass("gs-hidden");
 
     this.buildCommitArea(this.changesPanel);
+    this.buildListToolbar(this.changesPanel);
     this.fileListEl = this.changesPanel.createDiv("gs-sc-filelist");
 
     this.buildSidebarGraph(this.graphPanel);
@@ -168,10 +187,16 @@ export class SourceControlView extends ItemView {
     this.registerEvent(
       this.store.on("status-changed", () => {
         this.renderFiles();
+        this.updateCommitBtnState();
         if (this.activeTab === "graph") this.syncSidebarWorkingRow();
       }),
     );
-    this.registerEvent(this.store.on("branch-changed", () => this.updateBranch()));
+    this.registerEvent(
+      this.store.on("branch-changed", () => {
+        this.updateBranch();
+        this.updateCommitBtnState();
+      }),
+    );
     this.registerEvent(
       this.store.on("log-changed", () => {
         this.rebuildSidebarGraph();
@@ -375,7 +400,7 @@ export class SourceControlView extends ItemView {
     this.commitInput.addEventListener("keydown", (e: KeyboardEvent) => {
       if ((e.metaKey || e.ctrlKey) && e.key === "Enter") {
         e.preventDefault();
-        if (!this.commitBtn?.disabled) void this.doCommit();
+        if (!this.commitBtn?.disabled) void this.runPrimaryAction();
       }
     });
 
@@ -386,51 +411,17 @@ export class SourceControlView extends ItemView {
     const btnRow = area.createDiv("gs-commit-btn-row");
 
     this.commitBtn = btnRow.createEl("button", { cls: "gs-commit-main-btn" });
-    const checkIcon = this.commitBtn.createSpan("gs-commit-check-icon");
-    setIcon(checkIcon, "check");
-    this.commitBtn.appendText(" Commit");
+    this.commitBtnIcon = this.commitBtn.createSpan("gs-commit-check-icon");
+    this.commitBtnLabel = this.commitBtn.createSpan("gs-commit-btn-label");
     this.commitBtn.addEventListener("click", () => {
-      void this.doCommit();
+      void this.runPrimaryAction();
     });
     this.updateCommitBtnState();
 
     const dropdownBtn = btnRow.createEl("button", { cls: "gs-commit-dropdown-btn" });
     const chevron = dropdownBtn.createSpan();
     setIcon(chevron, "chevron-down");
-    dropdownBtn.addEventListener("click", (e) => {
-      const menu = new Menu();
-      menu.addItem((i) =>
-        i
-          .setTitle("Commit")
-          .setIcon("check")
-          .onClick(() => this.doCommit()),
-      );
-      menu.addItem((i) =>
-        i
-          .setTitle("Commit & push")
-          .setIcon("upload")
-          .onClick(() => this.doCommit(true)),
-      );
-      menu.addSeparator();
-      menu.addItem((i) => {
-        const isAmend = this.contentEl.querySelector(".gs-commit-input") as HTMLInputElement;
-        i.setTitle("Amend previous commit").setIcon("edit");
-        i.onClick(async () => {
-          try {
-            const msg = isAmend?.value?.trim() || "";
-            await this.store.runTask("Amending", () =>
-              this.git.commit(msg || "amend", { amend: true }),
-            );
-            if (isAmend) isAmend.value = "";
-            await this.store.refresh();
-            new Notice("Amended");
-          } catch (err: unknown) {
-            new Notice(`Amend failed: ${err instanceof Error ? err.message : String(err)}`);
-          }
-        });
-      });
-      menu.showAtMouseEvent(e);
-    });
+    dropdownBtn.addEventListener("click", (e) => this.showCommitMenu(e));
   }
 
   private showMoreMenu(event: MouseEvent): void {
@@ -465,6 +456,20 @@ export class SourceControlView extends ItemView {
           }),
       );
     }
+    menu.addSeparator();
+    for (const [mode, label, icon] of [
+      ["tree", "View as tree", "list-tree"],
+      ["list", "View as list", "list"],
+    ] as [FileListMode, string, string][]) {
+      menu.addItem((i) =>
+        i
+          .setTitle(label)
+          .setIcon(icon)
+          .setChecked(this.fileListMode === mode)
+          .onClick(() => void this.plugin.setFileListMode(mode)),
+      );
+    }
+
     menu.addSeparator();
     menu.addItem((i) =>
       i
@@ -627,11 +632,155 @@ export class SourceControlView extends ItemView {
     }
   }
 
+  /**
+   * The menu behind the chevron follows the button. With nothing to commit, the
+   * commit entries would all end in the same "No changes to commit" notice, so
+   * the remote actions take their place.
+   */
+  private showCommitMenu(event: MouseEvent): void {
+    const menu = new Menu();
+    const action = this.commitState?.action ?? "commit";
+
+    if (action === "commit") {
+      menu.addItem((i) =>
+        i
+          .setTitle("Commit")
+          .setIcon("check")
+          .onClick(() => this.doCommit()),
+      );
+      menu.addItem((i) =>
+        i
+          .setTitle("Commit & push")
+          .setIcon("upload")
+          .onClick(() => this.doCommit(true)),
+      );
+      menu.addSeparator();
+    } else {
+      menu.addItem((i) =>
+        i
+          .setTitle(this.store.hasUpstream ? "Push" : "Publish branch")
+          .setIcon("upload")
+          .setDisabled(action === "none")
+          .onClick(() => this.doPush()),
+      );
+      menu.addItem((i) =>
+        i
+          .setTitle("Pull")
+          .setIcon("download")
+          .onClick(async () => {
+            try {
+              await this.store.runTask("Pulling", () =>
+                this.git.pull({ strategy: this.plugin.settings.pullStrategy }),
+              );
+              await this.store.refresh();
+              new Notice("Pulled");
+            } catch (err: unknown) {
+              new Notice(`Pull failed: ${err instanceof Error ? err.message : String(err)}`);
+            }
+          }),
+      );
+      menu.addItem((i) =>
+        i
+          .setTitle("Sync (pull, then push)")
+          .setIcon("refresh-cw")
+          .onClick(() => this.doSync()),
+      );
+      menu.addSeparator();
+    }
+
+    menu.addItem((i) => {
+      i.setTitle("Amend previous commit").setIcon("edit");
+      i.onClick(async () => {
+        const input = this.commitInput;
+        try {
+          const msg = input?.value?.trim() || "";
+          await this.store.runTask("Amending", () =>
+            this.git.commit(msg || "amend", { amend: true }),
+          );
+          if (input) input.value = "";
+          await this.store.refresh();
+          new Notice("Amended");
+        } catch (err: unknown) {
+          new Notice(`Amend failed: ${err instanceof Error ? err.message : String(err)}`);
+        }
+      });
+    });
+
+    menu.showAtMouseEvent(event);
+  }
+
   private updateCommitBtnState(): void {
-    if (!this.commitBtn) return;
-    const hasInput = !!this.commitInput?.value?.trim();
-    const hasTemplate = !!this.plugin.settings.commitTemplate;
-    this.commitBtn.disabled = !hasInput && !hasTemplate;
+    const btn = this.commitBtn;
+    if (!btn) return;
+
+    const state = commitButtonState({
+      hasMessage: !!this.commitInput?.value?.trim() || !!this.plugin.settings.commitTemplate,
+      changeCount:
+        this.store.stagedFiles.length +
+        this.store.changedFiles.length +
+        this.store.untrackedFiles.length,
+      ahead: this.store.ahead,
+      behind: this.store.behind,
+      hasUpstream: this.store.hasUpstream,
+      hasCommits: this.store.hasCommits,
+      merging: this.store.merging,
+    });
+
+    this.commitState = state;
+    btn.disabled = !state.enabled;
+    btn.setAttribute("aria-label", state.tooltip);
+    this.commitBtnLabel?.setText(state.label);
+    if (this.commitBtnIcon) setIcon(this.commitBtnIcon, state.icon);
+  }
+
+  /** Runs whatever the primary button currently offers. */
+  private async runPrimaryAction(): Promise<void> {
+    const action: CommitAction = this.commitState?.action ?? "commit";
+    switch (action) {
+      case "commit":
+        await this.doCommit();
+        return;
+      case "push":
+        await this.doPush();
+        return;
+      case "publish":
+        await this.doPush("Publishing branch");
+        return;
+      case "sync":
+        await this.doSync();
+        return;
+      default:
+        return;
+    }
+  }
+
+  private async doPush(label = "Pushing"): Promise<void> {
+    try {
+      await this.store.runTask(label, () =>
+        this.git.push({ setUpstream: true, remote: "origin", branch: this.store.branch }),
+      );
+      await this.store.refresh();
+      new Notice("Pushed");
+    } catch (e: unknown) {
+      new Notice(`Push failed: ${e instanceof Error ? e.message : String(e)}`);
+    }
+  }
+
+  /**
+   * Behind and ahead at once: git refuses the push until the remote commits are
+   * in, so the pull comes first and the push only follows if it worked.
+   */
+  private async doSync(): Promise<void> {
+    try {
+      await this.store.runTask("Pulling", () =>
+        this.git.pull({ strategy: this.plugin.settings.pullStrategy }),
+      );
+    } catch (e: unknown) {
+      await this.store.refresh();
+      new Notice(`Pull failed: ${e instanceof Error ? e.message : String(e)}`);
+      return;
+    }
+    await this.doPush();
   }
 
   private async restoreFile(filePath: string, ref: string): Promise<void> {
@@ -698,9 +847,89 @@ export class SourceControlView extends ItemView {
     }
   }
 
+  /**
+   * One row above the file sections. Layout and "expand all" are properties of
+   * the whole list rather than of a single section, so they sit in one place
+   * instead of being repeated in every section header.
+   */
+  private buildListToolbar(el: HTMLElement): void {
+    const bar = el.createDiv("gs-sc-list-toolbar");
+    this.listToolbarEl = bar;
+    this.listSummaryEl = bar.createSpan("gs-sc-list-summary");
+
+    const actions = bar.createDiv("gs-sc-list-actions");
+
+    const foldBtn = actions.createEl("button", { cls: "gs-icon-btn gs-icon-btn-sm" });
+    foldBtn.addEventListener("click", () => this.toggleAllFolders());
+    this.foldBtn = foldBtn;
+
+    const modeBtn = actions.createEl("button", { cls: "gs-icon-btn gs-icon-btn-sm" });
+    modeBtn.addEventListener(
+      "click",
+      asVoid(async () => {
+        await this.plugin.setFileListMode(this.fileListMode === "tree" ? "list" : "tree");
+      }),
+    );
+    this.modeBtn = modeBtn;
+  }
+
+  private get fileListMode(): FileListMode {
+    return this.plugin.settings.fileListMode === "list" ? "list" : "tree";
+  }
+
+  private get compactFolders(): boolean {
+    return this.plugin.settings.compactFolders !== false;
+  }
+
+  /** Re-renders the changes list after the layout was changed elsewhere. */
+  refreshFileList(): void {
+    this.renderFiles();
+  }
+
+  private allFoldersExpanded(): boolean {
+    return this.allDirPaths.length > 0 && this.allDirPaths.every((p) => this.expandedDirs.has(p));
+  }
+
+  private toggleAllFolders(): void {
+    const expand = !this.allFoldersExpanded();
+    for (const path of this.allDirPaths) {
+      if (expand) this.expandedDirs.add(path);
+      else this.expandedDirs.delete(path);
+    }
+    this.renderFiles();
+  }
+
+  private updateListToolbar(total: number): void {
+    const bar = this.listToolbarEl;
+    if (!bar) return;
+
+    bar.toggleClass("gs-hidden", total === 0);
+    this.listSummaryEl?.setText(total === 1 ? "1 change" : `${total} changes`);
+
+    const mode = this.fileListMode;
+
+    // The button names where it takes you, not where you are — two icons side
+    // by side would only pose the question of which one is the current state.
+    if (this.modeBtn) {
+      const toTree = mode === "list";
+      setIcon(this.modeBtn, toTree ? "list-tree" : "list");
+      this.modeBtn.setAttribute("aria-label", toTree ? "View as tree" : "View as list");
+    }
+
+    // Nothing to fold in a flat list, and nothing to fold in a tree that has
+    // no folders either — the button would sit there doing nothing.
+    const foldBtn = this.foldBtn;
+    if (!foldBtn) return;
+    const expanded = this.allFoldersExpanded();
+    setIcon(foldBtn, expanded ? "fold-vertical" : "unfold-vertical");
+    foldBtn.setAttribute("aria-label", expanded ? "Collapse all" : "Expand all");
+    foldBtn.toggleClass("gs-hidden", mode !== "tree" || this.allDirPaths.length === 0);
+  }
+
   private renderFiles(): void {
     if (!this.fileListEl) return;
     this.fileListEl.empty();
+    this.allDirPaths = [];
 
     const staged = this.store.stagedFiles;
     const changed = [...this.store.changedFiles, ...this.store.untrackedFiles];
@@ -710,9 +939,11 @@ export class SourceControlView extends ItemView {
     if (staged.length > 0) this.renderSection("Staged Changes", staged, "staged");
     if (changed.length > 0) this.renderSection("Changes", changed, "changed");
 
-    if (staged.length + changed.length + conflicts.length === 0) {
+    const total = staged.length + changed.length + conflicts.length;
+    if (total === 0) {
       this.fileListEl.createDiv("gs-sc-empty").setText("No changes");
     }
+    this.updateListToolbar(total);
   }
 
   private renderSection(title: string, files: FileStatus[], group: string): void {
@@ -793,25 +1024,6 @@ export class SourceControlView extends ItemView {
       );
     }
 
-    const tree = this.buildFileTree(files, group);
-    const allDirPaths = this.collectDirPaths(tree);
-
-    let allExpanded = allDirPaths.every((p) => this.expandedDirs.has(p));
-    const toggleBtn = headerActions.createEl("button", { cls: "gs-icon-btn gs-icon-btn-sm" });
-    setIcon(toggleBtn, allExpanded ? "fold-vertical" : "unfold-vertical");
-    toggleBtn.setAttribute("aria-label", allExpanded ? "Collapse all" : "Expand all");
-    toggleBtn.addEventListener("click", (e) => {
-      e.stopPropagation();
-      allExpanded = !allExpanded;
-      for (const p of allDirPaths) {
-        if (allExpanded) this.expandedDirs.add(p);
-        else this.expandedDirs.delete(p);
-      }
-      setIcon(toggleBtn, allExpanded ? "fold-vertical" : "unfold-vertical");
-      toggleBtn.setAttribute("aria-label", allExpanded ? "Collapse all" : "Expand all");
-      this.renderFiles();
-    });
-
     const treeEl = section.createDiv("gs-sc-tree");
     let collapsed = false;
 
@@ -821,6 +1033,17 @@ export class SourceControlView extends ItemView {
       setIcon(chevron, collapsed ? "chevron-right" : "chevron-down");
     });
 
+    if (this.fileListMode === "list") {
+      treeEl.addClass("gs-sc-tree-flat");
+      // Sorted by full path, not by name: files from the same folder then stay
+      // together and the repeated folder label reads as one block.
+      const sorted = [...files].sort((a, b) => a.path.localeCompare(b.path));
+      for (const file of sorted) this.renderFileRow(treeEl, file, group, 0, true);
+      return;
+    }
+
+    const tree = this.buildFileTree(files);
+    this.allDirPaths.push(...this.collectDirPaths(tree));
     this.renderTree(treeEl, tree, group, 0);
   }
 
@@ -857,7 +1080,7 @@ export class SourceControlView extends ItemView {
     return files.flatMap((f) => (f.originalPath ? [f.path, f.originalPath] : [f.path]));
   }
 
-  private buildFileTree(files: FileStatus[], _group: string): FileTreeNode[] {
+  private buildFileTree(files: FileStatus[]): FileTreeNode[] {
     const root: FileTreeNode[] = [];
     const dirMap = new Map<string, FileTreeNode>();
 
@@ -893,7 +1116,29 @@ export class SourceControlView extends ItemView {
       });
     }
 
-    return root;
+    return this.compactFolders ? this.compactTree(root) : root;
+  }
+
+  /**
+   * Folds a chain of folders that each hold a single subfolder into one row —
+   * "Projects/cloudcourse" rather than two levels to open before a file shows
+   * up. The merged node keeps the deepest path, so folder actions and the
+   * expanded set still key on a directory that exists.
+   */
+  private compactTree(nodes: FileTreeNode[]): FileTreeNode[] {
+    return nodes.map((node) => {
+      if (!node.isDir) return node;
+      let merged = node;
+      while (merged.children.length === 1 && merged.children[0].isDir) {
+        const child = merged.children[0];
+        merged = { ...child, name: `${merged.name}/${child.name}` };
+      }
+      return {
+        ...merged,
+        expanded: this.expandedDirs.has(merged.path),
+        children: this.compactTree(merged.children),
+      };
+    });
   }
 
   private renderTree(
@@ -977,7 +1222,13 @@ export class SourceControlView extends ItemView {
     }
   }
 
-  private renderFileRow(parent: HTMLElement, file: FileStatus, group: string, depth: number): void {
+  private renderFileRow(
+    parent: HTMLElement,
+    file: FileStatus,
+    group: string,
+    depth: number,
+    showPath = false,
+  ): void {
     const row = parent.createDiv("gs-tree-file");
     row.style.paddingLeft = depth * 16 + 8 + "px";
 
@@ -1002,6 +1253,15 @@ export class SourceControlView extends ItemView {
 
     const nameEl = row.createSpan("gs-tree-filename");
     nameEl.setText(file.path.split("/").pop() || file.path);
+
+    // In the flat layout the folder is the only thing telling two files of the
+    // same name apart, so it follows the name and gives up its width first.
+    if (showPath) {
+      const slash = file.path.lastIndexOf("/");
+      if (slash > 0) row.createSpan("gs-tree-filepath").setText(file.path.slice(0, slash));
+      row.setAttribute("aria-label", file.path);
+    }
+
     if (file.embeddedRepo) {
       row.addClass("gs-tree-file-embedded");
       row.setAttribute(

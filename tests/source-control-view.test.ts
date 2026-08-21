@@ -60,7 +60,20 @@ interface Calls {
   showCommitFiles: number;
 }
 
-async function mount(status: FileStatus[]) {
+interface Upstream {
+  ahead: number;
+  behind: number;
+  hasUpstream: boolean;
+  hasCommits: boolean;
+}
+
+const IN_SYNC: Upstream = { ahead: 0, behind: 0, hasUpstream: true, hasCommits: true };
+
+async function mount(
+  status: FileStatus[],
+  settingsOverride: Record<string, unknown> = {},
+  upstream: Upstream = IN_SYNC,
+) {
   const calls: Calls = {
     release: {},
     stageAll: 0,
@@ -75,7 +88,7 @@ async function mount(status: FileStatus[]) {
     log: async () => [],
     status: async () => current,
     currentBranch: async () => "main",
-    getAheadBehind: async () => ({ ahead: 0, behind: 0 }),
+    getAheadBehind: async () => upstream,
     branches: async () => [],
     showCommitFiles: async () => {
       calls.showCommitFiles++;
@@ -109,17 +122,30 @@ async function mount(status: FileStatus[]) {
   } as unknown as GitService;
 
   const store = new RepoStore(git);
-  const view = new SourceControlView(new WorkspaceLeaf(), {
+  const settings = {
+    debounceMs: 0,
+    fileListMode: "tree",
+    compactFolders: true,
+    ...settingsOverride,
+  };
+  const plugin = {
     store,
     git,
-    settings: { debounceMs: 0 },
+    settings,
     openDiff: () => {},
     openGraphView: () => {},
-  } as never);
+    saveSettings: async () => {},
+    setFileListMode: async (mode: string) => {
+      settings.fileListMode = mode;
+      view.refreshFileList();
+    },
+    refreshFileLists: () => view.refreshFileList(),
+  };
+  const view = new SourceControlView(new WorkspaceLeaf(), plugin as never);
 
   await view.onOpen();
   flushFrames();
-  return { view, store, git, calls };
+  return { view, store, git, calls, settings };
 }
 
 function findButton(root: HTMLElement, label: string): HTMLElement | null {
@@ -608,5 +634,178 @@ describe("progress bar timing", () => {
     // never got past the left edge before it disappeared again.
     const durationMs = parseFloat(sweep![1]) * 1000;
     expect(SourceControlView.PROGRESS_MIN_MS).toBeGreaterThanOrEqual(durationMs);
+  });
+});
+
+/**
+ * The changes list has two layouts: the folder tree, and one flat row per file
+ * the way VS Code's "View as List" does it. What matters is that the switch
+ * changes only the layout — the same files, the same actions, and a tree that
+ * comes back opened the way it was left.
+ */
+describe("SourceControlView — changes layout", () => {
+  const nested = (): FileStatus[] =>
+    [
+      { path: "Projects/cloudcourse/note.md", indexStatus: ".", workingStatus: "M", staged: false },
+      { path: ".obsidian/appearance.json", indexStatus: ".", workingStatus: "M", staged: false },
+      {
+        path: ".obsidian/themes/GitHub Theme/theme.css",
+        indexStatus: ".",
+        workingStatus: "M",
+        staged: false,
+      },
+    ] as FileStatus[];
+
+  const rows = (view: { contentEl: HTMLElement }, sel: string): HTMLElement[] =>
+    Array.from(view.contentEl.querySelectorAll(sel));
+
+  it("nests files under folders in the tree layout", async () => {
+    const { view } = await mount(nested());
+    expect(rows(view, ".gs-tree-dir").length).toBeGreaterThan(0);
+    // Only the top-level folders are open-able; no file is visible yet.
+    expect(rows(view, ".gs-tree-file")).toHaveLength(0);
+  });
+
+  it("shows every file at once in the list layout, with no folder rows", async () => {
+    const { view } = await mount(nested(), { fileListMode: "list" });
+    expect(rows(view, ".gs-tree-dir")).toHaveLength(0);
+    expect(rows(view, ".gs-tree-file")).toHaveLength(3);
+  });
+
+  it("names the folder next to each file so equal names stay apart", async () => {
+    const { view } = await mount(nested(), { fileListMode: "list" });
+    const paths = rows(view, ".gs-tree-filepath").map((el) => el.textContent);
+    expect(paths).toEqual([".obsidian", ".obsidian/themes/GitHub Theme", "Projects/cloudcourse"]);
+  });
+
+  it("sorts the flat list by path, not by file name", async () => {
+    const { view } = await mount(nested(), { fileListMode: "list" });
+    const names = rows(view, ".gs-tree-filename").map((el) => el.textContent);
+    expect(names).toEqual(["appearance.json", "theme.css", "note.md"]);
+  });
+
+  it("switches layout from the toolbar and keeps the file actions", async () => {
+    const { view } = await mount(nested());
+    findButton(view.contentEl, "View as list")?.dispatchEvent(
+      new MouseEvent("click", { bubbles: true }),
+    );
+    flushFrames();
+
+    expect(rows(view, ".gs-tree-dir")).toHaveLength(0);
+    expect(rows(view, ".gs-tree-file")).toHaveLength(3);
+    expect(findButton(view.contentEl, "Stage changes")).not.toBeNull();
+  });
+
+  it("brings the tree back with the same folders open", async () => {
+    const { view } = await mount(nested());
+    findButton(view.contentEl, "Expand all")?.dispatchEvent(
+      new MouseEvent("click", { bubbles: true }),
+    );
+    flushFrames();
+    const openBefore = rows(view, ".gs-tree-file").length;
+    expect(openBefore).toBe(3);
+
+    for (const label of ["View as list", "View as tree"]) {
+      const btn = findButton(view.contentEl, label);
+      expect(btn, `no "${label}" button`).not.toBeNull();
+      btn?.dispatchEvent(new MouseEvent("click", { bubbles: true }));
+      flushFrames();
+    }
+
+    expect(rows(view, ".gs-tree-file")).toHaveLength(openBefore);
+  });
+
+  it("offers one layout button, naming the layout it switches to", async () => {
+    const { view } = await mount(nested());
+    expect(findButton(view.contentEl, "View as list")).not.toBeNull();
+    expect(findButton(view.contentEl, "View as tree")).toBeNull();
+
+    findButton(view.contentEl, "View as list")?.dispatchEvent(
+      new MouseEvent("click", { bubbles: true }),
+    );
+    flushFrames();
+
+    expect(findButton(view.contentEl, "View as tree")).not.toBeNull();
+    expect(findButton(view.contentEl, "View as list")).toBeNull();
+  });
+
+  it("offers nothing to fold while the list is flat", async () => {
+    const { view } = await mount(nested(), { fileListMode: "list" });
+    const fold =
+      findButton(view.contentEl, "Expand all") ?? findButton(view.contentEl, "Collapse all");
+    expect(fold?.classList.contains("gs-hidden")).toBe(true);
+  });
+
+  it("folds a chain of single-child folders into one row", async () => {
+    const { view } = await mount(nested());
+    const names = rows(view, ".gs-tree-dirname").map((el) => el.textContent);
+    expect(names).toContain("Projects/cloudcourse");
+  });
+
+  it("leaves the folders apart when compacting is off", async () => {
+    const { view } = await mount(nested(), { compactFolders: false });
+    const names = rows(view, ".gs-tree-dirname").map((el) => el.textContent);
+    expect(names).toContain("Projects");
+    expect(names).not.toContain("Projects/cloudcourse");
+  });
+
+  it("counts the changes in the toolbar", async () => {
+    const { view } = await mount(nested());
+    expect(view.contentEl.querySelector(".gs-sc-list-summary")?.textContent).toBe("3 changes");
+  });
+});
+
+/**
+ * The primary button carries whatever step is actually next. It used to be a
+ * Commit button in every state, lit up by nothing more than text in the message
+ * field — including on a clean tree, where its only answer was a notice.
+ */
+describe("SourceControlView — the primary button", () => {
+  const button = (view: { contentEl: HTMLElement }): HTMLButtonElement =>
+    view.contentEl.querySelector(".gs-commit-main-btn") as HTMLButtonElement;
+  const label = (view: { contentEl: HTMLElement }): string =>
+    view.contentEl.querySelector(".gs-commit-btn-label")?.textContent ?? "";
+
+  it("reads Commit and stays disabled while no message is typed", async () => {
+    const { view } = await mount(screenshotStatus());
+    expect(label(view)).toBe("Commit");
+    expect(button(view).disabled).toBe(true);
+  });
+
+  it("turns into a push once the tree is clean and commits are waiting", async () => {
+    const { view } = await mount([], {}, { ...IN_SYNC, ahead: 2 });
+    expect(label(view)).toBe("Push (2)");
+    expect(button(view).disabled).toBe(false);
+  });
+
+  it("offers to publish a branch that was never pushed", async () => {
+    const { view } = await mount(
+      [],
+      {},
+      { ahead: 0, behind: 0, hasUpstream: false, hasCommits: true },
+    );
+    expect(label(view)).toBe("Publish branch");
+    expect(button(view).disabled).toBe(false);
+  });
+
+  it("greys out with nothing to commit and nothing to push", async () => {
+    const { view } = await mount([]);
+    expect(label(view)).toBe("Commit");
+    expect(button(view).disabled).toBe(true);
+  });
+
+  it("keeps committing ahead of pushing while changes are uncommitted", async () => {
+    const { view } = await mount(screenshotStatus(), {}, { ...IN_SYNC, ahead: 2 });
+    expect(label(view)).toBe("Commit");
+  });
+
+  it("follows the repository, not only the message field", async () => {
+    // The button used to be updated on keystrokes alone, so a status refresh
+    // left it saying whatever it said before.
+    const { view, store } = await mount([], {}, { ...IN_SYNC, ahead: 1 });
+    expect(label(view)).toBe("Push (1)");
+    await store.refresh();
+    flushFrames();
+    expect(label(view)).toBe("Push (1)");
   });
 });

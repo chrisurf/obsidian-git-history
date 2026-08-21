@@ -124,6 +124,9 @@ export class MenuItem {
   setDisabled(): this {
     return this;
   }
+  setChecked(): this {
+    return this;
+  }
 }
 
 export class Menu {
