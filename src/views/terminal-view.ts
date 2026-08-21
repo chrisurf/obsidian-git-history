@@ -50,7 +50,7 @@ export class TerminalView extends ItemView {
 
     this.addAction("plus", "New terminal session", () => this.newSession());
     this.addAction("trash-2", "Close terminal session", () => this.closeActive());
-    this.addAction("more-horizontal", "More", (e) => this.showMenu(e));
+    this.addAction("menu", "Session menu", (e) => this.showMenu(e));
 
     this.registerEvent(this.sessions.on("sessions-changed", () => this.render()));
 
