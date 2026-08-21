@@ -15,6 +15,7 @@ import {
   GitHistorySettings,
   DEFAULT_SETTINGS,
   CommitInfo,
+  FileListMode,
 } from "./types";
 import { GitService } from "./git/git-service";
 import { RepoStore } from "./store/repo-store";
@@ -122,6 +123,14 @@ export default class GitHistoryPlugin extends Plugin {
       id: "open-graph",
       name: "Open Git graph",
       callback: () => this.openGraphView(),
+    });
+
+    this.addCommand({
+      id: "toggle-file-list-mode",
+      name: "Toggle changes layout (tree/list)",
+      callback: asVoid(async () => {
+        await this.setFileListMode(this.settings.fileListMode === "list" ? "tree" : "list");
+      }),
     });
 
     this.addCommand({
@@ -372,6 +381,25 @@ export default class GitHistoryPlugin extends Plugin {
     await this.saveData(this.settings);
   }
 
+  /**
+   * Switches the changes list between the folder tree and the flat list. The
+   * layout is a setting rather than view state so it survives a restart and so
+   * every open source control panel shows the same thing.
+   */
+  async setFileListMode(mode: FileListMode): Promise<void> {
+    if (this.settings.fileListMode === mode) return;
+    this.settings.fileListMode = mode;
+    await this.saveSettings();
+    this.refreshFileLists();
+  }
+
+  refreshFileLists(): void {
+    for (const leaf of this.app.workspace.getLeavesOfType(SOURCE_CONTROL_VIEW_TYPE)) {
+      const view = leaf.view;
+      if (view instanceof SourceControlView) view.refreshFileList();
+    }
+  }
+
   onunload(): void {
     if (this.refreshTimer) window.clearInterval(this.refreshTimer);
     if (this.debounceTimer) window.clearTimeout(this.debounceTimer);
@@ -427,6 +455,20 @@ class GitHistorySettingTab extends PluginSettingTab {
         control: { type: "toggle", key: "onlySupportedFileTypes" },
       },
       {
+        name: "Changes layout",
+        desc: "Show changed files nested under their folders, or one flat row per file.",
+        control: {
+          type: "dropdown",
+          key: "fileListMode",
+          options: { tree: "Tree", list: "List" },
+        },
+      },
+      {
+        name: "Compact folders",
+        desc: "Fold folders that hold a single subfolder into one row. Tree layout only.",
+        control: { type: "toggle", key: "compactFolders" },
+      },
+      {
         name: "Auto-fetch",
         desc: "Automatically fetch from remotes.",
         control: { type: "toggle", key: "autoFetchEnabled" },
@@ -468,6 +510,9 @@ class GitHistorySettingTab extends PluginSettingTab {
     Object.assign(this.plugin.settings, { [key]: value });
     if (key === "showNestedRepos") {
       this.plugin.store.showNestedRepos = Boolean(value);
+    }
+    if (key === "fileListMode" || key === "compactFolders") {
+      this.plugin.refreshFileLists();
     }
     await this.plugin.saveSettings();
   }
@@ -518,6 +563,29 @@ class GitHistorySettingTab extends PluginSettingTab {
       .addToggle((t) =>
         t.setValue(this.plugin.settings.onlySupportedFileTypes).onChange(async (v) => {
           this.plugin.settings.onlySupportedFileTypes = v;
+          await this.plugin.saveSettings();
+        }),
+      );
+
+    new Setting(containerEl)
+      .setName("Changes layout")
+      .setDesc("Show changed files nested under their folders, or one flat row per file.")
+      .addDropdown((dd) =>
+        dd
+          .addOptions({ tree: "Tree", list: "List" })
+          .setValue(this.plugin.settings.fileListMode)
+          .onChange(async (v) => {
+            await this.plugin.setFileListMode(v as FileListMode);
+          }),
+      );
+
+    new Setting(containerEl)
+      .setName("Compact folders")
+      .setDesc("Fold folders that hold a single subfolder into one row. Tree layout only.")
+      .addToggle((t) =>
+        t.setValue(this.plugin.settings.compactFolders).onChange(async (v) => {
+          this.plugin.settings.compactFolders = v;
+          this.plugin.refreshFileLists();
           await this.plugin.saveSettings();
         }),
       );

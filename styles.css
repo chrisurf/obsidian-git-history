@@ -715,6 +715,88 @@
   height: 12px;
 }
 
+/* List toolbar – layout switch and expand/collapse for the whole list */
+.gs-sc-list-toolbar {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 3px 12px;
+  border-bottom: 1px solid var(--gs-border);
+  flex-shrink: 0;
+  min-height: 26px;
+}
+
+.gs-sc-list-summary {
+  font-size: 11px;
+  color: var(--gs-text-faint);
+  flex: 1;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.gs-sc-list-actions {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  flex-shrink: 0;
+}
+
+.gs-sc-list-actions .gs-icon-btn-sm.gs-icon-btn-sm {
+  background: transparent;
+  border: none;
+  box-shadow: none;
+  outline: none;
+  color: var(--gs-text-muted);
+  cursor: pointer;
+  padding: 2px;
+  border-radius: 3px;
+  display: flex;
+  align-items: center;
+}
+
+.gs-sc-list-actions .gs-icon-btn-sm.gs-icon-btn-sm:hover {
+  background: var(--gs-bg-hover);
+  color: var(--gs-text);
+}
+
+.gs-sc-mode-switch {
+  display: flex;
+  border: 1px solid var(--gs-border);
+  border-radius: 4px;
+  overflow: hidden;
+}
+
+.gs-sc-mode-btn.gs-sc-mode-btn {
+  background: transparent;
+  border: none;
+  border-radius: 0;
+  box-shadow: none;
+  outline: none;
+  color: var(--gs-text-faint);
+  cursor: pointer;
+  padding: 2px 6px;
+  display: flex;
+  align-items: center;
+  height: 20px;
+}
+
+.gs-sc-mode-btn.gs-sc-mode-btn svg {
+  width: 13px;
+  height: 13px;
+}
+
+.gs-sc-mode-btn.gs-sc-mode-btn:hover {
+  background: var(--gs-bg-hover);
+  color: var(--gs-text);
+}
+
+.gs-sc-mode-btn-active.gs-sc-mode-btn-active {
+  background: var(--gs-bg-active);
+  color: var(--gs-text);
+}
+
 /* File list */
 .gs-sc-filelist {
   flex: 1;
@@ -1059,6 +1141,24 @@
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
+}
+
+/* Flat layout: the folder follows the name and is the first to be cut off. */
+.gs-sc-tree-flat .gs-tree-filename {
+  flex: 0 1 auto;
+}
+
+.gs-tree-filepath {
+  /* Shrinks far more eagerly than the name: the file is what is being read,
+     the folder only tells two files of the same name apart. */
+  flex: 0 100 auto;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  font-size: 11px;
+  color: var(--gs-text-faint);
+  margin-left: 2px;
 }
 
 .gs-tree-file-right {

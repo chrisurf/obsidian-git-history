@@ -1,5 +1,12 @@
 import { ItemView, WorkspaceLeaf, setIcon, Menu, Notice, TFile } from "obsidian";
-import { SOURCE_CONTROL_VIEW_TYPE, FileStatus, GraphNode, CommitInfo, CommitStats } from "../types";
+import {
+  SOURCE_CONTROL_VIEW_TYPE,
+  FileStatus,
+  FileListMode,
+  GraphNode,
+  CommitInfo,
+  CommitStats,
+} from "../types";
 import { RepoStore } from "../store/repo-store";
 import { GitService } from "../git/git-service";
 import { computeGraphLayout, formatRelativeDate } from "../utils/graph-layout";
@@ -28,7 +35,13 @@ export class SourceControlView extends ItemView {
   private commitInput: HTMLInputElement | null = null;
   private commitBtn: HTMLButtonElement | null = null;
   private fileListEl: HTMLElement | null = null;
+  private listToolbarEl: HTMLElement | null = null;
+  private listSummaryEl: HTMLElement | null = null;
+  private foldBtn: HTMLButtonElement | null = null;
+  private modeBtns: Record<string, HTMLElement> = {};
   private expandedDirs = new Set<string>();
+  /** Every folder currently in the tree, so "expand all" knows its targets. */
+  private allDirPaths: string[] = [];
   private activeTab: SidebarTab = "changes";
   private changesPanel: HTMLElement | null = null;
   private graphPanel: HTMLElement | null = null;
@@ -161,6 +174,7 @@ export class SourceControlView extends ItemView {
     this.graphPanel.addClass("gs-hidden");
 
     this.buildCommitArea(this.changesPanel);
+    this.buildListToolbar(this.changesPanel);
     this.fileListEl = this.changesPanel.createDiv("gs-sc-filelist");
 
     this.buildSidebarGraph(this.graphPanel);
@@ -466,6 +480,20 @@ export class SourceControlView extends ItemView {
       );
     }
     menu.addSeparator();
+    for (const [mode, label, icon] of [
+      ["tree", "View as tree", "list-tree"],
+      ["list", "View as list", "list"],
+    ] as [FileListMode, string, string][]) {
+      menu.addItem((i) =>
+        i
+          .setTitle(label)
+          .setIcon(icon)
+          .setChecked(this.fileListMode === mode)
+          .onClick(() => void this.plugin.setFileListMode(mode)),
+      );
+    }
+
+    menu.addSeparator();
     menu.addItem((i) =>
       i
         .setTitle("Switch branch...")
@@ -698,9 +726,92 @@ export class SourceControlView extends ItemView {
     }
   }
 
+  /**
+   * One row above the file sections. Layout and "expand all" are properties of
+   * the whole list rather than of a single section, so they sit in one place
+   * instead of being repeated in every section header.
+   */
+  private buildListToolbar(el: HTMLElement): void {
+    const bar = el.createDiv("gs-sc-list-toolbar");
+    this.listToolbarEl = bar;
+    this.listSummaryEl = bar.createSpan("gs-sc-list-summary");
+
+    const actions = bar.createDiv("gs-sc-list-actions");
+
+    const foldBtn = actions.createEl("button", { cls: "gs-icon-btn gs-icon-btn-sm" });
+    foldBtn.addEventListener("click", () => this.toggleAllFolders());
+    this.foldBtn = foldBtn;
+
+    const seg = actions.createDiv("gs-sc-mode-switch");
+    for (const [mode, icon, label] of [
+      ["tree", "list-tree", "View as tree"],
+      ["list", "list", "View as list"],
+    ] as [FileListMode, string, string][]) {
+      const btn = seg.createEl("button", { cls: "gs-sc-mode-btn" });
+      setIcon(btn, icon);
+      btn.setAttribute("aria-label", label);
+      btn.addEventListener(
+        "click",
+        asVoid(async () => {
+          await this.plugin.setFileListMode(mode);
+        }),
+      );
+      this.modeBtns[mode] = btn;
+    }
+  }
+
+  private get fileListMode(): FileListMode {
+    return this.plugin.settings.fileListMode === "list" ? "list" : "tree";
+  }
+
+  private get compactFolders(): boolean {
+    return this.plugin.settings.compactFolders !== false;
+  }
+
+  /** Re-renders the changes list after the layout was changed elsewhere. */
+  refreshFileList(): void {
+    this.renderFiles();
+  }
+
+  private allFoldersExpanded(): boolean {
+    return this.allDirPaths.length > 0 && this.allDirPaths.every((p) => this.expandedDirs.has(p));
+  }
+
+  private toggleAllFolders(): void {
+    const expand = !this.allFoldersExpanded();
+    for (const path of this.allDirPaths) {
+      if (expand) this.expandedDirs.add(path);
+      else this.expandedDirs.delete(path);
+    }
+    this.renderFiles();
+  }
+
+  private updateListToolbar(total: number): void {
+    const bar = this.listToolbarEl;
+    if (!bar) return;
+
+    bar.toggleClass("gs-hidden", total === 0);
+    this.listSummaryEl?.setText(total === 1 ? "1 change" : `${total} changes`);
+
+    const mode = this.fileListMode;
+    for (const [key, btn] of Object.entries(this.modeBtns)) {
+      btn.toggleClass("gs-sc-mode-btn-active", key === mode);
+    }
+
+    // Nothing to fold in a flat list, and nothing to fold in a tree that has
+    // no folders either — the button would sit there doing nothing.
+    const foldBtn = this.foldBtn;
+    if (!foldBtn) return;
+    const expanded = this.allFoldersExpanded();
+    setIcon(foldBtn, expanded ? "fold-vertical" : "unfold-vertical");
+    foldBtn.setAttribute("aria-label", expanded ? "Collapse all" : "Expand all");
+    foldBtn.toggleClass("gs-hidden", mode !== "tree" || this.allDirPaths.length === 0);
+  }
+
   private renderFiles(): void {
     if (!this.fileListEl) return;
     this.fileListEl.empty();
+    this.allDirPaths = [];
 
     const staged = this.store.stagedFiles;
     const changed = [...this.store.changedFiles, ...this.store.untrackedFiles];
@@ -710,9 +821,11 @@ export class SourceControlView extends ItemView {
     if (staged.length > 0) this.renderSection("Staged Changes", staged, "staged");
     if (changed.length > 0) this.renderSection("Changes", changed, "changed");
 
-    if (staged.length + changed.length + conflicts.length === 0) {
+    const total = staged.length + changed.length + conflicts.length;
+    if (total === 0) {
       this.fileListEl.createDiv("gs-sc-empty").setText("No changes");
     }
+    this.updateListToolbar(total);
   }
 
   private renderSection(title: string, files: FileStatus[], group: string): void {
@@ -793,25 +906,6 @@ export class SourceControlView extends ItemView {
       );
     }
 
-    const tree = this.buildFileTree(files, group);
-    const allDirPaths = this.collectDirPaths(tree);
-
-    let allExpanded = allDirPaths.every((p) => this.expandedDirs.has(p));
-    const toggleBtn = headerActions.createEl("button", { cls: "gs-icon-btn gs-icon-btn-sm" });
-    setIcon(toggleBtn, allExpanded ? "fold-vertical" : "unfold-vertical");
-    toggleBtn.setAttribute("aria-label", allExpanded ? "Collapse all" : "Expand all");
-    toggleBtn.addEventListener("click", (e) => {
-      e.stopPropagation();
-      allExpanded = !allExpanded;
-      for (const p of allDirPaths) {
-        if (allExpanded) this.expandedDirs.add(p);
-        else this.expandedDirs.delete(p);
-      }
-      setIcon(toggleBtn, allExpanded ? "fold-vertical" : "unfold-vertical");
-      toggleBtn.setAttribute("aria-label", allExpanded ? "Collapse all" : "Expand all");
-      this.renderFiles();
-    });
-
     const treeEl = section.createDiv("gs-sc-tree");
     let collapsed = false;
 
@@ -821,6 +915,17 @@ export class SourceControlView extends ItemView {
       setIcon(chevron, collapsed ? "chevron-right" : "chevron-down");
     });
 
+    if (this.fileListMode === "list") {
+      treeEl.addClass("gs-sc-tree-flat");
+      // Sorted by full path, not by name: files from the same folder then stay
+      // together and the repeated folder label reads as one block.
+      const sorted = [...files].sort((a, b) => a.path.localeCompare(b.path));
+      for (const file of sorted) this.renderFileRow(treeEl, file, group, 0, true);
+      return;
+    }
+
+    const tree = this.buildFileTree(files);
+    this.allDirPaths.push(...this.collectDirPaths(tree));
     this.renderTree(treeEl, tree, group, 0);
   }
 
@@ -857,7 +962,7 @@ export class SourceControlView extends ItemView {
     return files.flatMap((f) => (f.originalPath ? [f.path, f.originalPath] : [f.path]));
   }
 
-  private buildFileTree(files: FileStatus[], _group: string): FileTreeNode[] {
+  private buildFileTree(files: FileStatus[]): FileTreeNode[] {
     const root: FileTreeNode[] = [];
     const dirMap = new Map<string, FileTreeNode>();
 
@@ -893,7 +998,29 @@ export class SourceControlView extends ItemView {
       });
     }
 
-    return root;
+    return this.compactFolders ? this.compactTree(root) : root;
+  }
+
+  /**
+   * Folds a chain of folders that each hold a single subfolder into one row —
+   * "Projects/cloudcourse" rather than two levels to open before a file shows
+   * up. The merged node keeps the deepest path, so folder actions and the
+   * expanded set still key on a directory that exists.
+   */
+  private compactTree(nodes: FileTreeNode[]): FileTreeNode[] {
+    return nodes.map((node) => {
+      if (!node.isDir) return node;
+      let merged = node;
+      while (merged.children.length === 1 && merged.children[0].isDir) {
+        const child = merged.children[0];
+        merged = { ...child, name: `${merged.name}/${child.name}` };
+      }
+      return {
+        ...merged,
+        expanded: this.expandedDirs.has(merged.path),
+        children: this.compactTree(merged.children),
+      };
+    });
   }
 
   private renderTree(
@@ -977,7 +1104,13 @@ export class SourceControlView extends ItemView {
     }
   }
 
-  private renderFileRow(parent: HTMLElement, file: FileStatus, group: string, depth: number): void {
+  private renderFileRow(
+    parent: HTMLElement,
+    file: FileStatus,
+    group: string,
+    depth: number,
+    showPath = false,
+  ): void {
     const row = parent.createDiv("gs-tree-file");
     row.style.paddingLeft = depth * 16 + 8 + "px";
 
@@ -1002,6 +1135,15 @@ export class SourceControlView extends ItemView {
 
     const nameEl = row.createSpan("gs-tree-filename");
     nameEl.setText(file.path.split("/").pop() || file.path);
+
+    // In the flat layout the folder is the only thing telling two files of the
+    // same name apart, so it follows the name and gives up its width first.
+    if (showPath) {
+      const slash = file.path.lastIndexOf("/");
+      if (slash > 0) row.createSpan("gs-tree-filepath").setText(file.path.slice(0, slash));
+      row.setAttribute("aria-label", file.path);
+    }
+
     if (file.embeddedRepo) {
       row.addClass("gs-tree-file-embedded");
       row.setAttribute(

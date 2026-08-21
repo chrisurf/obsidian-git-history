@@ -60,7 +60,7 @@ interface Calls {
   showCommitFiles: number;
 }
 
-async function mount(status: FileStatus[]) {
+async function mount(status: FileStatus[], settingsOverride: Record<string, unknown> = {}) {
   const calls: Calls = {
     release: {},
     stageAll: 0,
@@ -109,17 +109,30 @@ async function mount(status: FileStatus[]) {
   } as unknown as GitService;
 
   const store = new RepoStore(git);
-  const view = new SourceControlView(new WorkspaceLeaf(), {
+  const settings = {
+    debounceMs: 0,
+    fileListMode: "tree",
+    compactFolders: true,
+    ...settingsOverride,
+  };
+  const plugin = {
     store,
     git,
-    settings: { debounceMs: 0 },
+    settings,
     openDiff: () => {},
     openGraphView: () => {},
-  } as never);
+    saveSettings: async () => {},
+    setFileListMode: async (mode: string) => {
+      settings.fileListMode = mode;
+      view.refreshFileList();
+    },
+    refreshFileLists: () => view.refreshFileList(),
+  };
+  const view = new SourceControlView(new WorkspaceLeaf(), plugin as never);
 
   await view.onOpen();
   flushFrames();
-  return { view, store, git, calls };
+  return { view, store, git, calls, settings };
 }
 
 function findButton(root: HTMLElement, label: string): HTMLElement | null {
@@ -608,5 +621,107 @@ describe("progress bar timing", () => {
     // never got past the left edge before it disappeared again.
     const durationMs = parseFloat(sweep![1]) * 1000;
     expect(SourceControlView.PROGRESS_MIN_MS).toBeGreaterThanOrEqual(durationMs);
+  });
+});
+
+/**
+ * The changes list has two layouts: the folder tree, and one flat row per file
+ * the way VS Code's "View as List" does it. What matters is that the switch
+ * changes only the layout — the same files, the same actions, and a tree that
+ * comes back opened the way it was left.
+ */
+describe("SourceControlView — changes layout", () => {
+  const nested = (): FileStatus[] =>
+    [
+      { path: "Projects/cloudcourse/note.md", indexStatus: ".", workingStatus: "M", staged: false },
+      { path: ".obsidian/appearance.json", indexStatus: ".", workingStatus: "M", staged: false },
+      {
+        path: ".obsidian/themes/GitHub Theme/theme.css",
+        indexStatus: ".",
+        workingStatus: "M",
+        staged: false,
+      },
+    ] as FileStatus[];
+
+  const rows = (view: { contentEl: HTMLElement }, sel: string): HTMLElement[] =>
+    Array.from(view.contentEl.querySelectorAll(sel));
+
+  it("nests files under folders in the tree layout", async () => {
+    const { view } = await mount(nested());
+    expect(rows(view, ".gs-tree-dir").length).toBeGreaterThan(0);
+    // Only the top-level folders are open-able; no file is visible yet.
+    expect(rows(view, ".gs-tree-file")).toHaveLength(0);
+  });
+
+  it("shows every file at once in the list layout, with no folder rows", async () => {
+    const { view } = await mount(nested(), { fileListMode: "list" });
+    expect(rows(view, ".gs-tree-dir")).toHaveLength(0);
+    expect(rows(view, ".gs-tree-file")).toHaveLength(3);
+  });
+
+  it("names the folder next to each file so equal names stay apart", async () => {
+    const { view } = await mount(nested(), { fileListMode: "list" });
+    const paths = rows(view, ".gs-tree-filepath").map((el) => el.textContent);
+    expect(paths).toEqual([".obsidian", ".obsidian/themes/GitHub Theme", "Projects/cloudcourse"]);
+  });
+
+  it("sorts the flat list by path, not by file name", async () => {
+    const { view } = await mount(nested(), { fileListMode: "list" });
+    const names = rows(view, ".gs-tree-filename").map((el) => el.textContent);
+    expect(names).toEqual(["appearance.json", "theme.css", "note.md"]);
+  });
+
+  it("switches layout from the toolbar and keeps the file actions", async () => {
+    const { view } = await mount(nested());
+    findButton(view.contentEl, "View as list")?.dispatchEvent(
+      new MouseEvent("click", { bubbles: true }),
+    );
+    flushFrames();
+
+    expect(rows(view, ".gs-tree-dir")).toHaveLength(0);
+    expect(rows(view, ".gs-tree-file")).toHaveLength(3);
+    expect(findButton(view.contentEl, "Stage changes")).not.toBeNull();
+  });
+
+  it("brings the tree back with the same folders open", async () => {
+    const { view } = await mount(nested());
+    findButton(view.contentEl, "Expand all")?.dispatchEvent(
+      new MouseEvent("click", { bubbles: true }),
+    );
+    flushFrames();
+    const openBefore = rows(view, ".gs-tree-file").length;
+    expect(openBefore).toBe(3);
+
+    for (const label of ["View as list", "View as tree"]) {
+      findButton(view.contentEl, label)?.dispatchEvent(new MouseEvent("click", { bubbles: true }));
+      flushFrames();
+    }
+
+    expect(rows(view, ".gs-tree-file")).toHaveLength(openBefore);
+  });
+
+  it("offers nothing to fold while the list is flat", async () => {
+    const { view } = await mount(nested(), { fileListMode: "list" });
+    const fold =
+      findButton(view.contentEl, "Expand all") ?? findButton(view.contentEl, "Collapse all");
+    expect(fold?.classList.contains("gs-hidden")).toBe(true);
+  });
+
+  it("folds a chain of single-child folders into one row", async () => {
+    const { view } = await mount(nested());
+    const names = rows(view, ".gs-tree-dirname").map((el) => el.textContent);
+    expect(names).toContain("Projects/cloudcourse");
+  });
+
+  it("leaves the folders apart when compacting is off", async () => {
+    const { view } = await mount(nested(), { compactFolders: false });
+    const names = rows(view, ".gs-tree-dirname").map((el) => el.textContent);
+    expect(names).toContain("Projects");
+    expect(names).not.toContain("Projects/cloudcourse");
+  });
+
+  it("counts the changes in the toolbar", async () => {
+    const { view } = await mount(nested());
+    expect(view.contentEl.querySelector(".gs-sc-list-summary")?.textContent).toBe("3 changes");
   });
 });
