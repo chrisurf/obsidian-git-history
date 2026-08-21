@@ -1,3 +1,10 @@
+# [1.5.0](https://github.com/chrisurf/obsidian-git-history/compare/1.4.0...1.5.0) (2026-08-21)
+
+
+### Features
+
+* changes-list layouts and multiple terminal sessions ([#17](https://github.com/chrisurf/obsidian-git-history/issues/17)) ([bc96544](https://github.com/chrisurf/obsidian-git-history/commit/bc965443dec705527bb222fa76d07a366c356f1a))
+
 # [1.4.0](https://github.com/chrisurf/obsidian-git-history/compare/1.3.0...1.4.0) (2026-08-11)
 
 
