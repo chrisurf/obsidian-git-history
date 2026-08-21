@@ -125,14 +125,9 @@ export class TerminalView extends ItemView {
       const icon = tab.createSpan("gs-terminal-tab-icon");
       setIcon(icon, "terminal");
 
-      const closeBtn = tab.createEl("button", { cls: "gs-terminal-tab-close" });
-      setIcon(closeBtn, "x");
-      closeBtn.setAttribute("aria-label", `Close ${entry.name}`);
-      closeBtn.addEventListener("click", (e) => {
-        e.stopPropagation();
-        this.sessions.close(entry.id);
-      });
-
+      // No close affordance on the icon itself: it sits under the pointer on
+      // the way to switching sessions, and a misclick ends a running shell.
+      // Closing goes through the header button or the context menu.
       tab.addEventListener("click", () => {
         this.sessions.activate(entry.id);
         this.sessions.activeSession()?.focus();

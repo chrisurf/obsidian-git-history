@@ -2548,7 +2548,6 @@
   display: flex;
   align-items: center;
   justify-content: center;
-  position: relative;
   width: 26px;
   height: 26px;
   border-radius: 4px;
@@ -2581,38 +2580,6 @@
 .gs-terminal-tab-icon svg {
   width: 15px;
   height: 15px;
-}
-
-.gs-terminal-tab-close.gs-terminal-tab-close {
-  position: absolute;
-  top: -2px;
-  right: -2px;
-  display: none;
-  align-items: center;
-  justify-content: center;
-  width: 14px;
-  height: 14px;
-  padding: 0;
-  border: none;
-  border-radius: 50%;
-  background: var(--gs-bg2);
-  color: var(--gs-text-muted);
-  box-shadow: none;
-  cursor: pointer;
-}
-
-.gs-terminal-tab:hover .gs-terminal-tab-close.gs-terminal-tab-close {
-  display: flex;
-}
-
-.gs-terminal-tab-close.gs-terminal-tab-close:hover {
-  background: var(--gs-bg-hover);
-  color: var(--gs-text);
-}
-
-.gs-terminal-tab-close svg {
-  width: 10px;
-  height: 10px;
 }
 
 .gs-terminal-tab-dragging {
