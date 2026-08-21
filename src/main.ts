@@ -23,6 +23,7 @@ import { SourceControlView } from "./views/source-control-view";
 import { GraphView } from "./views/graph-view";
 import { DiffView } from "./views/diff-view";
 import { TerminalView } from "./views/terminal-view";
+import { TerminalSessionManager } from "./terminal/session-manager";
 import { StatusBarController } from "./components/status-bar";
 import { WhatsNewModal } from "./components/whats-new-modal";
 import { asVoid } from "./utils/async";
@@ -36,6 +37,7 @@ export default class GitHistoryPlugin extends Plugin {
   settings: GitHistorySettings = DEFAULT_SETTINGS;
   git!: GitService;
   store!: RepoStore;
+  terminals!: TerminalSessionManager;
   private statusBar: StatusBarController | null = null;
   private refreshTimer: number | null = null;
   private debounceTimer: number | null = null;
@@ -45,6 +47,7 @@ export default class GitHistoryPlugin extends Plugin {
 
     this.git = new GitService(this.vaultPath());
     this.store = new RepoStore(this.git);
+    this.terminals = new TerminalSessionManager(this);
     this.store.showNestedRepos = this.settings.showNestedRepos;
 
     const isRepo = await this.git.isRepo();
@@ -230,6 +233,12 @@ export default class GitHistoryPlugin extends Plugin {
     });
 
     this.addCommand({
+      id: "new-terminal-session",
+      name: "New terminal session",
+      callback: () => this.newTerminalSession(),
+    });
+
+    this.addCommand({
       id: "init-repo",
       name: "Initialize Git repository",
       callback: async () => {
@@ -311,18 +320,32 @@ export default class GitHistoryPlugin extends Plugin {
     }
   }
 
-  async openTerminalView(): Promise<void> {
+  /**
+   * Shows the terminal, opening the panel if it is not up. The ribbon icon
+   * means "show me the terminal", never "start another shell" — a second
+   * session is the plus button inside the panel, or newTerminalSession().
+   */
+  async openTerminalView(): Promise<TerminalView | null> {
     const existing = this.app.workspace.getLeavesOfType(TERMINAL_VIEW_TYPE);
     if (existing.length > 0) {
       void this.app.workspace.revealLeaf(existing[0]);
-      return;
+      return existing[0].view instanceof TerminalView ? existing[0].view : null;
     }
     const activeLeaf = this.app.workspace.getMostRecentLeaf();
-    if (activeLeaf) {
-      const newLeaf = this.app.workspace.createLeafBySplit(activeLeaf, "horizontal");
-      await newLeaf.setViewState({ type: TERMINAL_VIEW_TYPE, active: true });
-      void this.app.workspace.revealLeaf(newLeaf);
-    }
+    if (!activeLeaf) return null;
+
+    const newLeaf = this.app.workspace.createLeafBySplit(activeLeaf, "horizontal");
+    await newLeaf.setViewState({ type: TERMINAL_VIEW_TYPE, active: true });
+    void this.app.workspace.revealLeaf(newLeaf);
+    return newLeaf.view instanceof TerminalView ? newLeaf.view : null;
+  }
+
+  /** Opens the panel if needed, then starts one more session in it. */
+  async newTerminalSession(): Promise<void> {
+    const hadPanel = this.app.workspace.getLeavesOfType(TERMINAL_VIEW_TYPE).length > 0;
+    const view = await this.openTerminalView();
+    // A panel that was just opened already started a session of its own.
+    if (hadPanel) view?.newSession();
   }
 
   private setupAutoRefresh(): void {
@@ -404,6 +427,9 @@ export default class GitHistoryPlugin extends Plugin {
     if (this.refreshTimer) window.clearInterval(this.refreshTimer);
     if (this.debounceTimer) window.clearTimeout(this.debounceTimer);
     this.statusBar?.destroy();
+    // The only place that ends a shell without the user asking: once the plugin
+    // is gone there is nothing left to reattach the sessions to.
+    this.terminals?.disposeAll();
   }
 }
 
