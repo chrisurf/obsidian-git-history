@@ -1,8 +1,10 @@
 import { execFile } from "../utils/node-api";
-import { ItemView, WorkspaceLeaf, Notice } from "obsidian";
+import { ItemView, WorkspaceLeaf, Notice, setIcon } from "obsidian";
 import { DIFF_VIEW_TYPE, FileDiff, DiffHunk, DiffLine } from "../types";
 import { GitService } from "../git/git-service";
 import type GitHistoryPlugin from "../main";
+import { asVoid } from "../utils/async";
+import { openCurrentFile, vaultFile } from "../utils/vault-file";
 
 type TokenType =
   | "keyword"
@@ -426,6 +428,8 @@ export class DiffView extends ItemView {
   private untracked = false;
   private mode: "side-by-side" | "inline" = "side-by-side";
   private diffContainer: HTMLElement | null = null;
+  private breadcrumbEl: HTMLElement | null = null;
+  private openFileBtn: HTMLElement | null = null;
   private minimapCanvas: HTMLCanvasElement | null = null;
   private minimapViewport: HTMLElement | null = null;
   private minimapWrap: HTMLElement | null = null;
@@ -457,6 +461,10 @@ export class DiffView extends ItemView {
     this.untracked = untracked;
     this.tokenize = getTokenizer(path);
     (this.leaf as WorkspaceLeaf & { updateHeader?: () => void }).updateHeader?.();
+    // The toolbar is built in onOpen(), which runs before the leaf is told
+    // which file it is showing — without this it kept saying "No file
+    // selected" over a diff that was right there on screen.
+    this.renderBreadcrumb();
     if (this.diffContainer) void this.loadDiff();
   }
 
@@ -486,21 +494,23 @@ export class DiffView extends ItemView {
   private buildToolbar(el: HTMLElement): void {
     const left = el.createDiv("git-diff-toolbar-left");
 
-    const breadcrumb = left.createDiv("git-diff-breadcrumb");
-    const parts = this.filePath ? this.filePath.split("/") : ["No file selected"];
-    parts.forEach((part, idx) => {
-      if (idx > 0) {
-        const sep = createSpan();
-        sep.className = "git-diff-breadcrumb-sep";
-        sep.textContent = "›";
-        breadcrumb.appendChild(sep);
-      }
-      const seg = createSpan();
-      seg.className =
-        idx === parts.length - 1 ? "git-diff-breadcrumb-file" : "git-diff-breadcrumb-dir";
-      seg.textContent = part;
-      breadcrumb.appendChild(seg);
-    });
+    this.breadcrumbEl = left.createDiv("git-diff-breadcrumb");
+
+    // Next to the path it belongs to, because that is what it opens. The diff
+    // answers "what changed"; this answers "let me read the note", which is
+    // where reading a diff usually leads, and it was the one thing this view
+    // could not do without going back to the panel it was opened from.
+    const openBtn = left.createEl("button", { cls: "git-diff-open-btn" });
+    setIcon(openBtn.createSpan("git-diff-open-btn-icon"), "file");
+    openBtn.createSpan("git-diff-open-btn-label").setText("Open current file");
+    openBtn.setAttribute("aria-label", "Open current file");
+    openBtn.addEventListener(
+      "click",
+      asVoid(() => openCurrentFile(this.app, this.filePath)),
+    );
+    this.openFileBtn = openBtn;
+
+    this.renderBreadcrumb();
 
     const right = el.createDiv("git-diff-toolbar-right");
 
@@ -527,6 +537,39 @@ export class DiffView extends ItemView {
       this.mode = "inline";
       updateMode();
       void this.loadDiff();
+    });
+  }
+
+  /**
+   * Paints the path into the toolbar. Whether the vault still holds the file is
+   * left to the click, the way the file rows in the panel do it — a button that
+   * comes and goes as the diff is reloaded is harder to aim at than one that is
+   * always in the same place.
+   */
+  private renderBreadcrumb(): void {
+    const breadcrumb = this.breadcrumbEl;
+    if (!breadcrumb) return;
+    breadcrumb.empty();
+
+    // Offered only where there is something to open. The panel keeps its button
+    // in place on every row so it does not move around under the pointer; here
+    // there is one button and one file, and a button that cannot work — a file
+    // the diff deleted, a config file the vault does not index — is worse than
+    // no button at all. That was the "does not exist in this vault" the button
+    // answered with when it was always shown.
+    const openable = Boolean(this.filePath) && vaultFile(this.app, this.filePath) !== null;
+    this.openFileBtn?.toggleClass("gs-hidden", !openable);
+
+    const parts = this.filePath ? this.filePath.split("/") : ["No file selected"];
+    parts.forEach((part, idx) => {
+      if (idx > 0) {
+        breadcrumb.createSpan("git-diff-breadcrumb-sep").setText("›");
+      }
+      breadcrumb
+        .createSpan(
+          idx === parts.length - 1 ? "git-diff-breadcrumb-file" : "git-diff-breadcrumb-dir",
+        )
+        .setText(part);
     });
   }
 
@@ -1176,6 +1219,8 @@ export class DiffView extends ItemView {
   }
 
   async onClose(): Promise<void> {
+    this.breadcrumbEl = null;
+    this.openFileBtn = null;
     this.minimapCanvas = null;
     this.minimapViewport = null;
     this.minimapWrap = null;

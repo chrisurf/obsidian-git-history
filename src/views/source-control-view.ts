@@ -1,4 +1,4 @@
-import { ItemView, WorkspaceLeaf, setIcon, Menu, Notice, TFile } from "obsidian";
+import { ItemView, WorkspaceLeaf, setIcon, Menu, Notice } from "obsidian";
 import {
   SOURCE_CONTROL_VIEW_TYPE,
   FileStatus,
@@ -17,6 +17,7 @@ import { resolveTemplate } from "../utils/template";
 import { commitButtonState } from "../store/commit-action";
 import type { CommitAction, CommitButtonState } from "../store/commit-action";
 import { supportedFileFilter } from "../utils/file-types";
+import { couldHaveCurrentFile, openCurrentFile } from "../utils/vault-file";
 
 interface FileTreeNode {
   name: string;
@@ -1344,10 +1345,24 @@ export class SourceControlView extends ItemView {
     badge.setText(displayChar);
     badge.addClass(`gs-badge-${displayChar}`);
 
-    // A file can appear in both sections at once; each row opens its own half.
+    // Clicking the row opens the note itself — reading it is what a name in
+    // the list is reached for. The diff has its own button, and stays the
+    // fallback for a path the vault cannot open: a file this change deleted,
+    // or one under `.obsidian/` that is not part of the vault index. A file
+    // can appear in both sections at once; each row falls back to its half.
     row.addEventListener("click", () => {
-      const isUntracked = group !== "staged" && file.workingStatus === "?";
-      void this.plugin.openDiff(file.path, undefined, group === "staged", isUntracked);
+      const showChanges = (): void => {
+        const isUntracked = group !== "staged" && file.workingStatus === "?";
+        void this.plugin.openDiff(file.path, undefined, group === "staged", isUntracked);
+      };
+      // A deleted file has no current version to open, and never will — the
+      // changes are the whole of what is left of it, so go straight there.
+      const deleted = file.indexStatus === "D" || file.workingStatus === "D";
+      if (!couldHaveCurrentFile(this.app, file.path, deleted)) {
+        showChanges();
+        return;
+      }
+      void openCurrentFile(this.app, file.path, showChanges);
     });
     row.addEventListener("contextmenu", (e) => {
       const menu = new Menu();
@@ -1355,7 +1370,7 @@ export class SourceControlView extends ItemView {
         i
           .setTitle("Open file")
           .setIcon("file")
-          .onClick(() => this.app.workspace.openLinkText(file.path, "", false)),
+          .onClick(asVoid(() => openCurrentFile(this.app, file.path))),
       );
       menu.addItem((i) =>
         i
@@ -1427,29 +1442,9 @@ export class SourceControlView extends ItemView {
       "click",
       asVoid(async (e) => {
         e.stopPropagation();
-        await this.openCurrentFile(path);
+        await openCurrentFile(this.app, path);
       }),
     );
-  }
-
-  /**
-   * Opens the vault's current copy of a path. A commit can name a file the
-   * vault no longer holds — deleted since, or never part of this vault at all
-   * when the repository reaches beyond it — and saying so is more use than a
-   * button that quietly does nothing.
-   */
-  private async openCurrentFile(path: string): Promise<void> {
-    const current = this.vaultFile(path);
-    if (!current) {
-      new Notice(`"${path}" does not exist in this vault right now`);
-      return;
-    }
-    await this.app.workspace.getLeaf(false).openFile(current);
-  }
-
-  private vaultFile(path: string): TFile | null {
-    const found = this.app.vault.getAbstractFileByPath(path);
-    return found instanceof TFile ? found : null;
   }
 
   /**
@@ -1678,7 +1673,11 @@ export class SourceControlView extends ItemView {
             .querySelectorAll(".gs-sg-changes-file-row")
             .forEach((el) => el.removeClass("is-active"));
           fileRow.addClass("is-active");
-          void this.plugin.openDiff(f.path, commit.hash);
+          void openCurrentFile(
+            this.app,
+            f.path,
+            () => void this.plugin.openDiff(f.path, commit.hash),
+          );
         });
         fileRow.addEventListener("contextmenu", (e) => {
           e.preventDefault();
@@ -1689,7 +1688,7 @@ export class SourceControlView extends ItemView {
             i
               .setTitle("Open current file")
               .setIcon("file")
-              .onClick(asVoid(() => this.openCurrentFile(f.path))),
+              .onClick(asVoid(() => openCurrentFile(this.app, f.path))),
           );
           m.addItem((i) =>
             i
@@ -1992,7 +1991,7 @@ export class SourceControlView extends ItemView {
             .querySelectorAll(".gs-sg-detail-file")
             .forEach((el) => el.removeClass("is-active"));
           fileRow.addClass("is-active");
-          void this.plugin.openDiff(f.path, hash);
+          void openCurrentFile(this.app, f.path, () => void this.plugin.openDiff(f.path, hash));
         });
       }
     } catch {

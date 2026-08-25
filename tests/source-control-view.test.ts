@@ -3,7 +3,7 @@ import { WorkspaceLeaf, Notice, vaultFiles, openedFiles } from "obsidian";
 import { SourceControlView } from "../src/views/source-control-view";
 import { RepoStore } from "../src/store/repo-store";
 import type { GitService } from "../src/git/git-service";
-import type { FileStatus } from "../src/types";
+import type { CommitInfo, FileStatus } from "../src/types";
 import { readFileSync } from "fs";
 import { flushFrames } from "./setup";
 
@@ -58,6 +58,8 @@ interface Calls {
   discardAll: number;
   stage: string[][];
   showCommitFiles: number;
+  /** Every diff the view asked the plugin to open, in order. */
+  openDiff: { path: string; ref?: string; staged: boolean; untracked: boolean }[];
 }
 
 interface Upstream {
@@ -73,6 +75,7 @@ async function mount(
   status: FileStatus[],
   settingsOverride: Record<string, unknown> = {},
   upstream: Upstream = IN_SYNC,
+  gitOverride: Record<string, unknown> = {},
 ) {
   const calls: Calls = {
     release: {},
@@ -81,6 +84,7 @@ async function mount(
     discardAll: 0,
     stage: [],
     showCommitFiles: 0,
+    openDiff: [],
   };
   let current = status;
 
@@ -119,6 +123,7 @@ async function mount(
     push: () => new Promise<void>((r) => (calls.release.push = r)),
     stashSave: () => new Promise<void>((r) => (calls.release.stash = r)),
     isRepo: async () => true,
+    ...gitOverride,
   } as unknown as GitService;
 
   const store = new RepoStore(git);
@@ -132,7 +137,9 @@ async function mount(
     store,
     git,
     settings,
-    openDiff: () => {},
+    openDiff: (path: string, ref?: string, staged = false, untracked = false) => {
+      calls.openDiff.push({ path, ref, staged, untracked });
+    },
     openGraphView: () => {},
     saveSettings: async () => {},
     setFileListMode: async (mode: string) => {
@@ -151,6 +158,9 @@ async function mount(
 function findButton(root: HTMLElement, label: string): HTMLElement | null {
   return root.querySelector(`button[aria-label="${label}"]`);
 }
+
+/** Lets the promise chain behind a render settle before asserting on the DOM. */
+const flushAsync = (): Promise<void> => new Promise((r) => setTimeout(r, 0));
 
 describe("SourceControlView — Stage All", () => {
   beforeEach(() => {
@@ -550,6 +560,7 @@ describe("SourceControlView — Open File", () => {
   beforeEach(() => {
     vaultFiles.clear();
     openedFiles.length = 0;
+    Notice.messages = [];
   });
 
   it("sits between Open Changes and the stage button", async () => {
@@ -603,6 +614,196 @@ describe("SourceControlView — Open File", () => {
 
     btn?.dispatchEvent(new MouseEvent("click", { bubbles: true }));
     await Promise.resolve();
+    expect(openedFiles).toEqual([]);
+  });
+
+  it("opens the note when the row itself is clicked", async () => {
+    // The row used to open the diff, which is the rarer of the two: a name in
+    // the changes list is reached for to read the note it belongs to.
+    vaultFiles.add("Testing.md");
+    const status = [
+      ...screenshotStatus(),
+      { path: "Testing.md", indexStatus: ".", workingStatus: "M", staged: false },
+    ] as FileStatus[];
+    const { view, calls } = await mount(status);
+    expandAll(view);
+
+    rowFor(view, "Testing.md")?.dispatchEvent(new MouseEvent("click", { bubbles: true }));
+    await Promise.resolve();
+
+    expect(openedFiles).toEqual(["Testing.md"]);
+    expect(calls.openDiff).toEqual([]);
+  });
+
+  it("falls back to the diff for a path the vault does not hold", async () => {
+    // A file this change deleted, and everything under `.obsidian/`, is not in
+    // the vault index. The click still has to lead somewhere.
+    const { view, calls } = await mount(screenshotStatus());
+    expandAll(view);
+
+    rowFor(view, "workspace.json")?.dispatchEvent(new MouseEvent("click", { bubbles: true }));
+    await Promise.resolve();
+
+    expect(openedFiles).toEqual([]);
+    expect(calls.openDiff).toEqual([
+      { path: ".obsidian/workspace.json", ref: undefined, staged: false, untracked: false },
+    ]);
+    // A config file is never a note. Saying so on every click would be noise.
+    expect(Notice.messages).toEqual([]);
+  });
+
+  it("goes straight to the changes for a file the change deleted", async () => {
+    // There is no current version of a deleted file and never will be, so the
+    // lookup is skipped rather than reported as something gone wrong.
+    const status = [
+      ...screenshotStatus(),
+      { path: "Gone.md", indexStatus: ".", workingStatus: "D", staged: false },
+    ] as FileStatus[];
+    const { view, calls } = await mount(status);
+    expandAll(view);
+
+    rowFor(view, "Gone.md")?.dispatchEvent(new MouseEvent("click", { bubbles: true }));
+    await Promise.resolve();
+
+    expect(openedFiles).toEqual([]);
+    expect(calls.openDiff).toEqual([
+      { path: "Gone.md", ref: undefined, staged: false, untracked: false },
+    ]);
+    expect(Notice.messages).toEqual([]);
+  });
+
+  it("says so when a note the vault should hold is missing", async () => {
+    // The one case worth interrupting for: git reports a normal note, and the
+    // vault does not have it. That is not ordinary, and it used to be silent.
+    const status = [
+      ...screenshotStatus(),
+      { path: "Ghost.md", indexStatus: ".", workingStatus: "M", staged: false },
+    ] as FileStatus[];
+    const { view, calls } = await mount(status);
+    expandAll(view);
+
+    rowFor(view, "Ghost.md")?.dispatchEvent(new MouseEvent("click", { bubbles: true }));
+    await Promise.resolve();
+
+    expect(calls.openDiff).toHaveLength(1);
+    expect(Notice.messages).toEqual([
+      '"Ghost.md" is not a note in this vault — showing its changes instead',
+    ]);
+  });
+
+  it("leaves the diff button opening the diff", async () => {
+    vaultFiles.add("Testing.md");
+    const status = [
+      ...screenshotStatus(),
+      { path: "Testing.md", indexStatus: ".", workingStatus: "M", staged: false },
+    ] as FileStatus[];
+    const { view, calls } = await mount(status);
+    expandAll(view);
+
+    rowFor(view, "Testing.md")
+      ?.querySelector('button[aria-label="Open changes"]')
+      ?.dispatchEvent(new MouseEvent("click", { bubbles: true }));
+    await Promise.resolve();
+
+    expect(calls.openDiff).toEqual([
+      { path: "Testing.md", ref: undefined, staged: false, untracked: false },
+    ]);
+    expect(openedFiles).toEqual([]);
+  });
+});
+
+/**
+ * A commit's file list is the second place a file name is clicked, and it has
+ * to behave like the changes list: the name opens the note, the diff button
+ * opens the diff, and a path the vault no longer holds falls back to the diff
+ * of that commit.
+ */
+describe("SourceControlView — a commit's file list", () => {
+  const commit = {
+    hash: "57ed234d9c221d077b5df7a53610e1726584b89c",
+    shortHash: "57ed234",
+    parents: [],
+    message: "Bestandsaufnahme",
+    body: "",
+    author: "Chris Oguntolu",
+    authorEmail: "chris@chrisurf.com",
+    date: new Date("2026-08-24T13:06:59Z"),
+    refs: [],
+  } as CommitInfo;
+
+  const commitFiles = [
+    { path: "Projects/Strategy/Bestandsaufnahme.md", additions: 323, deletions: 0 },
+    { path: "Projects/Strategy/Vom Preis zur Risikoentscheidung.md", additions: 1, deletions: 0 },
+  ];
+
+  const mountWithCommit = async () =>
+    mount(screenshotStatus(), {}, IN_SYNC, {
+      showCommitFiles: async () => commitFiles,
+    });
+
+  const fileRows = (view: { contentEl: HTMLElement }): HTMLElement[] =>
+    Array.from(view.contentEl.querySelectorAll(".gs-sg-changes-file-row"));
+
+  beforeEach(() => {
+    vaultFiles.clear();
+    openedFiles.length = 0;
+    Notice.messages = [];
+  });
+
+  it("opens the note when a file name is clicked", async () => {
+    vaultFiles.add("Projects/Strategy/Bestandsaufnahme.md");
+    const { view, calls } = await mountWithCommit();
+
+    view.showCommitChanges(commit);
+    await flushAsync();
+
+    fileRows(view)[0]?.dispatchEvent(new MouseEvent("click", { bubbles: true }));
+    await flushAsync();
+
+    expect(openedFiles).toEqual(["Projects/Strategy/Bestandsaufnahme.md"]);
+    expect(calls.openDiff).toEqual([]);
+  });
+
+  it("falls back to that commit's diff when the vault no longer holds the file", async () => {
+    const { view, calls } = await mountWithCommit();
+
+    view.showCommitChanges(commit);
+    await flushAsync();
+
+    fileRows(view)[0]?.dispatchEvent(new MouseEvent("click", { bubbles: true }));
+    await flushAsync();
+
+    expect(openedFiles).toEqual([]);
+    expect(calls.openDiff).toEqual([
+      {
+        path: "Projects/Strategy/Bestandsaufnahme.md",
+        ref: commit.hash,
+        staged: false,
+        untracked: false,
+      },
+    ]);
+  });
+
+  it("keeps the row's own diff button opening the diff", async () => {
+    vaultFiles.add("Projects/Strategy/Bestandsaufnahme.md");
+    const { view, calls } = await mountWithCommit();
+
+    view.showCommitChanges(commit);
+    await flushAsync();
+
+    fileRows(view)[0]
+      ?.querySelector('button[aria-label="View changes in this commit"]')
+      ?.dispatchEvent(new MouseEvent("click", { bubbles: true }));
+    await flushAsync();
+
+    expect(calls.openDiff).toEqual([
+      {
+        path: "Projects/Strategy/Bestandsaufnahme.md",
+        ref: commit.hash,
+        staged: false,
+        untracked: false,
+      },
+    ]);
     expect(openedFiles).toEqual([]);
   });
 });
