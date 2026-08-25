@@ -1,3 +1,10 @@
+# [1.6.0](https://github.com/chrisurf/obsidian-git-history/compare/1.5.0...1.6.0) (2026-08-25)
+
+
+### Features
+
+* open the note from the changes list and the diff view ([#18](https://github.com/chrisurf/obsidian-git-history/issues/18)) ([e965334](https://github.com/chrisurf/obsidian-git-history/commit/e96533453b186527f7f358ea2fc0dbdfbb18e415))
+
 # [1.5.0](https://github.com/chrisurf/obsidian-git-history/compare/1.4.0...1.5.0) (2026-08-21)
 
 
