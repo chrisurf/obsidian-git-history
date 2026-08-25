@@ -17,7 +17,7 @@ import { resolveTemplate } from "../utils/template";
 import { commitButtonState } from "../store/commit-action";
 import type { CommitAction, CommitButtonState } from "../store/commit-action";
 import { supportedFileFilter } from "../utils/file-types";
-import { openCurrentFile } from "../utils/vault-file";
+import { couldHaveCurrentFile, openCurrentFile } from "../utils/vault-file";
 
 interface FileTreeNode {
   name: string;
@@ -1351,10 +1351,18 @@ export class SourceControlView extends ItemView {
     // or one under `.obsidian/` that is not part of the vault index. A file
     // can appear in both sections at once; each row falls back to its half.
     row.addEventListener("click", () => {
-      void openCurrentFile(this.app, file.path, () => {
+      const showChanges = (): void => {
         const isUntracked = group !== "staged" && file.workingStatus === "?";
         void this.plugin.openDiff(file.path, undefined, group === "staged", isUntracked);
-      });
+      };
+      // A deleted file has no current version to open, and never will — the
+      // changes are the whole of what is left of it, so go straight there.
+      const deleted = file.indexStatus === "D" || file.workingStatus === "D";
+      if (!couldHaveCurrentFile(this.app, file.path, deleted)) {
+        showChanges();
+        return;
+      }
+      void openCurrentFile(this.app, file.path, showChanges);
     });
     row.addEventListener("contextmenu", (e) => {
       const menu = new Menu();

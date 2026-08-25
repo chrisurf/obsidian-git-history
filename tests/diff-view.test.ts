@@ -44,6 +44,7 @@ describe("DiffView — Open current file", () => {
   });
 
   it("offers the button in the toolbar", async () => {
+    vaultFiles.add("Projects/note.md");
     const { view } = await mount();
     view.setFile("Projects/note.md");
     await flushAsync();
@@ -78,18 +79,24 @@ describe("DiffView — Open current file", () => {
     expect(openedFiles).toEqual(["Projects/note.md"]);
   });
 
-  it("says so when the vault no longer holds the file", async () => {
+  it("is not offered for a file the vault no longer holds", async () => {
+    // It used to be shown for every diff and answered a click with "does not
+    // exist in this vault", which reads as a fault rather than as the plain
+    // fact that a deleted file has no current version.
     const { view } = await mount();
     view.setFile("Projects/deleted.md");
     await flushAsync();
 
-    openBtn(view)?.dispatchEvent(new MouseEvent("click", { bubbles: true }));
+    expect(openBtn(view)?.classList.contains("gs-hidden")).toBe(true);
+    expect(Notice.messages).toEqual([]);
+  });
+
+  it("is not offered for a config file the vault does not index", async () => {
+    const { view } = await mount();
+    view.setFile(".obsidian/workspace.json");
     await flushAsync();
 
-    expect(openedFiles).toEqual([]);
-    expect(Notice.messages).toEqual([
-      '"deleted.md" is not a note in this vault. It was deleted, or lives outside it.',
-    ]);
+    expect(openBtn(view)?.classList.contains("gs-hidden")).toBe(true);
   });
 
   it("hides the button while no file is selected", async () => {
@@ -98,6 +105,7 @@ describe("DiffView — Open current file", () => {
   });
 
   it("shows it again once a file arrives", async () => {
+    vaultFiles.add("Projects/note.md");
     const { view } = await mount();
     view.setFile("Projects/note.md");
     await flushAsync();

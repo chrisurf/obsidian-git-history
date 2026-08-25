@@ -648,9 +648,46 @@ describe("SourceControlView — Open File", () => {
     expect(calls.openDiff).toEqual([
       { path: ".obsidian/workspace.json", ref: undefined, staged: false, untracked: false },
     ]);
-    // Silence here is what made the click look like it did nothing at all.
+    // A config file is never a note. Saying so on every click would be noise.
+    expect(Notice.messages).toEqual([]);
+  });
+
+  it("goes straight to the changes for a file the change deleted", async () => {
+    // There is no current version of a deleted file and never will be, so the
+    // lookup is skipped rather than reported as something gone wrong.
+    const status = [
+      ...screenshotStatus(),
+      { path: "Gone.md", indexStatus: ".", workingStatus: "D", staged: false },
+    ] as FileStatus[];
+    const { view, calls } = await mount(status);
+    expandAll(view);
+
+    rowFor(view, "Gone.md")?.dispatchEvent(new MouseEvent("click", { bubbles: true }));
+    await Promise.resolve();
+
+    expect(openedFiles).toEqual([]);
+    expect(calls.openDiff).toEqual([
+      { path: "Gone.md", ref: undefined, staged: false, untracked: false },
+    ]);
+    expect(Notice.messages).toEqual([]);
+  });
+
+  it("says so when a note the vault should hold is missing", async () => {
+    // The one case worth interrupting for: git reports a normal note, and the
+    // vault does not have it. That is not ordinary, and it used to be silent.
+    const status = [
+      ...screenshotStatus(),
+      { path: "Ghost.md", indexStatus: ".", workingStatus: "M", staged: false },
+    ] as FileStatus[];
+    const { view, calls } = await mount(status);
+    expandAll(view);
+
+    rowFor(view, "Ghost.md")?.dispatchEvent(new MouseEvent("click", { bubbles: true }));
+    await Promise.resolve();
+
+    expect(calls.openDiff).toHaveLength(1);
     expect(Notice.messages).toEqual([
-      '"workspace.json" is not a note in this vault — showing its changes instead',
+      '"Ghost.md" is not a note in this vault — showing its changes instead',
     ]);
   });
 

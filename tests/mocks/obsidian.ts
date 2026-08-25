@@ -63,6 +63,7 @@ export class TFile {
 
 const mockApp = {
   vault: {
+    configDir: ".obsidian",
     getAbstractFileByPath: (path: string): TFile | null =>
       vaultFiles.has(path) ? new TFile(path) : null,
   },

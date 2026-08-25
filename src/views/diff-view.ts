@@ -4,7 +4,7 @@ import { DIFF_VIEW_TYPE, FileDiff, DiffHunk, DiffLine } from "../types";
 import { GitService } from "../git/git-service";
 import type GitHistoryPlugin from "../main";
 import { asVoid } from "../utils/async";
-import { openCurrentFile } from "../utils/vault-file";
+import { openCurrentFile, vaultFile } from "../utils/vault-file";
 
 type TokenType =
   | "keyword"
@@ -551,8 +551,14 @@ export class DiffView extends ItemView {
     if (!breadcrumb) return;
     breadcrumb.empty();
 
-    // Nothing to open without a file, and nothing to name either.
-    this.openFileBtn?.toggleClass("gs-hidden", !this.filePath);
+    // Offered only where there is something to open. The panel keeps its button
+    // in place on every row so it does not move around under the pointer; here
+    // there is one button and one file, and a button that cannot work — a file
+    // the diff deleted, a config file the vault does not index — is worse than
+    // no button at all. That was the "does not exist in this vault" the button
+    // answered with when it was always shown.
+    const openable = Boolean(this.filePath) && vaultFile(this.app, this.filePath) !== null;
+    this.openFileBtn?.toggleClass("gs-hidden", !openable);
 
     const parts = this.filePath ? this.filePath.split("/") : ["No file selected"];
     parts.forEach((part, idx) => {
