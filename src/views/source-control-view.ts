@@ -1344,10 +1344,16 @@ export class SourceControlView extends ItemView {
     badge.setText(displayChar);
     badge.addClass(`gs-badge-${displayChar}`);
 
-    // A file can appear in both sections at once; each row opens its own half.
+    // Clicking the row opens the note itself — reading it is what a name in
+    // the list is reached for. The diff has its own button, and stays the
+    // fallback for a path the vault cannot open: a file this change deleted,
+    // or one under `.obsidian/` that is not part of the vault index. A file
+    // can appear in both sections at once; each row falls back to its half.
     row.addEventListener("click", () => {
-      const isUntracked = group !== "staged" && file.workingStatus === "?";
-      void this.plugin.openDiff(file.path, undefined, group === "staged", isUntracked);
+      void this.openCurrentFile(file.path, () => {
+        const isUntracked = group !== "staged" && file.workingStatus === "?";
+        void this.plugin.openDiff(file.path, undefined, group === "staged", isUntracked);
+      });
     });
     row.addEventListener("contextmenu", (e) => {
       const menu = new Menu();
@@ -1355,7 +1361,7 @@ export class SourceControlView extends ItemView {
         i
           .setTitle("Open file")
           .setIcon("file")
-          .onClick(() => this.app.workspace.openLinkText(file.path, "", false)),
+          .onClick(asVoid(() => this.openCurrentFile(file.path))),
       );
       menu.addItem((i) =>
         i
@@ -1435,13 +1441,17 @@ export class SourceControlView extends ItemView {
   /**
    * Opens the vault's current copy of a path. A commit can name a file the
    * vault no longer holds — deleted since, or never part of this vault at all
-   * when the repository reaches beyond it — and saying so is more use than a
-   * button that quietly does nothing.
+   * when the repository reaches beyond it.
+   *
+   * `fallback` is what the row click passes for that case: a click on a name
+   * has to lead somewhere, and the diff is what is left to show. A button says
+   * so instead, which is more use than quietly doing nothing.
    */
-  private async openCurrentFile(path: string): Promise<void> {
+  private async openCurrentFile(path: string, fallback?: () => void): Promise<void> {
     const current = this.vaultFile(path);
     if (!current) {
-      new Notice(`"${path}" does not exist in this vault right now`);
+      if (fallback) fallback();
+      else new Notice(`"${path}" does not exist in this vault right now`);
       return;
     }
     await this.app.workspace.getLeaf(false).openFile(current);
@@ -1678,7 +1688,7 @@ export class SourceControlView extends ItemView {
             .querySelectorAll(".gs-sg-changes-file-row")
             .forEach((el) => el.removeClass("is-active"));
           fileRow.addClass("is-active");
-          void this.plugin.openDiff(f.path, commit.hash);
+          void this.openCurrentFile(f.path, () => void this.plugin.openDiff(f.path, commit.hash));
         });
         fileRow.addEventListener("contextmenu", (e) => {
           e.preventDefault();
@@ -1992,7 +2002,7 @@ export class SourceControlView extends ItemView {
             .querySelectorAll(".gs-sg-detail-file")
             .forEach((el) => el.removeClass("is-active"));
           fileRow.addClass("is-active");
-          void this.plugin.openDiff(f.path, hash);
+          void this.openCurrentFile(f.path, () => void this.plugin.openDiff(f.path, hash));
         });
       }
     } catch {
