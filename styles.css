@@ -2014,6 +2014,17 @@
   gap: 8px;
 }
 
+/* The breadcrumb is the only thing in this toolbar allowed to give up width.
+   Without this the mode buttons on the right wrapped onto three lines in a
+   narrow pane, which is the one place the toolbar has to stay one row. */
+.git-diff-toolbar-left {
+  min-width: 0;
+}
+
+.git-diff-toolbar-right {
+  flex-shrink: 0;
+}
+
 .git-diff-path {
   font-size: 13px;
   color: var(--diff-text-muted);
@@ -2027,6 +2038,11 @@
   gap: 2px;
   font-size: 13px;
   font-family: var(--diff-font);
+
+  /* A deep path gives up its width before the button next to it does: the file
+     name is already repeated over each side of the diff, the button is not. */
+  min-width: 0;
+  overflow: hidden;
 }
 .git-diff-breadcrumb-dir {
   color: var(--diff-text-muted);
@@ -2039,6 +2055,40 @@
 }
 .git-diff-breadcrumb-file {
   color: var(--diff-text);
+}
+
+/* Sits next to the breadcrumb it opens. Quiet until hovered, so the path
+   stays the thing the eye lands on first. */
+.git-diff-open-btn {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  font-size: 12px;
+  padding: 3px 9px;
+  border-radius: 3px;
+  border: 1px solid var(--diff-border);
+  background: transparent;
+  color: var(--diff-text-muted);
+  cursor: pointer;
+  font-family: var(--diff-font);
+  white-space: nowrap;
+  flex-shrink: 0;
+  transition: all 0.15s;
+}
+
+.git-diff-open-btn:hover {
+  background: rgb(255 255 255 / 6%);
+  color: var(--diff-text);
+}
+
+.git-diff-open-btn-icon {
+  display: inline-flex;
+  align-items: center;
+}
+
+.git-diff-open-btn-icon svg {
+  width: 13px;
+  height: 13px;
 }
 
 .git-diff-sync {
@@ -2060,6 +2110,7 @@
 
 .git-diff-mode-btn {
   font-size: 12px;
+  white-space: nowrap;
   padding: 3px 10px;
   border-radius: 3px;
   border: 1px solid var(--diff-border);

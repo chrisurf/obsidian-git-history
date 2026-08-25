@@ -560,6 +560,7 @@ describe("SourceControlView — Open File", () => {
   beforeEach(() => {
     vaultFiles.clear();
     openedFiles.length = 0;
+    Notice.messages = [];
   });
 
   it("sits between Open Changes and the stage button", async () => {
@@ -647,6 +648,10 @@ describe("SourceControlView — Open File", () => {
     expect(calls.openDiff).toEqual([
       { path: ".obsidian/workspace.json", ref: undefined, staged: false, untracked: false },
     ]);
+    // Silence here is what made the click look like it did nothing at all.
+    expect(Notice.messages).toEqual([
+      '"workspace.json" is not a note in this vault — showing its changes instead',
+    ]);
   });
 
   it("leaves the diff button opening the diff", async () => {
@@ -705,6 +710,7 @@ describe("SourceControlView — a commit's file list", () => {
   beforeEach(() => {
     vaultFiles.clear();
     openedFiles.length = 0;
+    Notice.messages = [];
   });
 
   it("opens the note when a file name is clicked", async () => {
