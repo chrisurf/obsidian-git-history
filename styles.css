@@ -2637,8 +2637,61 @@
   opacity: 0.4;
 }
 
-.gs-terminal-tab-drop {
+/* The drop marker sits on the edge the dragged session would land on. The
+   strip runs top to bottom here, so "before" is the upper edge; the narrow
+   layout further down turns both onto their sides. */
+.gs-terminal-tab-drop-before {
   box-shadow: inset 0 2px 0 0 var(--gs-accent);
+}
+
+.gs-terminal-tab-drop-after {
+  box-shadow: inset 0 -2px 0 0 var(--gs-accent);
+}
+
+/* --- Session colours ---------------------------------------------------
+   A session can be marked with one of Obsidian's own accent colours, which
+   follow the vault's theme in both light and dark mode. The tint lands on the
+   icon alone, never on the background: the strip already uses background to
+   say which session is active, and two meanings on one channel is one too
+   many. */
+.gs-terminal-tab.gs-terminal-color-red,
+.gs-terminal-tab.gs-terminal-color-red:hover {
+  color: var(--color-red);
+}
+
+.gs-terminal-tab.gs-terminal-color-orange,
+.gs-terminal-tab.gs-terminal-color-orange:hover {
+  color: var(--color-orange);
+}
+
+.gs-terminal-tab.gs-terminal-color-yellow,
+.gs-terminal-tab.gs-terminal-color-yellow:hover {
+  color: var(--color-yellow);
+}
+
+.gs-terminal-tab.gs-terminal-color-green,
+.gs-terminal-tab.gs-terminal-color-green:hover {
+  color: var(--color-green);
+}
+
+.gs-terminal-tab.gs-terminal-color-cyan,
+.gs-terminal-tab.gs-terminal-color-cyan:hover {
+  color: var(--color-cyan);
+}
+
+.gs-terminal-tab.gs-terminal-color-blue,
+.gs-terminal-tab.gs-terminal-color-blue:hover {
+  color: var(--color-blue);
+}
+
+.gs-terminal-tab.gs-terminal-color-purple,
+.gs-terminal-tab.gs-terminal-color-purple:hover {
+  color: var(--color-purple);
+}
+
+.gs-terminal-tab.gs-terminal-color-pink,
+.gs-terminal-tab.gs-terminal-color-pink:hover {
+  color: var(--color-pink);
 }
 
 /* Narrow pane: a column of icons on the right would leave nothing for the
@@ -2662,6 +2715,15 @@
 
 .gs-terminal-narrow .gs-terminal-tab-active {
   border-bottom-color: var(--gs-accent);
+}
+
+/* Sideways strip: the drop marker turns with it. */
+.gs-terminal-narrow .gs-terminal-tab-drop-before {
+  box-shadow: inset 2px 0 0 0 var(--gs-accent);
+}
+
+.gs-terminal-narrow .gs-terminal-tab-drop-after {
+  box-shadow: inset -2px 0 0 0 var(--gs-accent);
 }
 
 .gs-terminal-wrapper .xterm {
@@ -2942,6 +3004,156 @@
   height: 100%;
   color: var(--text-muted);
   font-size: var(--font-ui-medium);
+}
+
+/* ================================================================
+   SESSION APPEARANCE MODAL
+   ================================================================ */
+
+.gs-session-appearance-modal {
+  max-width: 420px;
+}
+
+.gs-appearance-heading {
+  margin: 16px 0 8px;
+  font-size: var(--font-ui-smaller);
+  font-weight: var(--font-semibold);
+  color: var(--gs-text-muted);
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+}
+
+.gs-appearance-heading:first-child {
+  margin-top: 0;
+}
+
+.gs-appearance-colors {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 12px;
+  padding: 4px;
+}
+
+.gs-appearance-color {
+  width: 26px;
+  height: 26px;
+  padding: 0;
+  border: none;
+  border-radius: 50%;
+  box-shadow: none;
+  cursor: pointer;
+}
+
+/* "No colour" is the theme's own muted grey rather than an empty circle: a
+   transparent swatch on a modal background is not a choice the eye can find,
+   and the default has to sit in the row as visibly as the eight colours. */
+.gs-appearance-color-default {
+  background: var(--gs-text-faint);
+}
+
+.gs-appearance-color.gs-terminal-color-red {
+  background: var(--color-red);
+}
+
+.gs-appearance-color.gs-terminal-color-orange {
+  background: var(--color-orange);
+}
+
+.gs-appearance-color.gs-terminal-color-yellow {
+  background: var(--color-yellow);
+}
+
+.gs-appearance-color.gs-terminal-color-green {
+  background: var(--color-green);
+}
+
+.gs-appearance-color.gs-terminal-color-cyan {
+  background: var(--color-cyan);
+}
+
+.gs-appearance-color.gs-terminal-color-blue {
+  background: var(--color-blue);
+}
+
+.gs-appearance-color.gs-terminal-color-purple {
+  background: var(--color-purple);
+}
+
+.gs-appearance-color.gs-terminal-color-pink {
+  background: var(--color-pink);
+}
+
+.gs-appearance-icons {
+  display: grid;
+  grid-template-columns: repeat(8, 1fr);
+  gap: 6px;
+  padding: 4px;
+}
+
+.gs-appearance-icon {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 100%;
+  height: 34px;
+  padding: 0;
+  border: none;
+  border-radius: 4px;
+  background: transparent;
+  box-shadow: none;
+  color: var(--gs-text-muted);
+  cursor: pointer;
+}
+
+.gs-appearance-icon:hover {
+  background: var(--gs-bg-hover);
+}
+
+/* The grid is tinted with the colour that is currently picked, so a colour is
+   previewed on every icon before a glyph is chosen. */
+.gs-appearance-icon.gs-terminal-color-red {
+  color: var(--color-red);
+}
+
+.gs-appearance-icon.gs-terminal-color-orange {
+  color: var(--color-orange);
+}
+
+.gs-appearance-icon.gs-terminal-color-yellow {
+  color: var(--color-yellow);
+}
+
+.gs-appearance-icon.gs-terminal-color-green {
+  color: var(--color-green);
+}
+
+.gs-appearance-icon.gs-terminal-color-cyan {
+  color: var(--color-cyan);
+}
+
+.gs-appearance-icon.gs-terminal-color-blue {
+  color: var(--color-blue);
+}
+
+.gs-appearance-icon.gs-terminal-color-purple {
+  color: var(--color-purple);
+}
+
+.gs-appearance-icon.gs-terminal-color-pink {
+  color: var(--color-pink);
+}
+
+.gs-appearance-icon svg {
+  width: 17px;
+  height: 17px;
+}
+
+/* The ring sits outside the swatch instead of inside it: a border would eat
+   2px of a 26px circle, which reads as the colour shrinking rather than as the
+   colour being picked. */
+.gs-appearance-selected {
+  outline: 2px solid var(--gs-accent);
+  outline-offset: 2px;
 }
 
 /* ================================================================

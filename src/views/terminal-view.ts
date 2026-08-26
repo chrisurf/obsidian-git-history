@@ -3,6 +3,8 @@ import { TERMINAL_VIEW_TYPE } from "../types";
 import type { TerminalSessionManager } from "../terminal/session-manager";
 import type GitHistoryPlugin from "../main";
 import { promptText } from "../utils/prompt";
+import { SessionAppearanceModal } from "../components/session-appearance-modal";
+import { colorClass } from "../terminal/session-appearance";
 import { asVoid } from "../utils/async";
 
 /** Below this width the session strip lies down above the terminal instead. */
@@ -122,8 +124,11 @@ export class TerminalView extends ItemView {
       tab.setAttribute("aria-label", this.tabLabel(entry.id, entry.name));
       tab.setAttribute("draggable", "true");
 
+      const tint = colorClass(entry.color);
+      if (tint) tab.addClass(tint);
+
       const icon = tab.createSpan("gs-terminal-tab-icon");
-      setIcon(icon, "terminal");
+      setIcon(icon, entry.icon);
 
       // No close affordance on the icon itself: it sits under the pointer on
       // the way to switching sessions, and a misclick ends a running shell.
@@ -145,28 +150,62 @@ export class TerminalView extends ItemView {
     return this.sessions.hasExited(id) ? `${name} (exited)` : name;
   }
 
+  /**
+   * Reordering by dragging, the way the VS Code terminal list works.
+   *
+   * The drop marker sits on the edge the tab would land on — above the target
+   * when dragging upwards, below it when dragging down — and follows the strip
+   * when a narrow pane lays it out sideways, so the line always points at the
+   * gap the session is about to fall into.
+   */
   private wireDrag(tab: HTMLElement, index: number): void {
-    tab.addEventListener("dragstart", () => {
+    tab.addEventListener("dragstart", (e) => {
       this.dragFrom = index;
       tab.addClass("gs-terminal-tab-dragging");
+      // Chromium refuses to start a drag without payload, and "move" is what
+      // gives the pointer the right cursor over the strip.
+      e.dataTransfer?.setData("text/plain", String(index));
+      if (e.dataTransfer) e.dataTransfer.effectAllowed = "move";
     });
     tab.addEventListener("dragend", () => {
       this.dragFrom = null;
       tab.removeClass("gs-terminal-tab-dragging");
+      this.clearDropMarks();
     });
     tab.addEventListener("dragover", (e) => {
       if (this.dragFrom === null || this.dragFrom === index) return;
       e.preventDefault();
-      tab.addClass("gs-terminal-tab-drop");
+      if (e.dataTransfer) e.dataTransfer.dropEffect = "move";
+      this.clearDropMarks();
+      tab.addClass(
+        index < this.dragFrom ? "gs-terminal-tab-drop-before" : "gs-terminal-tab-drop-after",
+      );
     });
-    tab.addEventListener("dragleave", () => tab.removeClass("gs-terminal-tab-drop"));
+    tab.addEventListener("dragleave", () => {
+      tab.removeClass("gs-terminal-tab-drop-before");
+      tab.removeClass("gs-terminal-tab-drop-after");
+    });
     tab.addEventListener("drop", (e) => {
       e.preventDefault();
-      tab.removeClass("gs-terminal-tab-drop");
+      this.clearDropMarks();
       if (this.dragFrom === null) return;
       this.sessions.move(this.dragFrom, index);
       this.dragFrom = null;
     });
+  }
+
+  /**
+   * Drops the marker from every tab. A drag that leaves the strip fires no
+   * "dragleave" on the tab it was last over, so the line has to be cleared for
+   * the whole strip rather than for the tab that thinks it is still the target.
+   */
+  private clearDropMarks(): void {
+    const strip = this.stripEl;
+    if (!strip) return;
+    for (const tab of Array.from(strip.children)) {
+      tab.removeClass("gs-terminal-tab-drop-before");
+      tab.removeClass("gs-terminal-tab-drop-after");
+    }
   }
 
   private showMenu(event: MouseEvent, sessionId?: string): void {
@@ -193,6 +232,12 @@ export class TerminalView extends ItemView {
             }),
           ),
       );
+      menu.addItem((i) =>
+        i
+          .setTitle("Change icon and colour...")
+          .setIcon("palette")
+          .onClick(() => this.editAppearance(id)),
+      );
       menu.addSeparator();
       menu.addItem((i) =>
         i
@@ -211,5 +256,19 @@ export class TerminalView extends ItemView {
     }
 
     menu.showAtMouseEvent(event);
+  }
+
+  private editAppearance(id: string): void {
+    const entry = this.sessions.entries.find((e) => e.id === id);
+    if (!entry) return;
+    new SessionAppearanceModal(
+      this.app,
+      entry.name,
+      { icon: entry.icon, color: entry.color },
+      (next) => {
+        this.sessions.setIcon(id, next.icon);
+        this.sessions.setColor(id, next.color);
+      },
+    ).open();
   }
 }

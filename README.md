@@ -104,6 +104,10 @@ vault's folder.
 - Starts in your vault's folder, so `git` and everything else act on your notes
 - Uses your own login shell, with your prompt, colours, and aliases
 - Resizes with the panel
+- Several sessions side by side, listed as icons along the edge of the panel
+- Give each session its own icon and colour from its right-click menu, so a row
+  of identical shell icons stays readable
+- Drag the icons to reorder the sessions
 - Desktop only, like the rest of the plugin
 
 Everything the plugin does through its buttons still works without it — the

@@ -32,7 +32,17 @@ export const BUY_ME_A_COFFEE_IMAGE_URL =
  * what the plugin does, so a first-time reader and someone upgrading from an
  * early version both come away knowing where to click.
  */
-export const WHATS_NEW = `## 💻 A terminal inside Obsidian — Alpha
+export const WHATS_NEW = `## 🎨 Tell your terminal sessions apart
+
+The terminal panel keeps several sessions side by side, and until now they were
+a row of identical \`>_\` icons. Right-click a session and pick **Change icon
+and colour** — two dozen icons, eight colours that follow your theme. Drag the
+icons to put the sessions in the order you think in.
+
+Turn on **Colour new terminal sessions** in the settings if you would rather
+every session you open be given a colour of its own straight away.
+
+## 💻 A terminal inside Obsidian — Alpha
 
 There is now a shell panel in Obsidian, opened from the terminal ribbon icon,
 the commit graph toolbar, or the **Open terminal** command. It starts in your

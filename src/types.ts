@@ -162,6 +162,12 @@ export interface GitHistorySettings {
   lastWhatsNewVersion: string;
   /** Override for the shell binary used by the embedded terminal. */
   terminalShell: string;
+  /**
+   * Give every new terminal session the next free colour from the palette.
+   * Off by default, the way VS Code leaves its terminal tabs neutral until you
+   * colour one yourself.
+   */
+  terminalAutoColor: boolean;
 }
 
 export const DEFAULT_SETTINGS: GitHistorySettings = {
@@ -178,4 +184,5 @@ export const DEFAULT_SETTINGS: GitHistorySettings = {
   showNestedRepos: false,
   lastWhatsNewVersion: "",
   terminalShell: "",
+  terminalAutoColor: false,
 };
