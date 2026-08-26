@@ -6,6 +6,7 @@ import {
   extensionOf,
   isSupportedPath,
   supportedFileFilter,
+  fileIcon,
 } from "../src/utils/file-types";
 
 describe("extensionOf", () => {
@@ -100,5 +101,28 @@ describe("supportedFileFilter", () => {
   it("falls back to the built-in set when the registry is not reachable", () => {
     const keep = supportedFileFilter({} as App, true);
     expect(["Note.md", "data/x.parquet"].filter(keep)).toEqual(["Note.md"]);
+  });
+});
+
+describe("the icon a file gets in the lists", () => {
+  it("picks the icon the extension stands for", () => {
+    expect(fileIcon("note.md")).toBe("file-text");
+    expect(fileIcon("styles.css")).toBe("paintbrush");
+    expect(fileIcon("a/b/script.TS")).toBe("file-code");
+  });
+
+  it("falls back to a plain file for anything it does not know", () => {
+    expect(fileIcon("archive.parquet")).toBe("file");
+    expect(fileIcon("LICENSE")).toBe("file");
+    expect(fileIcon(".gitignore")).toBe("file");
+  });
+
+  /**
+   * Both file lists draw the same rows, so the icon has to come from one place:
+   * a note that looked like a note in one list and like a generic file in the
+   * other would read as two different files.
+   */
+  it("does not let a dot in a folder name decide the icon", () => {
+    expect(fileIcon("my.notes/todo.md")).toBe("file-text");
   });
 });

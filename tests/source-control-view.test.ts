@@ -1132,3 +1132,166 @@ describe("SourceControlView — the primary button", () => {
     expect(label(view)).toBe("Push (1)");
   });
 });
+
+/**
+ * A commit's file list got the changes list's two layouts and its folding
+ * controls: the same question — how do these files belong together — asked
+ * about a different set of files, so it gets the same answer.
+ */
+describe("SourceControlView — a commit's file list layout", () => {
+  const commit = {
+    hash: "57ed234d9c221d077b5df7a53610e1726584b89c",
+    shortHash: "57ed234",
+    parents: [],
+    message: "Bestandsaufnahme",
+    body: "",
+    author: "Chris Oguntolu",
+    authorEmail: "chris@chrisurf.com",
+    date: new Date("2026-08-24T13:06:59Z"),
+    refs: [],
+  } as CommitInfo;
+
+  const nestedFiles = [
+    { path: "Note.md", additions: 4, deletions: 0 },
+    { path: "folder/Nested.md", additions: 4, deletions: 0 },
+    { path: "Projects/Strategy/Plan.md", additions: 8, deletions: 0 },
+    { path: "Projects/Strategy/Deep/Sub.md", additions: 1, deletions: 0 },
+  ];
+
+  const show = async (settingsOverride: Record<string, unknown> = {}) => {
+    const h = await mount(screenshotStatus(), settingsOverride, IN_SYNC, {
+      showCommitFiles: async () => nestedFiles,
+    });
+    h.view.showCommitChanges(commit);
+    await flushAsync();
+    return h;
+  };
+
+  /** Scoped to the commit panel: the changes list has controls of its own. */
+  const panel = (view: { contentEl: HTMLElement }): HTMLElement =>
+    view.contentEl.querySelector(".gs-sg-changes-files") as HTMLElement;
+
+  const names = (view: { contentEl: HTMLElement }): (string | null)[] =>
+    Array.from(panel(view).querySelectorAll(".gs-sg-changes-file-name")).map(
+      (el) => el.textContent,
+    );
+
+  const dirs = (view: { contentEl: HTMLElement }): (string | null)[] =>
+    Array.from(panel(view).querySelectorAll(".gs-tree-dirname")).map((el) => el.textContent);
+
+  const press = (el: Element | null | undefined): void => {
+    el?.dispatchEvent(new MouseEvent("click", { bubbles: true }));
+    flushFrames();
+  };
+
+  const btn = (view: { contentEl: HTMLElement }, label: string): HTMLElement | null =>
+    panel(view).querySelector(`button[aria-label="${label}"]`);
+
+  beforeEach(() => {
+    vaultFiles.clear();
+    openedFiles.length = 0;
+  });
+
+  it("nests the files under their folders in the tree layout", async () => {
+    const { view } = await show({ compactFolders: false });
+    expect(dirs(view)).toEqual(["folder", "Projects", "Strategy", "Deep"]);
+    // Each row carries only its own name; the folder above it says the rest.
+    expect(names(view)).toContain("Nested.md");
+    expect(names(view)).not.toContain("folder/Nested.md");
+  });
+
+  it("shows every file at once with its full path in the list layout", async () => {
+    const { view } = await show({ fileListMode: "list" });
+    expect(dirs(view)).toEqual([]);
+    // Sorted by path, the way the flat changes list sorts.
+    expect(names(view)).toEqual([
+      "folder/Nested.md",
+      "Note.md",
+      "Projects/Strategy/Deep/Sub.md",
+      "Projects/Strategy/Plan.md",
+    ]);
+  });
+
+  it("arrives with every folder open, so a commit never hides its files", async () => {
+    const { view } = await show({ compactFolders: false });
+    expect(names(view)).toHaveLength(nestedFiles.length);
+    expect(btn(view, "Collapse all folders")).not.toBeNull();
+  });
+
+  it("switches layout from its own toolbar", async () => {
+    const { view } = await show();
+    press(btn(view, "View as list"));
+    expect(dirs(view)).toEqual([]);
+    press(btn(view, "View as tree"));
+    expect(dirs(view).length).toBeGreaterThan(0);
+  });
+
+  it("closes and reopens every folder from the toolbar", async () => {
+    const { view } = await show({ compactFolders: false });
+    press(btn(view, "Collapse all folders"));
+    expect(names(view)).toEqual(["Note.md"]);
+    expect(dirs(view)).toEqual(["folder", "Projects"]);
+
+    press(btn(view, "Expand all folders"));
+    expect(names(view)).toHaveLength(nestedFiles.length);
+  });
+
+  it("folds one folder and everything under it, at any depth", async () => {
+    const { view } = await show({ compactFolders: false });
+    const strategy = Array.from(panel(view).querySelectorAll(".gs-tree-dir")).find(
+      (row) => row.querySelector(".gs-tree-dirname")?.textContent === "Strategy",
+    );
+    press(strategy?.querySelector('button[aria-label="Collapse all in folder"]'));
+
+    // "Strategy" stays on screen but is shut, taking the "Deep" folder and
+    // both files under it with it; everything outside is untouched.
+    expect(dirs(view)).toEqual(["folder", "Projects", "Strategy"]);
+    expect(names(view)).toEqual(["Note.md", "Nested.md"]);
+  });
+
+  it("leaves the fold control off a folder that holds nothing but files", async () => {
+    const { view } = await show({ compactFolders: false });
+    const folder = Array.from(panel(view).querySelectorAll(".gs-tree-dir")).find(
+      (row) => row.querySelector(".gs-tree-dirname")?.textContent === "folder",
+    );
+    expect(folder?.querySelector('button[aria-label*="in folder"]')).toBeNull();
+  });
+
+  it("offers nothing to fold while the list is flat", async () => {
+    const { view } = await show({ fileListMode: "list" });
+    const fold = btn(view, "Expand all folders") ?? btn(view, "Collapse all folders");
+    expect(fold?.classList.contains("gs-hidden")).toBe(true);
+  });
+
+  it("folds single-child chains like the changes list does", async () => {
+    const { view } = await show();
+    expect(dirs(view)).toContain("Projects/Strategy");
+  });
+
+  it("keeps opening a file working through the tree", async () => {
+    vaultFiles.add("folder/Nested.md");
+    const { view } = await show({ compactFolders: false });
+    const row = Array.from(panel(view).querySelectorAll(".gs-sg-changes-file-row")).find(
+      (r) => r.querySelector(".gs-sg-changes-file-name")?.textContent === "Nested.md",
+    );
+    press(row);
+    await flushAsync();
+    expect(openedFiles).toEqual(["folder/Nested.md"]);
+  });
+
+  it("keeps the diff stats on the row in either layout", async () => {
+    const { view } = await show();
+    const stats = Array.from(panel(view).querySelectorAll(".gs-stat-add")).map(
+      (el) => el.textContent,
+    );
+    expect(stats).toContain("+8");
+  });
+
+  it("shares the layout with the changes list, so one preference covers both", async () => {
+    const { view, settings } = await show();
+    press(btn(view, "View as list"));
+    expect(settings.fileListMode).toBe("list");
+    // The changes list follows along rather than keeping a second opinion.
+    expect(view.contentEl.querySelectorAll(".gs-sc-tree .gs-tree-dir")).toHaveLength(0);
+  });
+});

@@ -1451,12 +1451,32 @@
   padding: 4px 0;
 }
 .gs-sg-changes-summary {
-  padding: 6px 10px;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 4px 8px 4px 10px;
+  min-height: 26px;
   font-size: 11px;
   font-weight: 600;
   color: var(--gs-text-muted);
   letter-spacing: 0.3px;
   border-bottom: 1px solid var(--gs-border);
+}
+
+.gs-sg-changes-summary-text {
+  flex: 1;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+/* The folder rows of a commit's tree reuse the changes list's own rows, so the
+   two trees look and behave the same; only the row height is nudged to sit
+   with the slightly roomier file rows here. */
+.gs-sg-changes-list .gs-tree-dir {
+  margin: 0 4px;
+  border-radius: 4px;
 }
 .gs-sg-changes-file-row {
   display: flex;
@@ -1466,7 +1486,7 @@
   margin: 2px 4px;
   border-radius: 4px;
   cursor: pointer;
-  font-size: 12px;
+  font-size: 13px;
   color: var(--gs-text);
   transition: background 0.15s ease;
 }
@@ -1481,6 +1501,10 @@
   color: var(--gs-text-faint);
   font-weight: 400;
 }
+.gs-sg-changes-file-row .gs-tree-file-icon {
+  flex-shrink: 0;
+}
+
 .gs-sg-changes-file-name {
   flex: 1;
   min-width: 0;

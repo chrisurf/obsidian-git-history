@@ -68,6 +68,8 @@ The history of your vault as a timeline.
 - Every commit with its author, date, and how much changed
 - Branches and merges drawn as coloured lanes
 - Click a commit to expand it and see what it contained
+- Read a commit's files as a folder tree or a flat list, with the same folding
+  controls as the changes list
 - Search by message, author, or commit ID
 
 A compact version lives in the sidebar, so you can glance at recent commits

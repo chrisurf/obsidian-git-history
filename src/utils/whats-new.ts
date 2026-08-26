@@ -63,6 +63,11 @@ Folding the changes list was all-or-nothing from the toolbar. Every folder in
 the tree carries the same control now: hover a folder and press it to open or
 close that folder and every level below it, however deep it goes.
 
+A commit's file list has the same two layouts and the same controls. Switch it
+between a folder tree and a flat list from the toolbar above the files, and
+fold a branch of it the same way — useful on a commit that touched a lot of
+notes across a lot of folders.
+
 ## 🌱 Start without a terminal
 
 No Git repository in your vault yet? The source control panel now offers to

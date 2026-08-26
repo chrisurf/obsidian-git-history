@@ -87,3 +87,17 @@ describe("styles.css — the progress bar", () => {
     expect(reduced?.[1]).toMatch(/width\s*:\s*100%/);
   });
 });
+
+describe("styles.css — file rows read the same in both lists", () => {
+  /**
+   * A commit's files used to be a step smaller than the changes list's, which
+   * made the same note look like a lesser thing depending on which list it was
+   * read in.
+   */
+  it("sizes a commit's file rows like the changes list's", () => {
+    const changes = ruleBody(".gs-tree-file").match(/font-size:\s*([^;]+)/)?.[1];
+    const commit = ruleBody(".gs-sg-changes-file-row").match(/font-size:\s*([^;]+)/)?.[1];
+    expect(changes).toBeTruthy();
+    expect(commit).toBe(changes);
+  });
+});
