@@ -1810,12 +1810,25 @@
   margin-top: 4px;
 }
 
+/* The header carries the layout controls on its right, so it is a row now. */
 .gs-sg-detail-files-header {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  min-height: 24px;
+  margin-bottom: 2px;
+}
+
+.gs-sg-detail-files-count {
+  flex: 1;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
   font-size: 10px;
   font-weight: 600;
   color: var(--gs-text-faint);
   text-transform: uppercase;
-  margin-bottom: 4px;
 }
 
 .gs-sg-detail-file {
@@ -1843,15 +1856,26 @@
   color: var(--gs-accent);
 }
 
+/* Same size and colour as the changes list. It was 11px muted monospace, which
+   made the same note look like a lesser thing depending on which list it was
+   read in — and small enough to be hard work to scan. */
 .gs-sg-detail-filename {
-  font-family: var(--gs-mono);
-  font-size: 11px;
-  color: var(--gs-text-muted);
+  font-size: 13px;
+  color: var(--gs-text);
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
   flex: 1;
   min-width: 0;
+}
+
+.gs-sg-detail-file .gs-tree-file-icon {
+  flex-shrink: 0;
+}
+
+/* Folder rows inside a commit detail sit in the same column as its files. */
+.gs-sg-detail-list .gs-tree-dir {
+  margin: 2px 0;
 }
 
 .gs-sg-detail-filestats {

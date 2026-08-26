@@ -13,6 +13,8 @@ import { computeGraphLayout, formatRelativeDate } from "../utils/graph-layout";
 import type GitHistoryPlugin from "../main";
 import { asVoid } from "../utils/async";
 import { buildFileTree, collectDirPaths, collectItems } from "../utils/file-tree";
+import { CommitFileList } from "./commit-file-list";
+import type { CommitFile } from "./commit-file-list";
 import type { TreeNode } from "../utils/file-tree";
 import { confirmChoice, promptText } from "../utils/prompt";
 import { resolveTemplate } from "../utils/template";
@@ -22,13 +24,6 @@ import { extensionOf, fileIcon, supportedFileFilter } from "../utils/file-types"
 import { couldHaveCurrentFile, openCurrentFile } from "../utils/vault-file";
 
 type FileTreeNode = TreeNode<FileStatus>;
-
-/** One entry of a commit's file list, as `git show --numstat` reports it. */
-interface CommitFile {
-  path: string;
-  additions: number;
-  deletions: number;
-}
 
 type SidebarTab = "changes" | "graph";
 type GraphSubTab = "graph" | "commit-changes";
@@ -83,16 +78,12 @@ export class SourceControlView extends ItemView {
   private graphSubGraphPanel: HTMLElement | null = null;
   private graphSubChangesPanel: HTMLElement | null = null;
   /**
-   * The file list of the commit currently on show, kept so the tree/list
-   * toggle and the folding controls can redraw it without fetching again.
+   * The two places a commit's files are listed: the Changes sub-tab, and the
+   * detail that opens inside the commit list. Each keeps its own folding, so
+   * closing a folder in one does not close it in the other.
    */
-  private commitFilesEl: HTMLElement | null = null;
-  private commitFiles: CommitFile[] = [];
-  private commitFilesHash = "";
-  private commitFoldBtn: HTMLElement | null = null;
-  private commitModeBtn: HTMLElement | null = null;
-  private commitDirPaths: string[] = [];
-  private commitExpandedDirs = new Set<string>();
+  private changesTabFiles: CommitFileList | null = null;
+  private detailFiles: CommitFileList | null = null;
   private selectedCommitForChanges: CommitInfo | null = null;
 
   constructor(leaf: WorkspaceLeaf, plugin: GitHistoryPlugin) {
@@ -895,10 +886,27 @@ export class SourceControlView extends ItemView {
     return this.plugin.settings.compactFolders !== false;
   }
 
-  /** Re-renders both file lists after the layout was changed elsewhere. */
+  /**
+   * A commit file list wired to this view: same layout setting, same layout
+   * button, and the row drawing left to the caller.
+   */
+  private newCommitFileList(
+    renderFile: (parent: HTMLElement, file: CommitFile, label: string, depth: number) => void,
+  ): CommitFileList {
+    return new CommitFileList({
+      mode: () => this.fileListMode,
+      compactFolders: () => this.compactFolders,
+      toggleMode: () =>
+        void this.plugin.setFileListMode(this.fileListMode === "tree" ? "list" : "tree"),
+      renderFile,
+    });
+  }
+
+  /** Re-renders every file list after the layout was changed elsewhere. */
   refreshFileList(): void {
     this.renderFiles();
-    this.renderCommitFileList();
+    this.changesTabFiles?.render();
+    this.detailFiles?.render();
   }
 
   private allFoldersExpanded(): boolean {
@@ -1606,166 +1614,17 @@ export class SourceControlView extends ItemView {
         hiddenEl.setAttribute("aria-label", "Files Obsidian cannot open, hidden by a setting");
       }
 
-      this.buildCommitFileToolbar(summaryEl);
-      this.loadCommitFiles(files, commit.hash);
-      this.commitFilesEl = filesContainer.createDiv("gs-sg-changes-list");
-      this.renderCommitFileList();
+      const list = this.newCommitFileList((parent, file, label, depth) =>
+        this.renderCommitFileRow(parent, file, commit.hash, label, depth),
+      );
+      list.buildToolbar(summaryEl);
+      list.setFiles(files, commit.hash);
+      list.mount(filesContainer, "gs-sg-changes-list");
+      list.render();
+      this.changesTabFiles = list;
     } catch {
       filesContainer.empty();
       filesContainer.createDiv("gs-sg-changes-empty").setText("Could not load changes");
-    }
-  }
-
-  /**
-   * The tree/list toggle and the folding control for a commit's file list, in
-   * the summary line above it. Same two controls, same icons and same
-   * vocabulary as the changes list, because it is the same question being
-   * asked about a different set of files.
-   */
-  private buildCommitFileToolbar(parent: HTMLElement): void {
-    const actions = parent.createDiv("gs-sc-list-actions");
-
-    const foldBtn = actions.createEl("button", { cls: "gs-icon-btn gs-icon-btn-sm" });
-    foldBtn.addEventListener("click", () => this.toggleAllCommitFolders());
-    this.commitFoldBtn = foldBtn;
-
-    const modeBtn = actions.createEl("button", { cls: "gs-icon-btn gs-icon-btn-sm" });
-    modeBtn.addEventListener(
-      "click",
-      asVoid(async () => {
-        await this.plugin.setFileListMode(this.fileListMode === "tree" ? "list" : "tree");
-      }),
-    );
-    this.commitModeBtn = modeBtn;
-  }
-
-  /**
-   * Takes on a commit's files.
-   *
-   * A newly opened commit starts with every folder open: the list was flat
-   * before this, and arriving at a commit to find its files hidden behind
-   * folders would be a worse answer to "what changed here". Re-rendering the
-   * same commit leaves the folding alone, so a refresh does not undo it.
-   */
-  private loadCommitFiles(files: CommitFile[], hash: string): void {
-    this.commitFiles = files;
-    this.commitDirPaths = collectDirPaths(buildFileTree(files, (f) => f.path, this.compactFolders));
-    if (this.commitFilesHash !== hash) {
-      this.commitFilesHash = hash;
-      this.commitExpandedDirs = new Set(this.commitDirPaths);
-    }
-  }
-
-  private allCommitFoldersExpanded(): boolean {
-    return (
-      this.commitDirPaths.length > 0 &&
-      this.commitDirPaths.every((p) => this.commitExpandedDirs.has(p))
-    );
-  }
-
-  private toggleAllCommitFolders(): void {
-    const expand = !this.allCommitFoldersExpanded();
-    for (const path of this.commitDirPaths) {
-      if (expand) this.commitExpandedDirs.add(path);
-      else this.commitExpandedDirs.delete(path);
-    }
-    this.renderCommitFileList();
-  }
-
-  private updateCommitFileToolbar(): void {
-    const mode = this.fileListMode;
-
-    if (this.commitModeBtn) {
-      const toTree = mode === "list";
-      setIcon(this.commitModeBtn, toTree ? "list-tree" : "list");
-      this.commitModeBtn.setAttribute("aria-label", toTree ? "View as tree" : "View as list");
-    }
-
-    const foldBtn = this.commitFoldBtn;
-    if (!foldBtn) return;
-    const expanded = this.allCommitFoldersExpanded();
-    setIcon(foldBtn, expanded ? "fold-vertical" : "unfold-vertical");
-    foldBtn.setAttribute("aria-label", expanded ? "Collapse all folders" : "Expand all folders");
-    // Nothing to fold in a flat list, nor in a commit that touched no folder.
-    foldBtn.toggleClass("gs-hidden", mode !== "tree" || this.commitDirPaths.length === 0);
-  }
-
-  /** Redraws a commit's file list in whichever layout is set. */
-  private renderCommitFileList(): void {
-    const el = this.commitFilesEl;
-    if (!el) return;
-    el.empty();
-    this.updateCommitFileToolbar();
-
-    const hash = this.commitFilesHash;
-    if (this.fileListMode === "list") {
-      // Sorted by full path, so files from the same folder stay together even
-      // where the layout does not draw the folder.
-      const sorted = [...this.commitFiles].sort((a, b) => a.path.localeCompare(b.path));
-      for (const file of sorted) this.renderCommitFileRow(el, file, hash, file.path, 0);
-      return;
-    }
-
-    const tree = buildFileTree(this.commitFiles, (f) => f.path, this.compactFolders);
-    this.renderCommitTree(el, tree, hash, 0);
-  }
-
-  private renderCommitTree(
-    parent: HTMLElement,
-    nodes: TreeNode<CommitFile>[],
-    hash: string,
-    depth: number,
-  ): void {
-    for (const node of nodes) {
-      if (!node.isDir) {
-        // The folder is drawn above it, so the row carries only the name.
-        if (node.item) this.renderCommitFileRow(parent, node.item, hash, node.name, depth);
-        continue;
-      }
-
-      const expanded = this.commitExpandedDirs.has(node.path);
-      const dirRow = parent.createDiv("gs-tree-dir");
-      dirRow.style.paddingLeft = depth * 16 + 8 + "px";
-
-      const chevron = dirRow.createSpan("gs-tree-chevron");
-      setIcon(chevron, expanded ? "chevron-down" : "chevron-right");
-
-      const folderIcon = dirRow.createSpan("gs-tree-folder-icon");
-      setIcon(folderIcon, expanded ? "folder-open" : "folder");
-
-      dirRow.createSpan("gs-tree-dirname").setText(node.name);
-
-      const dirRight = dirRow.createDiv("gs-tree-dir-right");
-      const dirActions = dirRight.createDiv("gs-tree-dir-actions");
-
-      const nestedDirs = collectDirPaths(node.children);
-      if (nestedDirs.length > 0) {
-        const openAll = expanded && nestedDirs.every((p) => this.commitExpandedDirs.has(p));
-        const subtreeBtn = dirActions.createEl("button", { cls: "gs-action-btn" });
-        setIcon(subtreeBtn, openAll ? "fold-vertical" : "unfold-vertical");
-        subtreeBtn.setAttribute(
-          "aria-label",
-          openAll ? "Collapse all in folder" : "Expand all in folder",
-        );
-        subtreeBtn.addEventListener("click", (e) => {
-          e.stopPropagation();
-          for (const path of [node.path, ...nestedDirs]) {
-            if (openAll) this.commitExpandedDirs.delete(path);
-            else this.commitExpandedDirs.add(path);
-          }
-          this.renderCommitFileList();
-        });
-      }
-
-      if (dirActions.childElementCount > 0) dirRight.createSpan("gs-tree-dir-dot");
-
-      dirRow.addEventListener("click", () => {
-        if (expanded) this.commitExpandedDirs.delete(node.path);
-        else this.commitExpandedDirs.add(node.path);
-        this.renderCommitFileList();
-      });
-
-      if (expanded) this.renderCommitTree(parent, node.children, hash, depth + 1);
     }
   }
 
@@ -1795,7 +1654,7 @@ export class SourceControlView extends ItemView {
     this.addCommitFileActions(fileRow, file.path, hash);
 
     fileRow.addEventListener("click", () => {
-      this.commitFilesEl
+      fileRow.parentElement
         ?.querySelectorAll(".gs-sg-changes-file-row")
         .forEach((el) => el.removeClass("is-active"));
       fileRow.addClass("is-active");
@@ -2024,7 +1883,10 @@ export class SourceControlView extends ItemView {
     const prevSelected = this.graphListEl.querySelector(".gs-sg-row-selected");
 
     if (prevSelected) prevSelected.removeClass("gs-sg-row-selected");
-    if (prevDetail) prevDetail.remove();
+    if (prevDetail) {
+      prevDetail.remove();
+      this.detailFiles = null;
+    }
 
     if (this.graphSelectedHash === commit.hash) {
       this.graphSelectedHash = null;
@@ -2087,34 +1949,62 @@ export class SourceControlView extends ItemView {
       if (files.length === 0) return;
       const hidden = all.length - files.length;
       const filesEl = detail.createDiv("gs-sg-detail-files");
-      filesEl
-        .createDiv("gs-sg-detail-files-header")
+
+      const header = filesEl.createDiv("gs-sg-detail-files-header");
+      header
+        .createSpan("gs-sg-detail-files-count")
         .setText(
           `${files.length} file${files.length !== 1 ? "s" : ""} changed` +
             (hidden > 0 ? ` · ${hidden} hidden` : ""),
         );
-      for (const f of files) {
-        const fileRow = filesEl.createDiv("gs-sg-detail-file");
-        const name = fileRow.createSpan("gs-sg-detail-filename");
-        name.setText(f.path);
-        const stats = fileRow.createSpan("gs-sg-detail-filestats");
-        if (f.additions > 0) stats.createSpan("gs-stat-add").setText(`+${f.additions}`);
-        if (f.deletions > 0) stats.createSpan("gs-stat-del").setText(` -${f.deletions}`);
 
-        this.addCommitFileActions(fileRow, f.path, hash);
-
-        fileRow.addEventListener("click", (e) => {
-          e.stopPropagation();
-          filesEl
-            .querySelectorAll(".gs-sg-detail-file")
-            .forEach((el) => el.removeClass("is-active"));
-          fileRow.addClass("is-active");
-          void openCurrentFile(this.app, f.path, () => void this.plugin.openDiff(f.path, hash));
-        });
-      }
+      const list = this.newCommitFileList((parent, file, label, depth) =>
+        this.renderDetailFileRow(parent, file, hash, label, depth),
+      );
+      list.buildToolbar(header);
+      list.setFiles(files, hash);
+      list.mount(filesEl, "gs-sg-detail-list");
+      list.render();
+      this.detailFiles = list;
     } catch {
       // ignore
     }
+  }
+
+  private renderDetailFileRow(
+    parent: HTMLElement,
+    file: CommitFile,
+    hash: string,
+    label: string,
+    depth: number,
+  ): void {
+    const fileRow = parent.createDiv("gs-sg-detail-file");
+    fileRow.style.paddingLeft = depth * 16 + 8 + "px";
+
+    // The icon is what makes a nested file line up under the folder above it:
+    // one indent step is exactly the chevron a folder row carries and a file
+    // row does not, so the two names end up in the same column.
+    const iconEl = fileRow.createSpan("gs-tree-file-icon");
+    setIcon(iconEl, fileIcon(file.path));
+    iconEl.addClass(`gs-ext-${extensionOf(file.path) || "default"}`);
+
+    fileRow.createSpan("gs-sg-detail-filename").setText(label);
+
+    const stats = fileRow.createSpan("gs-sg-detail-filestats");
+    if (file.additions > 0) stats.createSpan("gs-stat-add").setText(`+${file.additions}`);
+    if (file.deletions > 0) stats.createSpan("gs-stat-del").setText(` -${file.deletions}`);
+
+    this.addCommitFileActions(fileRow, file.path, hash);
+
+    fileRow.addEventListener("click", (e) => {
+      // The detail sits inside the clickable commit row that opened it.
+      e.stopPropagation();
+      fileRow.parentElement
+        ?.querySelectorAll(".gs-sg-detail-file")
+        .forEach((el) => el.removeClass("is-active"));
+      fileRow.addClass("is-active");
+      void openCurrentFile(this.app, file.path, () => void this.plugin.openDiff(file.path, hash));
+    });
   }
 
   /**

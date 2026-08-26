@@ -1295,3 +1295,174 @@ describe("SourceControlView — a commit's file list layout", () => {
     expect(view.contentEl.querySelectorAll(".gs-sc-tree .gs-tree-dir")).toHaveLength(0);
   });
 });
+
+/**
+ * The file list that opens inside the commit list when a commit is clicked —
+ * the one that used to be a flat run of full paths in small grey monospace.
+ * It got the changes list's two layouts and both of its folding controls.
+ */
+describe("SourceControlView — the file list inside an opened commit", () => {
+  const commits = [
+    {
+      hash: "3cd96fa6556b26a1a5c9d0c435a56c7dcee61b8f",
+      shortHash: "3cd96fa",
+      parents: [],
+      message: "test",
+      body: "",
+      author: "Chris Oguntolu",
+      authorEmail: "chris@chrisurf.com",
+      date: new Date(2026, 7, 21),
+      refs: [],
+      stats: { filesChanged: 4, additions: 17, deletions: 0 },
+    },
+  ] as CommitInfo[];
+
+  const files = [
+    { path: "Note.md", additions: 4, deletions: 0 },
+    { path: "folder/Nested.md", additions: 4, deletions: 0 },
+    { path: "Projects/Strategy/Plan.md", additions: 8, deletions: 0 },
+    { path: "Projects/Strategy/Deep/Sub.md", additions: 1, deletions: 0 },
+  ];
+
+  const open = async (settingsOverride: Record<string, unknown> = {}) => {
+    const h = await mount(screenshotStatus(), settingsOverride, IN_SYNC, {
+      showCommitFiles: async () => files,
+    });
+    (h.git as unknown as { log: () => Promise<unknown> }).log = async () => commits;
+    (h.view as unknown as { switchTab: (t: string) => void }).switchTab("graph");
+    await h.store.refreshLog({ all: true, maxCount: 500 });
+    flushFrames();
+
+    const row = h.view.contentEl.querySelector(".gs-sg-row:not(.gs-sg-row-wc)") as HTMLElement;
+    row.dispatchEvent(new MouseEvent("click", { bubbles: true }));
+    await flushAsync();
+    return h;
+  };
+
+  /** Scoped to the opened commit: the other lists have controls of their own. */
+  const detail = (view: { contentEl: HTMLElement }): HTMLElement =>
+    view.contentEl.querySelector(".gs-sg-detail-files") as HTMLElement;
+
+  const names = (view: { contentEl: HTMLElement }): (string | null)[] =>
+    Array.from(detail(view).querySelectorAll(".gs-sg-detail-filename")).map((el) => el.textContent);
+
+  const dirs = (view: { contentEl: HTMLElement }): (string | null)[] =>
+    Array.from(detail(view).querySelectorAll(".gs-tree-dirname")).map((el) => el.textContent);
+
+  const btn = (view: { contentEl: HTMLElement }, label: string): HTMLElement | null =>
+    detail(view).querySelector(`button[aria-label="${label}"]`);
+
+  const press = (el: Element | null | undefined): void => {
+    el?.dispatchEvent(new MouseEvent("click", { bubbles: true }));
+    flushFrames();
+  };
+
+  beforeEach(() => {
+    vaultFiles.clear();
+    openedFiles.length = 0;
+  });
+
+  it("offers the layout toggle next to the file count", async () => {
+    const { view } = await open();
+    expect(btn(view, "View as list")).not.toBeNull();
+    expect(detail(view).querySelector(".gs-sg-detail-files-count")?.textContent).toBe(
+      "4 files changed",
+    );
+  });
+
+  it("nests the files under their folders", async () => {
+    const { view } = await open({ compactFolders: false });
+    expect(dirs(view)).toEqual(["folder", "Projects", "Strategy", "Deep"]);
+    expect(names(view)).toContain("Nested.md");
+    expect(names(view)).not.toContain("folder/Nested.md");
+  });
+
+  it("goes back to full paths in the list layout", async () => {
+    const { view } = await open({ fileListMode: "list" });
+    expect(dirs(view)).toEqual([]);
+    expect(names(view)).toEqual([
+      "folder/Nested.md",
+      "Note.md",
+      "Projects/Strategy/Deep/Sub.md",
+      "Projects/Strategy/Plan.md",
+    ]);
+  });
+
+  it("switches layout from its own toolbar", async () => {
+    const { view } = await open();
+    press(btn(view, "View as list"));
+    expect(dirs(view)).toEqual([]);
+    press(btn(view, "View as tree"));
+    expect(dirs(view).length).toBeGreaterThan(0);
+  });
+
+  it("opens with every folder expanded, hiding nothing that used to show", async () => {
+    const { view } = await open({ compactFolders: false });
+    expect(names(view)).toHaveLength(files.length);
+  });
+
+  it("closes and reopens every folder from the toolbar", async () => {
+    const { view } = await open({ compactFolders: false });
+    press(btn(view, "Collapse all folders"));
+    expect(names(view)).toEqual(["Note.md"]);
+    press(btn(view, "Expand all folders"));
+    expect(names(view)).toHaveLength(files.length);
+  });
+
+  it("folds one folder and everything under it, at any depth", async () => {
+    const { view } = await open({ compactFolders: false });
+    const strategy = Array.from(detail(view).querySelectorAll(".gs-tree-dir")).find(
+      (row) => row.querySelector(".gs-tree-dirname")?.textContent === "Strategy",
+    );
+    press(strategy?.querySelector('button[aria-label="Collapse all in folder"]'));
+    expect(dirs(view)).toEqual(["folder", "Projects", "Strategy"]);
+    expect(names(view)).toEqual(["Note.md", "Nested.md"]);
+  });
+
+  it("does not collapse the commit when a folder inside it is clicked", async () => {
+    const { view } = await open({ compactFolders: false });
+    const folder = Array.from(detail(view).querySelectorAll(".gs-tree-dir")).find(
+      (row) => row.querySelector(".gs-tree-dirname")?.textContent === "folder",
+    );
+    press(folder);
+    // The detail is still open; only the folder shut.
+    expect(view.contentEl.querySelector(".gs-sg-detail")).not.toBeNull();
+    expect(names(view)).not.toContain("Nested.md");
+  });
+
+  it("keeps opening a file working through the tree", async () => {
+    vaultFiles.add("folder/Nested.md");
+    const { view } = await open({ compactFolders: false });
+    const row = Array.from(detail(view).querySelectorAll(".gs-sg-detail-file")).find(
+      (r) => r.querySelector(".gs-sg-detail-filename")?.textContent === "Nested.md",
+    );
+    press(row);
+    await flushAsync();
+    expect(openedFiles).toEqual(["folder/Nested.md"]);
+  });
+
+  it("keeps each file's stats on its row", async () => {
+    const { view } = await open();
+    const adds = Array.from(detail(view).querySelectorAll(".gs-stat-add")).map(
+      (el) => el.textContent,
+    );
+    expect(adds).toContain("+8");
+  });
+
+  it("folds single-child chains like the changes list does", async () => {
+    const { view } = await open();
+    expect(dirs(view)).toContain("Projects/Strategy");
+  });
+
+  it("keeps its folding to itself, apart from the Changes sub-tab's list", async () => {
+    const { view } = await open({ compactFolders: false });
+    press(btn(view, "Collapse all folders"));
+    expect(names(view)).toEqual(["Note.md"]);
+
+    // The same commit, opened in the other list, is untouched by that.
+    view.showCommitChanges(commits[0]);
+    await flushAsync();
+    const other = view.contentEl.querySelector(".gs-sg-changes-files") as HTMLElement;
+    expect(other.querySelectorAll(".gs-sg-changes-file-name")).toHaveLength(files.length);
+  });
+});
