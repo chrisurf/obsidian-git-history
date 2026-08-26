@@ -55,6 +55,7 @@ Your changed notes, grouped and ready to commit.
 
 - See at a glance which notes changed, and by how much
 - Stage individual notes, whole folders, or everything at once
+- Open or close a folder and everything under it in one click, at any depth
 - Commit with a message, amend the last one, or commit and push in one step
 - Pull, push, fetch and stash from the toolbar, with progress while they run
 - Switch or create branches

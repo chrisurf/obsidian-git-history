@@ -57,6 +57,12 @@ You do not need it for anything else in the plugin — every button still does
 its own work. Pick the shell yourself under **Terminal shell** in the settings
 if the automatic one is not the one you want.
 
+## 🗂️ Open a whole branch of the tree at once
+
+Folding the changes list was all-or-nothing from the toolbar. Every folder in
+the tree carries the same control now: hover a folder and press it to open or
+close that folder and every level below it, however deep it goes.
+
 ## 🌱 Start without a terminal
 
 No Git repository in your vault yet? The source control panel now offers to

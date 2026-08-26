@@ -957,6 +957,128 @@ describe("SourceControlView — changes layout", () => {
 });
 
 /**
+ * Folding used to be all-or-nothing from the toolbar. Every folder carries the
+ * same control now, so a deep tree can be opened one branch at a time instead
+ * of clicking down through it level by level.
+ */
+describe("SourceControlView — folding a single folder", () => {
+  const deep = (): FileStatus[] =>
+    [
+      {
+        path: ".obsidian/plugins/history/main.js",
+        indexStatus: ".",
+        workingStatus: "M",
+        staged: false,
+      },
+      {
+        path: ".obsidian/themes/Github/theme.css",
+        indexStatus: ".",
+        workingStatus: "M",
+        staged: false,
+      },
+      { path: "Notes/todo.md", indexStatus: ".", workingStatus: "M", staged: false },
+    ] as FileStatus[];
+
+  const rows = (view: { contentEl: HTMLElement }, sel: string): HTMLElement[] =>
+    Array.from(view.contentEl.querySelectorAll(sel));
+
+  const click = (el: Element | null | undefined): void => {
+    el?.dispatchEvent(new MouseEvent("click", { bubbles: true }));
+    flushFrames();
+  };
+
+  const dirNames = (view: { contentEl: HTMLElement }): (string | null)[] =>
+    rows(view, ".gs-tree-dirname").map((el) => el.textContent);
+
+  it("offers the control on a folder that has folders inside it", async () => {
+    const { view } = await mount(deep(), { compactFolders: false });
+    expect(findButton(view.contentEl, "Expand all in folder")).not.toBeNull();
+  });
+
+  it("leaves it off a folder that holds nothing but files", async () => {
+    const { view } = await mount([
+      { path: "Notes/todo.md", indexStatus: ".", workingStatus: "M", staged: false },
+    ] as FileStatus[]);
+    // "Notes" is the only folder and has no folder inside it — its chevron
+    // already does everything a fold button could.
+    expect(dirNames(view)).toEqual(["Notes"]);
+    expect(findButton(view.contentEl, "Expand all in folder")).toBeNull();
+  });
+
+  it("opens every level below the folder in one click", async () => {
+    const { view } = await mount(deep(), { compactFolders: false });
+    expect(rows(view, ".gs-tree-file")).toHaveLength(0);
+
+    click(findButton(view.contentEl, "Expand all in folder"));
+
+    // .obsidian and all four folders below it, plus both their files — while
+    // the unrelated "Notes" folder stays shut.
+    expect(dirNames(view)).toEqual([
+      ".obsidian",
+      "plugins",
+      "history",
+      "themes",
+      "Github",
+      "Notes",
+    ]);
+    expect(rows(view, ".gs-tree-filename").map((el) => el.textContent)).toEqual([
+      "main.js",
+      "theme.css",
+    ]);
+  });
+
+  it("closes the whole subtree again from the same control", async () => {
+    const { view } = await mount(deep(), { compactFolders: false });
+    click(findButton(view.contentEl, "Expand all in folder"));
+    click(findButton(view.contentEl, "Collapse all in folder"));
+
+    expect(dirNames(view)).toEqual([".obsidian", "Notes"]);
+    expect(rows(view, ".gs-tree-file")).toHaveLength(0);
+  });
+
+  it("names what the click will do, not what the folder is", async () => {
+    const { view } = await mount(deep(), { compactFolders: false });
+    expect(findButton(view.contentEl, "Collapse all in folder")).toBeNull();
+    click(findButton(view.contentEl, "Expand all in folder"));
+    expect(findButton(view.contentEl, "Collapse all in folder")).not.toBeNull();
+  });
+
+  it("reaches a level the toolbar button cannot reach on its own", async () => {
+    const { view } = await mount(deep(), { compactFolders: false });
+    click(findButton(view.contentEl, "Expand all in folder"));
+
+    // "themes" is now on screen and carries a control of its own, one level
+    // deeper than the row that was clicked.
+    const themes = rows(view, ".gs-tree-dir").find(
+      (row) => row.querySelector(".gs-tree-dirname")?.textContent === "themes",
+    );
+    expect(themes?.querySelector('[aria-label="Collapse all in folder"]')).not.toBeNull();
+  });
+
+  it("folds only the folder it belongs to", async () => {
+    const { view } = await mount(deep(), { compactFolders: false });
+    click(findButton(view.contentEl, "Expand all"));
+    expect(rows(view, ".gs-tree-file")).toHaveLength(3);
+
+    const obsidian = rows(view, ".gs-tree-dir").find(
+      (row) => row.querySelector(".gs-tree-dirname")?.textContent === ".obsidian",
+    );
+    click(obsidian?.querySelector('[aria-label="Collapse all in folder"]'));
+
+    // Only todo.md is left: the other two live under the folder that was shut.
+    expect(rows(view, ".gs-tree-filename").map((el) => el.textContent)).toEqual(["todo.md"]);
+  });
+
+  it("does not also toggle the row it sits on", async () => {
+    const { view } = await mount(deep(), { compactFolders: false });
+    // A click that reached the row handler as well would undo itself and leave
+    // the subtree shut.
+    click(findButton(view.contentEl, "Expand all in folder"));
+    expect(dirNames(view)).toContain("plugins");
+  });
+});
+
+/**
  * The primary button carries whatever step is actually next. It used to be a
  * Commit button in every state, lit up by nothing more than text in the message
  * field — including on a clean tree, where its only answer was a notice.

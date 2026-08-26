@@ -1048,6 +1048,22 @@ export class SourceControlView extends ItemView {
     this.renderTree(treeEl, tree, group, 0);
   }
 
+  /**
+   * Opens or closes a folder together with everything nested inside it.
+   *
+   * The folder moves with its subtree rather than staying open: a "collapse"
+   * that left the row open would leave a state indistinguishable from never
+   * having opened the levels below it, and the row's own chevron is already
+   * there for folding a single level.
+   */
+  private setSubtreeExpanded(node: FileTreeNode, nested: string[], expand: boolean): void {
+    for (const path of [node.path, ...nested]) {
+      if (expand) this.expandedDirs.add(path);
+      else this.expandedDirs.delete(path);
+    }
+    this.renderFiles();
+  }
+
   private collectDirPaths(nodes: FileTreeNode[]): string[] {
     const paths: string[] = [];
     for (const n of nodes) {
@@ -1163,6 +1179,25 @@ export class SourceControlView extends ItemView {
 
         const dirRight = dirRow.createDiv("gs-tree-dir-right");
         const dirActions = dirRight.createDiv("gs-tree-dir-actions");
+
+        // Folding the whole subtree, the way the toolbar button does it for the
+        // list as a whole. Only offered where there is something nested to
+        // fold: for a folder holding nothing but files the row's own chevron
+        // already does everything this button could.
+        const nestedDirs = this.collectDirPaths(node.children);
+        if (nestedDirs.length > 0) {
+          const openAll = node.expanded && nestedDirs.every((p) => this.expandedDirs.has(p));
+          const subtreeBtn = dirActions.createEl("button", { cls: "gs-action-btn" });
+          setIcon(subtreeBtn, openAll ? "fold-vertical" : "unfold-vertical");
+          subtreeBtn.setAttribute(
+            "aria-label",
+            openAll ? "Collapse all in folder" : "Expand all in folder",
+          );
+          subtreeBtn.addEventListener("click", (e) => {
+            e.stopPropagation();
+            this.setSubtreeExpanded(node, nestedDirs, !openAll);
+          });
+        }
 
         if (group === "changed") {
           {
