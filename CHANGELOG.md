@@ -1,3 +1,10 @@
+# [1.7.0](https://github.com/chrisurf/obsidian-git-history/compare/1.6.0...1.7.0) (2026-08-26)
+
+
+### Features
+
+* Terminal session markers, folding file trees, and a settings tidy ([#19](https://github.com/chrisurf/obsidian-git-history/issues/19)) ([b02f161](https://github.com/chrisurf/obsidian-git-history/commit/b02f161d0d621aae1317c6d37f3cb788ac9d4ea5))
+
 # [1.6.0](https://github.com/chrisurf/obsidian-git-history/compare/1.5.0...1.6.0) (2026-08-25)
 
 
