@@ -1287,6 +1287,16 @@ describe("SourceControlView — a commit's file list layout", () => {
     expect(stats).toContain("+8");
   });
 
+  it("puts the stats last in the row here too, so the two lists stay alike", async () => {
+    const { view } = await show();
+    const row = panel(view).querySelector(".gs-sg-changes-file-row") as HTMLElement;
+    const classes = Array.from(row.children).map((el) => el.className);
+    expect(classes.indexOf("gs-sg-changes-file-stats")).toBe(classes.length - 1);
+    expect(classes.indexOf("gs-cf-actions")).toBeLessThan(
+      classes.indexOf("gs-sg-changes-file-stats"),
+    );
+  });
+
   it("shares the layout with the changes list, so one preference covers both", async () => {
     const { view, settings } = await show();
     press(btn(view, "View as list"));
@@ -1447,6 +1457,21 @@ describe("SourceControlView — the file list inside an opened commit", () => {
       (el) => el.textContent,
     );
     expect(adds).toContain("+8");
+  });
+
+  /**
+   * The stats sit at the right edge of the row, past the action buttons, so
+   * they read as a column down the list rather than jumping in and out from
+   * behind the buttons.
+   */
+  it("puts the stats last in the row, after the action buttons", async () => {
+    const { view } = await open();
+    const row = detail(view).querySelector(".gs-sg-detail-file") as HTMLElement;
+    const classes = Array.from(row.children).map((el) => el.className);
+    expect(classes.indexOf("gs-sg-detail-filestats")).toBe(classes.length - 1);
+    expect(classes.indexOf("gs-cf-actions")).toBeLessThan(
+      classes.indexOf("gs-sg-detail-filestats"),
+    );
   });
 
   it("folds single-child chains like the changes list does", async () => {

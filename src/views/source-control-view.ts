@@ -1647,11 +1647,12 @@ export class SourceControlView extends ItemView {
 
     fileRow.createSpan("gs-sg-changes-file-name").setText(label);
 
+    // Same order as the list inside an opened commit: actions, then stats.
+    this.addCommitFileActions(fileRow, file.path, hash);
+
     const fileStats = fileRow.createSpan("gs-sg-changes-file-stats");
     if (file.additions > 0) fileStats.createSpan("gs-stat-add").setText(`+${file.additions}`);
     if (file.deletions > 0) fileStats.createSpan("gs-stat-del").setText(` -${file.deletions}`);
-
-    this.addCommitFileActions(fileRow, file.path, hash);
 
     fileRow.addEventListener("click", () => {
       fileRow.parentElement
@@ -1990,11 +1991,14 @@ export class SourceControlView extends ItemView {
 
     fileRow.createSpan("gs-sg-detail-filename").setText(label);
 
+    // Actions first, stats last: the stats belong at the edge of the row where
+    // the eye can run down them as a column. The buttons hold their width even
+    // while invisible, so the numbers do not shift when a row is hovered.
+    this.addCommitFileActions(fileRow, file.path, hash);
+
     const stats = fileRow.createSpan("gs-sg-detail-filestats");
     if (file.additions > 0) stats.createSpan("gs-stat-add").setText(`+${file.additions}`);
     if (file.deletions > 0) stats.createSpan("gs-stat-del").setText(` -${file.deletions}`);
-
-    this.addCommitFileActions(fileRow, file.path, hash);
 
     fileRow.addEventListener("click", (e) => {
       // The detail sits inside the clickable commit row that opened it.
