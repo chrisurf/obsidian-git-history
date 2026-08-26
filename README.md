@@ -142,17 +142,29 @@ Available from Obsidian's command palette (`Ctrl/Cmd + P`).
 
 ## ⚙️ Settings
 
+The settings are split in two, matching the two halves of the plugin.
+
+### Source control
+
 | Setting | Default | What it does |
 | --- | --- | --- |
 | Commit message template | _(empty)_ | Message used by the one-step backup |
 | Pull strategy | merge | How downloaded commits are combined with yours |
-| Default diff view | side by side | Side by side, or one annotated text |
-| Auto-fetch | off | Check for new commits in the background |
+| Auto-fetch | off | Check remotes for new commits in the background |
 | Auto-fetch interval | 300s | How often to check |
-| Show status bar | on | Branch and change count in Obsidian's status bar |
+| Default diff view | side by side | Two columns side by side, or one annotated text |
+| Changes layout | tree | Files nested under their folders, or one flat row per file |
+| Compact folders | on | Fold folders holding a single subfolder into one row. Tree layout only |
+| Only list files Obsidian can open | on | Leave files no Obsidian view can render out of a commit's file list |
 | Show nested repositories | off | List folders that are repositories of their own. They cannot be committed together with the rest of the vault |
 | File watcher debounce | 1000ms | How long to wait after an edit before refreshing |
-| Terminal shell | _(auto-detect)_ | Path to the shell the Alpha terminal starts. Empty uses your system default |
+
+### Terminal
+
+| Setting | Default | What it does |
+| --- | --- | --- |
+| Shell | _(auto-detect)_ | Path to the shell the Alpha terminal starts. Empty uses your system default |
+| Colour new sessions | off | Hand every session you open the next free colour from the palette |
 
 ---
 
