@@ -957,6 +957,128 @@ describe("SourceControlView — changes layout", () => {
 });
 
 /**
+ * Folding used to be all-or-nothing from the toolbar. Every folder carries the
+ * same control now, so a deep tree can be opened one branch at a time instead
+ * of clicking down through it level by level.
+ */
+describe("SourceControlView — folding a single folder", () => {
+  const deep = (): FileStatus[] =>
+    [
+      {
+        path: ".obsidian/plugins/history/main.js",
+        indexStatus: ".",
+        workingStatus: "M",
+        staged: false,
+      },
+      {
+        path: ".obsidian/themes/Github/theme.css",
+        indexStatus: ".",
+        workingStatus: "M",
+        staged: false,
+      },
+      { path: "Notes/todo.md", indexStatus: ".", workingStatus: "M", staged: false },
+    ] as FileStatus[];
+
+  const rows = (view: { contentEl: HTMLElement }, sel: string): HTMLElement[] =>
+    Array.from(view.contentEl.querySelectorAll(sel));
+
+  const click = (el: Element | null | undefined): void => {
+    el?.dispatchEvent(new MouseEvent("click", { bubbles: true }));
+    flushFrames();
+  };
+
+  const dirNames = (view: { contentEl: HTMLElement }): (string | null)[] =>
+    rows(view, ".gs-tree-dirname").map((el) => el.textContent);
+
+  it("offers the control on a folder that has folders inside it", async () => {
+    const { view } = await mount(deep(), { compactFolders: false });
+    expect(findButton(view.contentEl, "Expand all in folder")).not.toBeNull();
+  });
+
+  it("leaves it off a folder that holds nothing but files", async () => {
+    const { view } = await mount([
+      { path: "Notes/todo.md", indexStatus: ".", workingStatus: "M", staged: false },
+    ] as FileStatus[]);
+    // "Notes" is the only folder and has no folder inside it — its chevron
+    // already does everything a fold button could.
+    expect(dirNames(view)).toEqual(["Notes"]);
+    expect(findButton(view.contentEl, "Expand all in folder")).toBeNull();
+  });
+
+  it("opens every level below the folder in one click", async () => {
+    const { view } = await mount(deep(), { compactFolders: false });
+    expect(rows(view, ".gs-tree-file")).toHaveLength(0);
+
+    click(findButton(view.contentEl, "Expand all in folder"));
+
+    // .obsidian and all four folders below it, plus both their files — while
+    // the unrelated "Notes" folder stays shut.
+    expect(dirNames(view)).toEqual([
+      ".obsidian",
+      "plugins",
+      "history",
+      "themes",
+      "Github",
+      "Notes",
+    ]);
+    expect(rows(view, ".gs-tree-filename").map((el) => el.textContent)).toEqual([
+      "main.js",
+      "theme.css",
+    ]);
+  });
+
+  it("closes the whole subtree again from the same control", async () => {
+    const { view } = await mount(deep(), { compactFolders: false });
+    click(findButton(view.contentEl, "Expand all in folder"));
+    click(findButton(view.contentEl, "Collapse all in folder"));
+
+    expect(dirNames(view)).toEqual([".obsidian", "Notes"]);
+    expect(rows(view, ".gs-tree-file")).toHaveLength(0);
+  });
+
+  it("names what the click will do, not what the folder is", async () => {
+    const { view } = await mount(deep(), { compactFolders: false });
+    expect(findButton(view.contentEl, "Collapse all in folder")).toBeNull();
+    click(findButton(view.contentEl, "Expand all in folder"));
+    expect(findButton(view.contentEl, "Collapse all in folder")).not.toBeNull();
+  });
+
+  it("reaches a level the toolbar button cannot reach on its own", async () => {
+    const { view } = await mount(deep(), { compactFolders: false });
+    click(findButton(view.contentEl, "Expand all in folder"));
+
+    // "themes" is now on screen and carries a control of its own, one level
+    // deeper than the row that was clicked.
+    const themes = rows(view, ".gs-tree-dir").find(
+      (row) => row.querySelector(".gs-tree-dirname")?.textContent === "themes",
+    );
+    expect(themes?.querySelector('[aria-label="Collapse all in folder"]')).not.toBeNull();
+  });
+
+  it("folds only the folder it belongs to", async () => {
+    const { view } = await mount(deep(), { compactFolders: false });
+    click(findButton(view.contentEl, "Expand all"));
+    expect(rows(view, ".gs-tree-file")).toHaveLength(3);
+
+    const obsidian = rows(view, ".gs-tree-dir").find(
+      (row) => row.querySelector(".gs-tree-dirname")?.textContent === ".obsidian",
+    );
+    click(obsidian?.querySelector('[aria-label="Collapse all in folder"]'));
+
+    // Only todo.md is left: the other two live under the folder that was shut.
+    expect(rows(view, ".gs-tree-filename").map((el) => el.textContent)).toEqual(["todo.md"]);
+  });
+
+  it("does not also toggle the row it sits on", async () => {
+    const { view } = await mount(deep(), { compactFolders: false });
+    // A click that reached the row handler as well would undo itself and leave
+    // the subtree shut.
+    click(findButton(view.contentEl, "Expand all in folder"));
+    expect(dirNames(view)).toContain("plugins");
+  });
+});
+
+/**
  * The primary button carries whatever step is actually next. It used to be a
  * Commit button in every state, lit up by nothing more than text in the message
  * field — including on a clean tree, where its only answer was a notice.
@@ -1008,5 +1130,364 @@ describe("SourceControlView — the primary button", () => {
     await store.refresh();
     flushFrames();
     expect(label(view)).toBe("Push (1)");
+  });
+});
+
+/**
+ * A commit's file list got the changes list's two layouts and its folding
+ * controls: the same question — how do these files belong together — asked
+ * about a different set of files, so it gets the same answer.
+ */
+describe("SourceControlView — a commit's file list layout", () => {
+  const commit = {
+    hash: "57ed234d9c221d077b5df7a53610e1726584b89c",
+    shortHash: "57ed234",
+    parents: [],
+    message: "Bestandsaufnahme",
+    body: "",
+    author: "Chris Oguntolu",
+    authorEmail: "chris@chrisurf.com",
+    date: new Date("2026-08-24T13:06:59Z"),
+    refs: [],
+  } as CommitInfo;
+
+  const nestedFiles = [
+    { path: "Note.md", additions: 4, deletions: 0 },
+    { path: "folder/Nested.md", additions: 4, deletions: 0 },
+    { path: "Projects/Strategy/Plan.md", additions: 8, deletions: 0 },
+    { path: "Projects/Strategy/Deep/Sub.md", additions: 1, deletions: 0 },
+  ];
+
+  const show = async (settingsOverride: Record<string, unknown> = {}) => {
+    const h = await mount(screenshotStatus(), settingsOverride, IN_SYNC, {
+      showCommitFiles: async () => nestedFiles,
+    });
+    h.view.showCommitChanges(commit);
+    await flushAsync();
+    return h;
+  };
+
+  /** Scoped to the commit panel: the changes list has controls of its own. */
+  const panel = (view: { contentEl: HTMLElement }): HTMLElement =>
+    view.contentEl.querySelector(".gs-sg-changes-files") as HTMLElement;
+
+  const names = (view: { contentEl: HTMLElement }): (string | null)[] =>
+    Array.from(panel(view).querySelectorAll(".gs-sg-changes-file-name")).map(
+      (el) => el.textContent,
+    );
+
+  const dirs = (view: { contentEl: HTMLElement }): (string | null)[] =>
+    Array.from(panel(view).querySelectorAll(".gs-tree-dirname")).map((el) => el.textContent);
+
+  const press = (el: Element | null | undefined): void => {
+    el?.dispatchEvent(new MouseEvent("click", { bubbles: true }));
+    flushFrames();
+  };
+
+  const btn = (view: { contentEl: HTMLElement }, label: string): HTMLElement | null =>
+    panel(view).querySelector(`button[aria-label="${label}"]`);
+
+  beforeEach(() => {
+    vaultFiles.clear();
+    openedFiles.length = 0;
+  });
+
+  it("nests the files under their folders in the tree layout", async () => {
+    const { view } = await show({ compactFolders: false });
+    expect(dirs(view)).toEqual(["folder", "Projects", "Strategy", "Deep"]);
+    // Each row carries only its own name; the folder above it says the rest.
+    expect(names(view)).toContain("Nested.md");
+    expect(names(view)).not.toContain("folder/Nested.md");
+  });
+
+  it("shows every file at once with its full path in the list layout", async () => {
+    const { view } = await show({ fileListMode: "list" });
+    expect(dirs(view)).toEqual([]);
+    // Sorted by path, the way the flat changes list sorts.
+    expect(names(view)).toEqual([
+      "folder/Nested.md",
+      "Note.md",
+      "Projects/Strategy/Deep/Sub.md",
+      "Projects/Strategy/Plan.md",
+    ]);
+  });
+
+  it("arrives with every folder open, so a commit never hides its files", async () => {
+    const { view } = await show({ compactFolders: false });
+    expect(names(view)).toHaveLength(nestedFiles.length);
+    expect(btn(view, "Collapse all folders")).not.toBeNull();
+  });
+
+  it("switches layout from its own toolbar", async () => {
+    const { view } = await show();
+    press(btn(view, "View as list"));
+    expect(dirs(view)).toEqual([]);
+    press(btn(view, "View as tree"));
+    expect(dirs(view).length).toBeGreaterThan(0);
+  });
+
+  it("closes and reopens every folder from the toolbar", async () => {
+    const { view } = await show({ compactFolders: false });
+    press(btn(view, "Collapse all folders"));
+    expect(names(view)).toEqual(["Note.md"]);
+    expect(dirs(view)).toEqual(["folder", "Projects"]);
+
+    press(btn(view, "Expand all folders"));
+    expect(names(view)).toHaveLength(nestedFiles.length);
+  });
+
+  it("folds one folder and everything under it, at any depth", async () => {
+    const { view } = await show({ compactFolders: false });
+    const strategy = Array.from(panel(view).querySelectorAll(".gs-tree-dir")).find(
+      (row) => row.querySelector(".gs-tree-dirname")?.textContent === "Strategy",
+    );
+    press(strategy?.querySelector('button[aria-label="Collapse all in folder"]'));
+
+    // "Strategy" stays on screen but is shut, taking the "Deep" folder and
+    // both files under it with it; everything outside is untouched.
+    expect(dirs(view)).toEqual(["folder", "Projects", "Strategy"]);
+    expect(names(view)).toEqual(["Note.md", "Nested.md"]);
+  });
+
+  it("leaves the fold control off a folder that holds nothing but files", async () => {
+    const { view } = await show({ compactFolders: false });
+    const folder = Array.from(panel(view).querySelectorAll(".gs-tree-dir")).find(
+      (row) => row.querySelector(".gs-tree-dirname")?.textContent === "folder",
+    );
+    expect(folder?.querySelector('button[aria-label*="in folder"]')).toBeNull();
+  });
+
+  it("offers nothing to fold while the list is flat", async () => {
+    const { view } = await show({ fileListMode: "list" });
+    const fold = btn(view, "Expand all folders") ?? btn(view, "Collapse all folders");
+    expect(fold?.classList.contains("gs-hidden")).toBe(true);
+  });
+
+  it("folds single-child chains like the changes list does", async () => {
+    const { view } = await show();
+    expect(dirs(view)).toContain("Projects/Strategy");
+  });
+
+  it("keeps opening a file working through the tree", async () => {
+    vaultFiles.add("folder/Nested.md");
+    const { view } = await show({ compactFolders: false });
+    const row = Array.from(panel(view).querySelectorAll(".gs-sg-changes-file-row")).find(
+      (r) => r.querySelector(".gs-sg-changes-file-name")?.textContent === "Nested.md",
+    );
+    press(row);
+    await flushAsync();
+    expect(openedFiles).toEqual(["folder/Nested.md"]);
+  });
+
+  it("keeps the diff stats on the row in either layout", async () => {
+    const { view } = await show();
+    const stats = Array.from(panel(view).querySelectorAll(".gs-stat-add")).map(
+      (el) => el.textContent,
+    );
+    expect(stats).toContain("+8");
+  });
+
+  it("puts the stats last in the row here too, so the two lists stay alike", async () => {
+    const { view } = await show();
+    const row = panel(view).querySelector(".gs-sg-changes-file-row") as HTMLElement;
+    const classes = Array.from(row.children).map((el) => el.className);
+    expect(classes.indexOf("gs-sg-changes-file-stats")).toBe(classes.length - 1);
+    expect(classes.indexOf("gs-cf-actions")).toBeLessThan(
+      classes.indexOf("gs-sg-changes-file-stats"),
+    );
+  });
+
+  it("shares the layout with the changes list, so one preference covers both", async () => {
+    const { view, settings } = await show();
+    press(btn(view, "View as list"));
+    expect(settings.fileListMode).toBe("list");
+    // The changes list follows along rather than keeping a second opinion.
+    expect(view.contentEl.querySelectorAll(".gs-sc-tree .gs-tree-dir")).toHaveLength(0);
+  });
+});
+
+/**
+ * The file list that opens inside the commit list when a commit is clicked —
+ * the one that used to be a flat run of full paths in small grey monospace.
+ * It got the changes list's two layouts and both of its folding controls.
+ */
+describe("SourceControlView — the file list inside an opened commit", () => {
+  const commits = [
+    {
+      hash: "3cd96fa6556b26a1a5c9d0c435a56c7dcee61b8f",
+      shortHash: "3cd96fa",
+      parents: [],
+      message: "test",
+      body: "",
+      author: "Chris Oguntolu",
+      authorEmail: "chris@chrisurf.com",
+      date: new Date(2026, 7, 21),
+      refs: [],
+      stats: { filesChanged: 4, additions: 17, deletions: 0 },
+    },
+  ] as CommitInfo[];
+
+  const files = [
+    { path: "Note.md", additions: 4, deletions: 0 },
+    { path: "folder/Nested.md", additions: 4, deletions: 0 },
+    { path: "Projects/Strategy/Plan.md", additions: 8, deletions: 0 },
+    { path: "Projects/Strategy/Deep/Sub.md", additions: 1, deletions: 0 },
+  ];
+
+  const open = async (settingsOverride: Record<string, unknown> = {}) => {
+    const h = await mount(screenshotStatus(), settingsOverride, IN_SYNC, {
+      showCommitFiles: async () => files,
+    });
+    (h.git as unknown as { log: () => Promise<unknown> }).log = async () => commits;
+    (h.view as unknown as { switchTab: (t: string) => void }).switchTab("graph");
+    await h.store.refreshLog({ all: true, maxCount: 500 });
+    flushFrames();
+
+    const row = h.view.contentEl.querySelector(".gs-sg-row:not(.gs-sg-row-wc)") as HTMLElement;
+    row.dispatchEvent(new MouseEvent("click", { bubbles: true }));
+    await flushAsync();
+    return h;
+  };
+
+  /** Scoped to the opened commit: the other lists have controls of their own. */
+  const detail = (view: { contentEl: HTMLElement }): HTMLElement =>
+    view.contentEl.querySelector(".gs-sg-detail-files") as HTMLElement;
+
+  const names = (view: { contentEl: HTMLElement }): (string | null)[] =>
+    Array.from(detail(view).querySelectorAll(".gs-sg-detail-filename")).map((el) => el.textContent);
+
+  const dirs = (view: { contentEl: HTMLElement }): (string | null)[] =>
+    Array.from(detail(view).querySelectorAll(".gs-tree-dirname")).map((el) => el.textContent);
+
+  const btn = (view: { contentEl: HTMLElement }, label: string): HTMLElement | null =>
+    detail(view).querySelector(`button[aria-label="${label}"]`);
+
+  const press = (el: Element | null | undefined): void => {
+    el?.dispatchEvent(new MouseEvent("click", { bubbles: true }));
+    flushFrames();
+  };
+
+  beforeEach(() => {
+    vaultFiles.clear();
+    openedFiles.length = 0;
+  });
+
+  it("offers the layout toggle next to the file count", async () => {
+    const { view } = await open();
+    expect(btn(view, "View as list")).not.toBeNull();
+    expect(detail(view).querySelector(".gs-sg-detail-files-count")?.textContent).toBe(
+      "4 files changed",
+    );
+  });
+
+  it("nests the files under their folders", async () => {
+    const { view } = await open({ compactFolders: false });
+    expect(dirs(view)).toEqual(["folder", "Projects", "Strategy", "Deep"]);
+    expect(names(view)).toContain("Nested.md");
+    expect(names(view)).not.toContain("folder/Nested.md");
+  });
+
+  it("goes back to full paths in the list layout", async () => {
+    const { view } = await open({ fileListMode: "list" });
+    expect(dirs(view)).toEqual([]);
+    expect(names(view)).toEqual([
+      "folder/Nested.md",
+      "Note.md",
+      "Projects/Strategy/Deep/Sub.md",
+      "Projects/Strategy/Plan.md",
+    ]);
+  });
+
+  it("switches layout from its own toolbar", async () => {
+    const { view } = await open();
+    press(btn(view, "View as list"));
+    expect(dirs(view)).toEqual([]);
+    press(btn(view, "View as tree"));
+    expect(dirs(view).length).toBeGreaterThan(0);
+  });
+
+  it("opens with every folder expanded, hiding nothing that used to show", async () => {
+    const { view } = await open({ compactFolders: false });
+    expect(names(view)).toHaveLength(files.length);
+  });
+
+  it("closes and reopens every folder from the toolbar", async () => {
+    const { view } = await open({ compactFolders: false });
+    press(btn(view, "Collapse all folders"));
+    expect(names(view)).toEqual(["Note.md"]);
+    press(btn(view, "Expand all folders"));
+    expect(names(view)).toHaveLength(files.length);
+  });
+
+  it("folds one folder and everything under it, at any depth", async () => {
+    const { view } = await open({ compactFolders: false });
+    const strategy = Array.from(detail(view).querySelectorAll(".gs-tree-dir")).find(
+      (row) => row.querySelector(".gs-tree-dirname")?.textContent === "Strategy",
+    );
+    press(strategy?.querySelector('button[aria-label="Collapse all in folder"]'));
+    expect(dirs(view)).toEqual(["folder", "Projects", "Strategy"]);
+    expect(names(view)).toEqual(["Note.md", "Nested.md"]);
+  });
+
+  it("does not collapse the commit when a folder inside it is clicked", async () => {
+    const { view } = await open({ compactFolders: false });
+    const folder = Array.from(detail(view).querySelectorAll(".gs-tree-dir")).find(
+      (row) => row.querySelector(".gs-tree-dirname")?.textContent === "folder",
+    );
+    press(folder);
+    // The detail is still open; only the folder shut.
+    expect(view.contentEl.querySelector(".gs-sg-detail")).not.toBeNull();
+    expect(names(view)).not.toContain("Nested.md");
+  });
+
+  it("keeps opening a file working through the tree", async () => {
+    vaultFiles.add("folder/Nested.md");
+    const { view } = await open({ compactFolders: false });
+    const row = Array.from(detail(view).querySelectorAll(".gs-sg-detail-file")).find(
+      (r) => r.querySelector(".gs-sg-detail-filename")?.textContent === "Nested.md",
+    );
+    press(row);
+    await flushAsync();
+    expect(openedFiles).toEqual(["folder/Nested.md"]);
+  });
+
+  it("keeps each file's stats on its row", async () => {
+    const { view } = await open();
+    const adds = Array.from(detail(view).querySelectorAll(".gs-stat-add")).map(
+      (el) => el.textContent,
+    );
+    expect(adds).toContain("+8");
+  });
+
+  /**
+   * The stats sit at the right edge of the row, past the action buttons, so
+   * they read as a column down the list rather than jumping in and out from
+   * behind the buttons.
+   */
+  it("puts the stats last in the row, after the action buttons", async () => {
+    const { view } = await open();
+    const row = detail(view).querySelector(".gs-sg-detail-file") as HTMLElement;
+    const classes = Array.from(row.children).map((el) => el.className);
+    expect(classes.indexOf("gs-sg-detail-filestats")).toBe(classes.length - 1);
+    expect(classes.indexOf("gs-cf-actions")).toBeLessThan(
+      classes.indexOf("gs-sg-detail-filestats"),
+    );
+  });
+
+  it("folds single-child chains like the changes list does", async () => {
+    const { view } = await open();
+    expect(dirs(view)).toContain("Projects/Strategy");
+  });
+
+  it("keeps its folding to itself, apart from the Changes sub-tab's list", async () => {
+    const { view } = await open({ compactFolders: false });
+    press(btn(view, "Collapse all folders"));
+    expect(names(view)).toEqual(["Note.md"]);
+
+    // The same commit, opened in the other list, is untouched by that.
+    view.showCommitChanges(commits[0]);
+    await flushAsync();
+    const other = view.contentEl.querySelector(".gs-sg-changes-files") as HTMLElement;
+    expect(other.querySelectorAll(".gs-sg-changes-file-name")).toHaveLength(files.length);
   });
 });

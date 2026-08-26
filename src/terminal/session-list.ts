@@ -6,9 +6,15 @@
  * end to end — this half is where the decisions are ("which session takes over
  * when the active one closes"), so it is kept where a unit test can reach it.
  */
+import { DEFAULT_SESSION_ICON, isSessionColor } from "./session-appearance";
+
 export interface SessionEntry {
   id: string;
   name: string;
+  /** Lucide icon shown in the strip. Always set; defaults to the shell glyph. */
+  icon: string;
+  /** Palette id tinting the icon, or undefined for the theme's own colour. */
+  color?: string;
 }
 
 export class SessionList {
@@ -40,8 +46,13 @@ export class SessionList {
     return this.entries.findIndex((e) => e.id === id);
   }
 
-  add(baseName: string): SessionEntry {
-    const entry: SessionEntry = { id: `t${this.nextId++}`, name: this.freeName(baseName) };
+  add(baseName: string, color?: string): SessionEntry {
+    const entry: SessionEntry = {
+      id: `t${this.nextId++}`,
+      name: this.freeName(baseName),
+      icon: DEFAULT_SESSION_ICON,
+      ...(isSessionColor(color) ? { color } : {}),
+    };
     this.entries.push(entry);
     this.active = entry.id;
     return entry;
@@ -98,6 +109,34 @@ export class SessionList {
     if (!entry || !trimmed) return false;
     entry.name = trimmed;
     return true;
+  }
+
+  setIcon(id: string, icon: string): boolean {
+    const entry = this.entry(id);
+    const trimmed = icon.trim();
+    if (!entry || !trimmed || entry.icon === trimmed) return false;
+    entry.icon = trimmed;
+    return true;
+  }
+
+  /**
+   * Tints a session's icon. Anything outside the palette — including the
+   * explicit "no colour" of a reset — clears the tint instead of storing a
+   * value the stylesheet has no class for.
+   */
+  setColor(id: string, color: string | undefined): boolean {
+    const entry = this.entry(id);
+    if (!entry) return false;
+    const next = isSessionColor(color) ? color : undefined;
+    if (entry.color === next) return false;
+    if (next === undefined) delete entry.color;
+    else entry.color = next;
+    return true;
+  }
+
+  /** The colours currently in use, for handing a new session a free one. */
+  colorsInUse(): (string | undefined)[] {
+    return this.entries.map((e) => e.color);
   }
 
   /** Ids of every session but the given one, for "close the others". */

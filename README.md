@@ -55,6 +55,7 @@ Your changed notes, grouped and ready to commit.
 
 - See at a glance which notes changed, and by how much
 - Stage individual notes, whole folders, or everything at once
+- Open or close a folder and everything under it in one click, at any depth
 - Commit with a message, amend the last one, or commit and push in one step
 - Pull, push, fetch and stash from the toolbar, with progress while they run
 - Switch or create branches
@@ -67,6 +68,8 @@ The history of your vault as a timeline.
 - Every commit with its author, date, and how much changed
 - Branches and merges drawn as coloured lanes
 - Click a commit to expand it and see what it contained
+- Read a commit's files as a folder tree or a flat list, with the same folding
+  controls as the changes list
 - Search by message, author, or commit ID
 
 A compact version lives in the sidebar, so you can glance at recent commits
@@ -104,6 +107,10 @@ vault's folder.
 - Starts in your vault's folder, so `git` and everything else act on your notes
 - Uses your own login shell, with your prompt, colours, and aliases
 - Resizes with the panel
+- Several sessions side by side, listed as icons along the edge of the panel
+- Give each session its own icon and colour from its right-click menu, so a row
+  of identical shell icons stays readable
+- Drag the icons to reorder the sessions
 - Desktop only, like the rest of the plugin
 
 Everything the plugin does through its buttons still works without it — the
@@ -138,17 +145,29 @@ Available from Obsidian's command palette (`Ctrl/Cmd + P`).
 
 ## ⚙️ Settings
 
+The settings are split in two, matching the two halves of the plugin.
+
+### Source control
+
 | Setting | Default | What it does |
 | --- | --- | --- |
 | Commit message template | _(empty)_ | Message used by the one-step backup |
 | Pull strategy | merge | How downloaded commits are combined with yours |
-| Default diff view | side by side | Side by side, or one annotated text |
-| Auto-fetch | off | Check for new commits in the background |
+| Auto-fetch | off | Check remotes for new commits in the background |
 | Auto-fetch interval | 300s | How often to check |
-| Show status bar | on | Branch and change count in Obsidian's status bar |
+| Default diff view | side by side | Two columns side by side, or one annotated text |
+| Changes layout | tree | Files nested under their folders, or one flat row per file |
+| Compact folders | on | Fold folders holding a single subfolder into one row. Tree layout only |
+| Only list files Obsidian can open | on | Leave files no Obsidian view can render out of a commit's file list |
 | Show nested repositories | off | List folders that are repositories of their own. They cannot be committed together with the rest of the vault |
 | File watcher debounce | 1000ms | How long to wait after an edit before refreshing |
-| Terminal shell | _(auto-detect)_ | Path to the shell the Alpha terminal starts. Empty uses your system default |
+
+### Terminal
+
+| Setting | Default | What it does |
+| --- | --- | --- |
+| Shell | _(auto-detect)_ | Path to the shell the Alpha terminal starts. Empty uses your system default |
+| Colour new sessions | off | Hand every session you open the next free colour from the palette |
 
 ---
 

@@ -12,21 +12,18 @@ import { GitService } from "../git/git-service";
 import { computeGraphLayout, formatRelativeDate } from "../utils/graph-layout";
 import type GitHistoryPlugin from "../main";
 import { asVoid } from "../utils/async";
+import { buildFileTree, collectDirPaths, collectItems } from "../utils/file-tree";
+import { CommitFileList } from "./commit-file-list";
+import type { CommitFile } from "./commit-file-list";
+import type { TreeNode } from "../utils/file-tree";
 import { confirmChoice, promptText } from "../utils/prompt";
 import { resolveTemplate } from "../utils/template";
 import { commitButtonState } from "../store/commit-action";
 import type { CommitAction, CommitButtonState } from "../store/commit-action";
-import { supportedFileFilter } from "../utils/file-types";
+import { extensionOf, fileIcon, supportedFileFilter } from "../utils/file-types";
 import { couldHaveCurrentFile, openCurrentFile } from "../utils/vault-file";
 
-interface FileTreeNode {
-  name: string;
-  path: string;
-  isDir: boolean;
-  children: FileTreeNode[];
-  file?: FileStatus;
-  expanded: boolean;
-}
+type FileTreeNode = TreeNode<FileStatus>;
 
 type SidebarTab = "changes" | "graph";
 type GraphSubTab = "graph" | "commit-changes";
@@ -80,6 +77,13 @@ export class SourceControlView extends ItemView {
   private graphSubTabBtns: Record<string, HTMLElement> = {};
   private graphSubGraphPanel: HTMLElement | null = null;
   private graphSubChangesPanel: HTMLElement | null = null;
+  /**
+   * The two places a commit's files are listed: the Changes sub-tab, and the
+   * detail that opens inside the commit list. Each keeps its own folding, so
+   * closing a folder in one does not close it in the other.
+   */
+  private changesTabFiles: CommitFileList | null = null;
+  private detailFiles: CommitFileList | null = null;
   private selectedCommitForChanges: CommitInfo | null = null;
 
   constructor(leaf: WorkspaceLeaf, plugin: GitHistoryPlugin) {
@@ -882,9 +886,27 @@ export class SourceControlView extends ItemView {
     return this.plugin.settings.compactFolders !== false;
   }
 
-  /** Re-renders the changes list after the layout was changed elsewhere. */
+  /**
+   * A commit file list wired to this view: same layout setting, same layout
+   * button, and the row drawing left to the caller.
+   */
+  private newCommitFileList(
+    renderFile: (parent: HTMLElement, file: CommitFile, label: string, depth: number) => void,
+  ): CommitFileList {
+    return new CommitFileList({
+      mode: () => this.fileListMode,
+      compactFolders: () => this.compactFolders,
+      toggleMode: () =>
+        void this.plugin.setFileListMode(this.fileListMode === "tree" ? "list" : "tree"),
+      renderFile,
+    });
+  }
+
+  /** Re-renders every file list after the layout was changed elsewhere. */
   refreshFileList(): void {
     this.renderFiles();
+    this.changesTabFiles?.render();
+    this.detailFiles?.render();
   }
 
   private allFoldersExpanded(): boolean {
@@ -1043,34 +1065,25 @@ export class SourceControlView extends ItemView {
       return;
     }
 
-    const tree = this.buildFileTree(files);
-    this.allDirPaths.push(...this.collectDirPaths(tree));
+    const tree = buildFileTree(files, (f) => f.path, this.compactFolders);
+    this.allDirPaths.push(...collectDirPaths(tree));
     this.renderTree(treeEl, tree, group, 0);
   }
 
-  private collectDirPaths(nodes: FileTreeNode[]): string[] {
-    const paths: string[] = [];
-    for (const n of nodes) {
-      if (n.isDir) {
-        paths.push(n.path);
-        paths.push(...this.collectDirPaths(n.children));
-      }
+  /**
+   * Opens or closes a folder together with everything nested inside it.
+   *
+   * The folder moves with its subtree rather than staying open: a "collapse"
+   * that left the row open would leave a state indistinguishable from never
+   * having opened the levels below it, and the row's own chevron is already
+   * there for folding a single level.
+   */
+  private setSubtreeExpanded(node: FileTreeNode, nested: string[], expand: boolean): void {
+    for (const path of [node.path, ...nested]) {
+      if (expand) this.expandedDirs.add(path);
+      else this.expandedDirs.delete(path);
     }
-    return paths;
-  }
-
-  private collectFiles(node: FileTreeNode): FileStatus[] {
-    const files: FileStatus[] = [];
-    for (const child of node.children) {
-      if (child.isDir) {
-        files.push(...this.collectFiles(child));
-      } else if (child.file && !child.file.embeddedRepo) {
-        // `git add` cannot index a nested repository, and one of them in the
-        // list makes the whole call fail.
-        files.push(child.file);
-      }
-    }
-    return files;
+    this.renderFiles();
   }
 
   /**
@@ -1081,67 +1094,6 @@ export class SourceControlView extends ItemView {
     return files.flatMap((f) => (f.originalPath ? [f.path, f.originalPath] : [f.path]));
   }
 
-  private buildFileTree(files: FileStatus[]): FileTreeNode[] {
-    const root: FileTreeNode[] = [];
-    const dirMap = new Map<string, FileTreeNode>();
-
-    for (const file of files) {
-      const parts = file.path.split("/");
-      let currentChildren = root;
-      let currentPath = "";
-
-      for (let i = 0; i < parts.length - 1; i++) {
-        currentPath += (currentPath ? "/" : "") + parts[i];
-        let dir = dirMap.get(currentPath);
-        if (!dir) {
-          dir = {
-            name: parts[i],
-            path: currentPath,
-            isDir: true,
-            children: [],
-            expanded: this.expandedDirs.has(currentPath),
-          };
-          dirMap.set(currentPath, dir);
-          currentChildren.push(dir);
-        }
-        currentChildren = dir.children;
-      }
-
-      currentChildren.push({
-        name: parts[parts.length - 1],
-        path: file.path,
-        isDir: false,
-        children: [],
-        file,
-        expanded: false,
-      });
-    }
-
-    return this.compactFolders ? this.compactTree(root) : root;
-  }
-
-  /**
-   * Folds a chain of folders that each hold a single subfolder into one row —
-   * "Projects/cloudcourse" rather than two levels to open before a file shows
-   * up. The merged node keeps the deepest path, so folder actions and the
-   * expanded set still key on a directory that exists.
-   */
-  private compactTree(nodes: FileTreeNode[]): FileTreeNode[] {
-    return nodes.map((node) => {
-      if (!node.isDir) return node;
-      let merged = node;
-      while (merged.children.length === 1 && merged.children[0].isDir) {
-        const child = merged.children[0];
-        merged = { ...child, name: `${merged.name}/${child.name}` };
-      }
-      return {
-        ...merged,
-        expanded: this.expandedDirs.has(merged.path),
-        children: this.compactTree(merged.children),
-      };
-    });
-  }
-
   private renderTree(
     parent: HTMLElement,
     nodes: FileTreeNode[],
@@ -1150,19 +1102,39 @@ export class SourceControlView extends ItemView {
   ): void {
     for (const node of nodes) {
       if (node.isDir) {
+        const expanded = this.expandedDirs.has(node.path);
         const dirRow = parent.createDiv("gs-tree-dir");
         dirRow.style.paddingLeft = depth * 16 + 8 + "px";
 
         const chevron = dirRow.createSpan("gs-tree-chevron");
-        setIcon(chevron, node.expanded ? "chevron-down" : "chevron-right");
+        setIcon(chevron, expanded ? "chevron-down" : "chevron-right");
 
         const folderIcon = dirRow.createSpan("gs-tree-folder-icon");
-        setIcon(folderIcon, node.expanded ? "folder-open" : "folder");
+        setIcon(folderIcon, expanded ? "folder-open" : "folder");
 
         dirRow.createSpan("gs-tree-dirname").setText(node.name);
 
         const dirRight = dirRow.createDiv("gs-tree-dir-right");
         const dirActions = dirRight.createDiv("gs-tree-dir-actions");
+
+        // Folding the whole subtree, the way the toolbar button does it for the
+        // list as a whole. Only offered where there is something nested to
+        // fold: for a folder holding nothing but files the row's own chevron
+        // already does everything this button could.
+        const nestedDirs = collectDirPaths(node.children);
+        if (nestedDirs.length > 0) {
+          const openAll = expanded && nestedDirs.every((p) => this.expandedDirs.has(p));
+          const subtreeBtn = dirActions.createEl("button", { cls: "gs-action-btn" });
+          setIcon(subtreeBtn, openAll ? "fold-vertical" : "unfold-vertical");
+          subtreeBtn.setAttribute(
+            "aria-label",
+            openAll ? "Collapse all in folder" : "Expand all in folder",
+          );
+          subtreeBtn.addEventListener("click", (e) => {
+            e.stopPropagation();
+            this.setSubtreeExpanded(node, nestedDirs, !openAll);
+          });
+        }
 
         if (group === "changed") {
           {
@@ -1173,7 +1145,7 @@ export class SourceControlView extends ItemView {
               "click",
               asVoid(async (e) => {
                 e.stopPropagation();
-                await this.git.discard(this.pathspecs(this.collectFiles(node)));
+                await this.git.discard(this.pathspecs(collectItems(node)));
                 await this.store.refresh();
               }),
             );
@@ -1185,7 +1157,7 @@ export class SourceControlView extends ItemView {
             "click",
             asVoid(async (e) => {
               e.stopPropagation();
-              await this.git.stage(this.pathspecs(this.collectFiles(node)));
+              await this.git.stage(this.pathspecs(collectItems(node)));
               await this.store.refresh();
             }),
           );
@@ -1199,7 +1171,7 @@ export class SourceControlView extends ItemView {
             "click",
             asVoid(async (e) => {
               e.stopPropagation();
-              await this.git.unstage(this.pathspecs(this.collectFiles(node)));
+              await this.git.unstage(this.pathspecs(collectItems(node)));
               await this.store.refresh();
             }),
           );
@@ -1208,17 +1180,16 @@ export class SourceControlView extends ItemView {
         dirRight.createSpan("gs-tree-dir-dot");
 
         dirRow.addEventListener("click", () => {
-          node.expanded = !node.expanded;
-          if (node.expanded) this.expandedDirs.add(node.path);
-          else this.expandedDirs.delete(node.path);
+          if (expanded) this.expandedDirs.delete(node.path);
+          else this.expandedDirs.add(node.path);
           this.renderFiles();
         });
 
-        if (node.expanded) {
+        if (expanded) {
           this.renderTree(parent, node.children, group, depth + 1);
         }
-      } else if (node.file) {
-        this.renderFileRow(parent, node.file, group, depth);
+      } else if (node.item) {
+        this.renderFileRow(parent, node.item, group, depth);
       }
     }
   }
@@ -1233,24 +1204,10 @@ export class SourceControlView extends ItemView {
     const row = parent.createDiv("gs-tree-file");
     row.style.paddingLeft = depth * 16 + 8 + "px";
 
-    const fileIcon = row.createSpan("gs-tree-file-icon");
-    const ext = file.path.split(".").pop()?.toLowerCase() || "";
-    const iconMap: Record<string, string> = {
-      md: "file-text",
-      json: "braces",
-      css: "paintbrush",
-      js: "file-code",
-      ts: "file-code",
-      html: "code",
-      yml: "file-cog",
-      yaml: "file-cog",
-      png: "image",
-      jpg: "image",
-      svg: "image",
-      gif: "image",
-    };
-    setIcon(fileIcon, file.embeddedRepo ? "git-branch" : iconMap[ext] || "file");
-    fileIcon.addClass(`gs-ext-${ext || "default"}`);
+    const iconEl = row.createSpan("gs-tree-file-icon");
+    const ext = extensionOf(file.path);
+    setIcon(iconEl, file.embeddedRepo ? "git-branch" : fileIcon(file.path));
+    iconEl.addClass(`gs-ext-${ext || "default"}`);
 
     const nameEl = row.createSpan("gs-tree-filename");
     nameEl.setText(file.path.split("/").pop() || file.path);
@@ -1646,69 +1603,90 @@ export class SourceControlView extends ItemView {
       const totalDel = files.reduce((s, f) => s + f.deletions, 0);
 
       const summaryEl = filesContainer.createDiv("gs-sg-changes-summary");
-      summaryEl.createSpan().setText(`${files.length} FILES CHANGED`);
-      if (totalAdd > 0) summaryEl.createSpan("gs-stat-add").setText(` +${totalAdd}`);
-      if (totalDel > 0) summaryEl.createSpan("gs-stat-del").setText(` -${totalDel}`);
+      const summaryText = summaryEl.createSpan("gs-sg-changes-summary-text");
+      summaryText.createSpan().setText(`${files.length} FILES CHANGED`);
+      if (totalAdd > 0) summaryText.createSpan("gs-stat-add").setText(` +${totalAdd}`);
+      if (totalDel > 0) summaryText.createSpan("gs-stat-del").setText(` -${totalDel}`);
       // Say so rather than silently showing a shorter list than the commit has.
       if (hidden > 0) {
-        const hiddenEl = summaryEl.createSpan("gs-sg-changes-hidden");
+        const hiddenEl = summaryText.createSpan("gs-sg-changes-hidden");
         hiddenEl.setText(` · ${hidden} hidden`);
         hiddenEl.setAttribute("aria-label", "Files Obsidian cannot open, hidden by a setting");
       }
 
-      for (const f of files) {
-        const fileRow = filesContainer.createDiv("gs-sg-changes-file-row");
-
-        const fileName = fileRow.createSpan("gs-sg-changes-file-name");
-        fileName.setText(f.path);
-
-        const fileStats = fileRow.createSpan("gs-sg-changes-file-stats");
-        if (f.additions > 0) fileStats.createSpan("gs-stat-add").setText(`+${f.additions}`);
-        if (f.deletions > 0) fileStats.createSpan("gs-stat-del").setText(` -${f.deletions}`);
-
-        this.addCommitFileActions(fileRow, f.path, commit.hash);
-
-        fileRow.addEventListener("click", () => {
-          filesContainer
-            .querySelectorAll(".gs-sg-changes-file-row")
-            .forEach((el) => el.removeClass("is-active"));
-          fileRow.addClass("is-active");
-          void openCurrentFile(
-            this.app,
-            f.path,
-            () => void this.plugin.openDiff(f.path, commit.hash),
-          );
-        });
-        fileRow.addEventListener("contextmenu", (e) => {
-          e.preventDefault();
-          // Same three actions as the row buttons, in the same order and with
-          // the same icons, for anyone who reaches for the right button first.
-          const m = new Menu();
-          m.addItem((i) =>
-            i
-              .setTitle("Open current file")
-              .setIcon("file")
-              .onClick(asVoid(() => openCurrentFile(this.app, f.path))),
-          );
-          m.addItem((i) =>
-            i
-              .setTitle("View changes in this commit")
-              .setIcon("file-diff")
-              .onClick(() => this.plugin.openDiff(f.path, commit.hash)),
-          );
-          m.addItem((i) =>
-            i
-              .setTitle("Restore this file")
-              .setIcon("undo")
-              .onClick(() => this.restoreFile(f.path, commit.hash)),
-          );
-          m.showAtMouseEvent(e);
-        });
-      }
+      const list = this.newCommitFileList((parent, file, label, depth) =>
+        this.renderCommitFileRow(parent, file, commit.hash, label, depth),
+      );
+      list.buildToolbar(summaryEl);
+      list.setFiles(files, commit.hash);
+      list.mount(filesContainer, "gs-sg-changes-list");
+      list.render();
+      this.changesTabFiles = list;
     } catch {
       filesContainer.empty();
       filesContainer.createDiv("gs-sg-changes-empty").setText("Could not load changes");
     }
+  }
+
+  private renderCommitFileRow(
+    parent: HTMLElement,
+    file: CommitFile,
+    hash: string,
+    label: string,
+    depth: number,
+  ): void {
+    const fileRow = parent.createDiv("gs-sg-changes-file-row");
+    fileRow.style.paddingLeft = depth * 16 + 8 + "px";
+
+    // The icon is what makes a nested file line up under the folder above it:
+    // one indent step is exactly the chevron a folder row carries and a file
+    // row does not, so the two names end up in the same column.
+    const iconEl = fileRow.createSpan("gs-tree-file-icon");
+    setIcon(iconEl, fileIcon(file.path));
+    iconEl.addClass(`gs-ext-${extensionOf(file.path) || "default"}`);
+
+    fileRow.createSpan("gs-sg-changes-file-name").setText(label);
+
+    // Same order as the list inside an opened commit: actions, then stats.
+    this.addCommitFileActions(fileRow, file.path, hash);
+
+    const fileStats = fileRow.createSpan("gs-sg-changes-file-stats");
+    if (file.additions > 0) fileStats.createSpan("gs-stat-add").setText(`+${file.additions}`);
+    if (file.deletions > 0) fileStats.createSpan("gs-stat-del").setText(` -${file.deletions}`);
+
+    fileRow.addEventListener("click", () => {
+      fileRow.parentElement
+        ?.querySelectorAll(".gs-sg-changes-file-row")
+        .forEach((el) => el.removeClass("is-active"));
+      fileRow.addClass("is-active");
+      void openCurrentFile(this.app, file.path, () => void this.plugin.openDiff(file.path, hash));
+    });
+
+    fileRow.addEventListener("contextmenu", (e) => {
+      e.preventDefault();
+      // Same three actions as the row buttons, in the same order and with the
+      // same icons, for anyone who reaches for the right button first.
+      const m = new Menu();
+      m.addItem((i) =>
+        i
+          .setTitle("Open current file")
+          .setIcon("file")
+          .onClick(asVoid(() => openCurrentFile(this.app, file.path))),
+      );
+      m.addItem((i) =>
+        i
+          .setTitle("View changes in this commit")
+          .setIcon("file-diff")
+          .onClick(() => this.plugin.openDiff(file.path, hash)),
+      );
+      m.addItem((i) =>
+        i
+          .setTitle("Restore this file")
+          .setIcon("undo")
+          .onClick(() => this.restoreFile(file.path, hash)),
+      );
+      m.showAtMouseEvent(e);
+    });
   }
 
   private rebuildSidebarGraph(): void {
@@ -1906,7 +1884,10 @@ export class SourceControlView extends ItemView {
     const prevSelected = this.graphListEl.querySelector(".gs-sg-row-selected");
 
     if (prevSelected) prevSelected.removeClass("gs-sg-row-selected");
-    if (prevDetail) prevDetail.remove();
+    if (prevDetail) {
+      prevDetail.remove();
+      this.detailFiles = null;
+    }
 
     if (this.graphSelectedHash === commit.hash) {
       this.graphSelectedHash = null;
@@ -1969,34 +1950,65 @@ export class SourceControlView extends ItemView {
       if (files.length === 0) return;
       const hidden = all.length - files.length;
       const filesEl = detail.createDiv("gs-sg-detail-files");
-      filesEl
-        .createDiv("gs-sg-detail-files-header")
+
+      const header = filesEl.createDiv("gs-sg-detail-files-header");
+      header
+        .createSpan("gs-sg-detail-files-count")
         .setText(
           `${files.length} file${files.length !== 1 ? "s" : ""} changed` +
             (hidden > 0 ? ` · ${hidden} hidden` : ""),
         );
-      for (const f of files) {
-        const fileRow = filesEl.createDiv("gs-sg-detail-file");
-        const name = fileRow.createSpan("gs-sg-detail-filename");
-        name.setText(f.path);
-        const stats = fileRow.createSpan("gs-sg-detail-filestats");
-        if (f.additions > 0) stats.createSpan("gs-stat-add").setText(`+${f.additions}`);
-        if (f.deletions > 0) stats.createSpan("gs-stat-del").setText(` -${f.deletions}`);
 
-        this.addCommitFileActions(fileRow, f.path, hash);
-
-        fileRow.addEventListener("click", (e) => {
-          e.stopPropagation();
-          filesEl
-            .querySelectorAll(".gs-sg-detail-file")
-            .forEach((el) => el.removeClass("is-active"));
-          fileRow.addClass("is-active");
-          void openCurrentFile(this.app, f.path, () => void this.plugin.openDiff(f.path, hash));
-        });
-      }
+      const list = this.newCommitFileList((parent, file, label, depth) =>
+        this.renderDetailFileRow(parent, file, hash, label, depth),
+      );
+      list.buildToolbar(header);
+      list.setFiles(files, hash);
+      list.mount(filesEl, "gs-sg-detail-list");
+      list.render();
+      this.detailFiles = list;
     } catch {
       // ignore
     }
+  }
+
+  private renderDetailFileRow(
+    parent: HTMLElement,
+    file: CommitFile,
+    hash: string,
+    label: string,
+    depth: number,
+  ): void {
+    const fileRow = parent.createDiv("gs-sg-detail-file");
+    fileRow.style.paddingLeft = depth * 16 + 8 + "px";
+
+    // The icon is what makes a nested file line up under the folder above it:
+    // one indent step is exactly the chevron a folder row carries and a file
+    // row does not, so the two names end up in the same column.
+    const iconEl = fileRow.createSpan("gs-tree-file-icon");
+    setIcon(iconEl, fileIcon(file.path));
+    iconEl.addClass(`gs-ext-${extensionOf(file.path) || "default"}`);
+
+    fileRow.createSpan("gs-sg-detail-filename").setText(label);
+
+    // Actions first, stats last: the stats belong at the edge of the row where
+    // the eye can run down them as a column. The buttons hold their width even
+    // while invisible, so the numbers do not shift when a row is hovered.
+    this.addCommitFileActions(fileRow, file.path, hash);
+
+    const stats = fileRow.createSpan("gs-sg-detail-filestats");
+    if (file.additions > 0) stats.createSpan("gs-stat-add").setText(`+${file.additions}`);
+    if (file.deletions > 0) stats.createSpan("gs-stat-del").setText(` -${file.deletions}`);
+
+    fileRow.addEventListener("click", (e) => {
+      // The detail sits inside the clickable commit row that opened it.
+      e.stopPropagation();
+      fileRow.parentElement
+        ?.querySelectorAll(".gs-sg-detail-file")
+        .forEach((el) => el.removeClass("is-active"));
+      fileRow.addClass("is-active");
+      void openCurrentFile(this.app, file.path, () => void this.plugin.openDiff(file.path, hash));
+    });
   }
 
   /**

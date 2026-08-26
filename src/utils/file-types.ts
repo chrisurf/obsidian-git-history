@@ -86,3 +86,30 @@ export function supportedFileFilter(app: App, enabled: boolean): (path: string) 
 
   return (path: string) => isSupportedPath(path, isRegistered);
 }
+
+/**
+ * The Lucide icon that stands for a file in the two file lists.
+ *
+ * Kept next to the extension knowledge rather than inside a view, because both
+ * the changes list and a commit's file list draw the same rows and a file that
+ * looked like a note in one and like a generic file in the other would read as
+ * two different files.
+ */
+const FILE_ICONS: Record<string, string> = {
+  md: "file-text",
+  json: "braces",
+  css: "paintbrush",
+  js: "file-code",
+  ts: "file-code",
+  html: "code",
+  yml: "file-cog",
+  yaml: "file-cog",
+  png: "image",
+  jpg: "image",
+  svg: "image",
+  gif: "image",
+};
+
+export function fileIcon(path: string): string {
+  return FILE_ICONS[extensionOf(path)] ?? "file";
+}

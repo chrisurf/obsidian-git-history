@@ -2,6 +2,7 @@ import { Events, Platform } from "obsidian";
 import { SessionList } from "./session-list";
 import type { SessionEntry } from "./session-list";
 import { TerminalSession } from "./terminal-session";
+import { nextColor } from "./session-appearance";
 import { processEnv } from "../utils/node-api";
 import type GitHistoryPlugin from "../main";
 
@@ -49,7 +50,7 @@ export class TerminalSessionManager extends Events {
   /** Starts a session in the given container and makes it the active one. */
   create(parent: HTMLElement): TerminalSession | null {
     const shell = this.detectShell();
-    const entry = this.list.add(shellName(shell));
+    const entry = this.list.add(shellName(shell), this.autoColor());
     const session = new TerminalSession(entry.id, parent, {
       shell,
       cwd: this.vaultPath(),
@@ -84,6 +85,23 @@ export class TerminalSessionManager extends Events {
 
   rename(id: string, name: string): void {
     if (this.list.rename(id, name)) this.changed();
+  }
+
+  setIcon(id: string, icon: string): void {
+    if (this.list.setIcon(id, icon)) this.changed();
+  }
+
+  setColor(id: string, color: string | undefined): void {
+    if (this.list.setColor(id, color)) this.changed();
+  }
+
+  /**
+   * The colour a session opened right now would get, or none while the setting
+   * is off — VS Code leaves every tab neutral by default, and so does this.
+   */
+  private autoColor(): string | undefined {
+    if (!this.plugin.settings.terminalAutoColor) return undefined;
+    return nextColor(this.list.colorsInUse());
   }
 
   /** Puts every running session back into a freshly opened view. */

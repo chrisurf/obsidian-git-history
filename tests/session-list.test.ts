@@ -155,3 +155,87 @@ describe("SessionList — renaming", () => {
     expect(list.entry(entry.id)?.name).toBe("zsh");
   });
 });
+
+describe("SessionList — icon and colour", () => {
+  it("starts every session on the default icon and no colour", () => {
+    const list = new SessionList();
+    const entry = list.add("zsh");
+    expect(entry.icon).toBe("terminal");
+    expect(entry.color).toBeUndefined();
+  });
+
+  it("takes an icon from the pool", () => {
+    const list = new SessionList();
+    const entry = list.add("zsh");
+    expect(list.setIcon(entry.id, "bug")).toBe(true);
+    expect(list.entry(entry.id)?.icon).toBe("bug");
+  });
+
+  it("refuses an empty icon rather than blanking the strip", () => {
+    const list = new SessionList();
+    const entry = list.add("zsh");
+    expect(list.setIcon(entry.id, "   ")).toBe(false);
+    expect(list.entry(entry.id)?.icon).toBe("terminal");
+  });
+
+  it("takes a colour from the palette", () => {
+    const list = new SessionList();
+    const entry = list.add("zsh");
+    expect(list.setColor(entry.id, "purple")).toBe(true);
+    expect(list.entry(entry.id)?.color).toBe("purple");
+  });
+
+  it("drops a colour the stylesheet has no class for", () => {
+    const list = new SessionList();
+    const entry = list.add("zsh");
+    list.setColor(entry.id, "green");
+    expect(list.setColor(entry.id, "chartreuse")).toBe(true);
+    expect(list.entry(entry.id)?.color).toBeUndefined();
+  });
+
+  it("clears a colour on reset", () => {
+    const list = new SessionList();
+    const entry = list.add("zsh");
+    list.setColor(entry.id, "red");
+    expect(list.setColor(entry.id, undefined)).toBe(true);
+    expect(list.entry(entry.id)?.color).toBeUndefined();
+  });
+
+  it("reports no change when the value is already set, so the strip is not redrawn", () => {
+    const list = new SessionList();
+    const entry = list.add("zsh");
+    list.setColor(entry.id, "blue");
+    expect(list.setColor(entry.id, "blue")).toBe(false);
+    expect(list.setIcon(entry.id, "terminal")).toBe(false);
+  });
+
+  it("takes a colour when the session is created", () => {
+    const list = new SessionList();
+    expect(list.add("zsh", "cyan").color).toBe("cyan");
+    expect(list.add("zsh", "not-a-colour").color).toBeUndefined();
+  });
+
+  it("lists the colours in use, gaps included", () => {
+    const list = new SessionList();
+    list.add("a", "red");
+    list.add("b");
+    list.add("c", "blue");
+    expect(list.colorsInUse()).toEqual(["red", undefined, "blue"]);
+  });
+
+  it("leaves icon and colour alone across a move", () => {
+    const list = new SessionList();
+    const first = list.add("a");
+    list.add("b");
+    list.setIcon(first.id, "flame");
+    list.setColor(first.id, "orange");
+    list.move(0, 1);
+    expect(list.entry(first.id)).toMatchObject({ icon: "flame", color: "orange" });
+  });
+
+  it("ignores an unknown session", () => {
+    const list = new SessionList();
+    expect(list.setIcon("nope", "bug")).toBe(false);
+    expect(list.setColor("nope", "red")).toBe(false);
+  });
+});

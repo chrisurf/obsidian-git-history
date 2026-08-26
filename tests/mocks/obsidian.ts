@@ -164,25 +164,149 @@ export class Modal {
   onClose?(): void;
 }
 
+/**
+ * The component stubs `Setting.add*` hands to its callbacks.
+ *
+ * They record what was set and keep the `onChange`/`onClick` handler reachable,
+ * which is what lets a test drive a settings row the way a user would rather
+ * than only assert that a row was created.
+ */
+export class ValueComponent<T> {
+  value: T;
+  placeholder = "";
+  options: Record<string, string> = {};
+  disabled = false;
+  changed: ((value: T) => unknown) | null = null;
+
+  constructor(initial: T) {
+    this.value = initial;
+  }
+  setValue(value: T): this {
+    this.value = value;
+    return this;
+  }
+  getValue(): T {
+    return this.value;
+  }
+  setPlaceholder(text: string): this {
+    this.placeholder = text;
+    return this;
+  }
+  addOptions(options: Record<string, string>): this {
+    this.options = { ...this.options, ...options };
+    return this;
+  }
+  setDisabled(disabled: boolean): this {
+    this.disabled = disabled;
+    return this;
+  }
+  onChange(cb: (value: T) => unknown): this {
+    this.changed = cb;
+    return this;
+  }
+  /** Types or toggles as a user would, firing whatever onChange was wired. */
+  emit(value: T): void {
+    this.value = value;
+    this.changed?.(value);
+  }
+}
+
+export class ButtonComponent {
+  text = "";
+  cta = false;
+  icon = "";
+  clicked: (() => unknown) | null = null;
+
+  setButtonText(text: string): this {
+    this.text = text;
+    return this;
+  }
+  setIcon(icon: string): this {
+    this.icon = icon;
+    return this;
+  }
+  setCta(): this {
+    this.cta = true;
+    return this;
+  }
+  setTooltip(): this {
+    return this;
+  }
+  setWarning(): this {
+    return this;
+  }
+  onClick(cb: () => unknown): this {
+    this.clicked = cb;
+    return this;
+  }
+  click(): void {
+    this.clicked?.();
+  }
+}
+
 export class Setting {
+  el: HTMLElement;
+  name = "";
+  desc = "";
+  heading = false;
+  components: (ValueComponent<unknown> | ButtonComponent)[] = [];
+
   constructor(containerEl: HTMLElement) {
-    void containerEl;
+    this.el = containerEl.createDiv("setting-item");
+    settings.push(this);
   }
-  setName(): this {
+  setName(name: string): this {
+    this.name = name;
+    this.el.createDiv({ cls: "setting-item-name", text: name });
     return this;
   }
-  setDesc(): this {
+  setDesc(desc: string): this {
+    this.desc = desc;
+    this.el.createDiv({ cls: "setting-item-description", text: desc });
     return this;
   }
-  addText(): this {
+  setHeading(): this {
+    this.heading = true;
+    this.el.addClass("setting-item-heading");
     return this;
   }
-  addToggle(): this {
+  addText(cb?: (c: ValueComponent<string>) => unknown): this {
+    return this.add(new ValueComponent(""), cb);
+  }
+  addTextArea(cb?: (c: ValueComponent<string>) => unknown): this {
+    return this.add(new ValueComponent(""), cb);
+  }
+  addDropdown(cb?: (c: ValueComponent<string>) => unknown): this {
+    return this.add(new ValueComponent(""), cb);
+  }
+  addToggle(cb?: (c: ValueComponent<boolean>) => unknown): this {
+    return this.add(new ValueComponent(false), cb);
+  }
+  addButton(cb?: (c: ButtonComponent) => unknown): this {
+    const button = new ButtonComponent();
+    this.components.push(button);
+    cb?.(button);
     return this;
   }
-  addButton(): this {
+  private add<T>(component: ValueComponent<T>, cb?: (c: ValueComponent<T>) => unknown): this {
+    this.components.push(component as ValueComponent<unknown>);
+    cb?.(component);
     return this;
   }
+  /** The first value component on the row, which is all any row here has. */
+  control<T>(): ValueComponent<T> {
+    return this.components.find((c) => c instanceof ValueComponent) as ValueComponent<T>;
+  }
+}
+
+/**
+ * Every Setting built since the last `resetSettings()`. Rows are created deep
+ * inside a render pass and are not otherwise reachable from a test.
+ */
+export const settings: Setting[] = [];
+
+export function resetSettings(): void {
+  settings.length = 0;
 }
 
 export class PluginSettingTab {

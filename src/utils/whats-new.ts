@@ -32,7 +32,17 @@ export const BUY_ME_A_COFFEE_IMAGE_URL =
  * what the plugin does, so a first-time reader and someone upgrading from an
  * early version both come away knowing where to click.
  */
-export const WHATS_NEW = `## 💻 A terminal inside Obsidian — Alpha
+export const WHATS_NEW = `## 🎨 Tell your terminal sessions apart
+
+The terminal panel keeps several sessions side by side, and until now they were
+a row of identical \`>_\` icons. Right-click a session and pick **Change icon
+and colour** — two dozen icons, eight colours that follow your theme. Drag the
+icons to put the sessions in the order you think in.
+
+Turn on **Colour new terminal sessions** in the settings if you would rather
+every session you open be given a colour of its own straight away.
+
+## 💻 A terminal inside Obsidian — Alpha
 
 There is now a shell panel in Obsidian, opened from the terminal ribbon icon,
 the commit graph toolbar, or the **Open terminal** command. It starts in your
@@ -46,6 +56,17 @@ anything you cannot redo by hand out of it for the moment.
 You do not need it for anything else in the plugin — every button still does
 its own work. Pick the shell yourself under **Terminal shell** in the settings
 if the automatic one is not the one you want.
+
+## 🗂️ Open a whole branch of the tree at once
+
+Folding the changes list was all-or-nothing from the toolbar. Every folder in
+the tree carries the same control now: hover a folder and press it to open or
+close that folder and every level below it, however deep it goes.
+
+A commit's file list has the same two layouts and the same controls. Switch it
+between a folder tree and a flat list from the toolbar above the files, and
+fold a branch of it the same way — useful on a commit that touched a lot of
+notes across a lot of folders.
 
 ## 🌱 Start without a terminal
 
