@@ -1,3 +1,10 @@
+# [1.8.0](https://github.com/chrisurf/obsidian-git-history/compare/1.7.0...1.8.0) (2026-08-28)
+
+
+### Features
+
+* find the programs the terminal needs instead of assuming them ([#20](https://github.com/chrisurf/obsidian-git-history/issues/20)) ([de0ab20](https://github.com/chrisurf/obsidian-git-history/commit/de0ab200b1412cbd71442058a82475072ed7e3e8))
+
 # [1.7.0](https://github.com/chrisurf/obsidian-git-history/compare/1.6.0...1.7.0) (2026-08-26)
 
 
