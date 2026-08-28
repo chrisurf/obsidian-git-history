@@ -30,6 +30,7 @@ describe("the settings list", () => {
     expect(terminal?.rows.map((r) => r.key)).toEqual([
       "terminalShell",
       "terminalPython",
+      "terminalPtyBackend",
       "terminalAutoColor",
     ]);
     expect(sourceControl?.rows.some((r) => r.key.startsWith("terminal"))).toBe(false);

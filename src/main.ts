@@ -18,6 +18,7 @@ import { TerminalView } from "./views/terminal-view";
 import { TerminalSessionManager } from "./terminal/session-manager";
 import { StatusBarController } from "./components/status-bar";
 import { WhatsNewModal } from "./components/whats-new-modal";
+import { TerminalSetupModal } from "./components/terminal-setup-modal";
 import { GitHistorySettingTab } from "./settings";
 import { asVoid } from "./utils/async";
 import { ExecEnvironment } from "./utils/exec-env";
@@ -235,6 +236,12 @@ export default class GitHistoryPlugin extends Plugin {
     });
 
     this.addCommand({
+      id: "check-terminal-setup",
+      name: "Check terminal setup",
+      callback: () => void this.showTerminalSetup(),
+    });
+
+    this.addCommand({
       id: "new-terminal-session",
       name: "New terminal session",
       callback: () => this.newTerminalSession(),
@@ -340,6 +347,32 @@ export default class GitHistoryPlugin extends Plugin {
     await newLeaf.setViewState({ type: TERMINAL_VIEW_TYPE, active: true });
     void this.app.workspace.revealLeaf(newLeaf);
     return newLeaf.view instanceof TerminalView ? newLeaf.view : null;
+  }
+
+  /**
+   * Reports what the terminal would run and why.
+   *
+   * The same resolution a session goes through, shown rather than acted on —
+   * so working out a broken setup takes a command instead of knowing which
+   * binaries on macOS are really stubs.
+   */
+  async showTerminalSetup(): Promise<void> {
+    new TerminalSetupModal(this.app, await this.terminals.setupReport()).open();
+  }
+
+  /**
+   * Opens this plugin's own settings tab. `app.setting` is not in the public
+   * types, so the small part of it that is used is described here rather than
+   * asserted away.
+   */
+  openPluginSettings(): void {
+    const setting = (
+      this.app as unknown as {
+        setting?: { open(): void; openTabById(id: string): void };
+      }
+    ).setting;
+    setting?.open();
+    setting?.openTabById(this.manifest.id);
   }
 
   /** Opens the panel if needed, then starts one more session in it. */

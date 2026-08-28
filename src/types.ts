@@ -174,6 +174,12 @@ export interface GitHistorySettings {
    */
   terminalPython: string;
   /**
+   * Which bridge opens the pseudo-terminal. "auto" walks them in order and
+   * takes the first that works, which is right for everyone who has no reason
+   * to care; the named values are for pinning one down while diagnosing.
+   */
+  terminalPtyBackend: "auto" | "python" | "perl" | "pipe";
+  /**
    * Give every new terminal session the next free colour from the palette.
    * Off by default, the way VS Code leaves its terminal tabs neutral until you
    * colour one yourself.
@@ -197,5 +203,6 @@ export const DEFAULT_SETTINGS: GitHistorySettings = {
   gitPath: "",
   terminalShell: "",
   terminalPython: "",
+  terminalPtyBackend: "auto",
   terminalAutoColor: false,
 };

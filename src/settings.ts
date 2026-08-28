@@ -158,6 +158,21 @@ export const SETTING_GROUPS: SettingGroup[] = [
         placeholder: "/opt/homebrew/bin/python3",
       },
       {
+        name: "Pseudo-terminal",
+        desc:
+          "Which bridge gives the shell a real terminal. Automatic tries them in order and " +
+          "takes the first that works. Pipes is a last resort with no prompt or colours.",
+        aliases: ["pty", "backend", "terminal bridge"],
+        key: "terminalPtyBackend",
+        type: "dropdown",
+        options: {
+          auto: "Automatic",
+          python: "Python",
+          perl: "Perl (macOS only)",
+          pipe: "Pipes (no terminal)",
+        },
+      },
+      {
         name: "Colour new sessions",
         desc:
           "Give every session you open the next free colour from the palette, so a strip of " +

@@ -3,69 +3,41 @@ import { FitAddon } from "@xterm/addon-fit";
 import { Unicode11Addon } from "@xterm/addon-unicode11";
 import { spawn } from "../utils/node-api";
 import type { SpawnedProcess } from "../utils/node-api";
+import { HANDSHAKE, limitationNotice } from "./pty-backend";
+import type { PtyBackendSpec } from "./pty-backend";
+import { HandshakeBuffer } from "./handshake";
+import { renderStartupError } from "../components/terminal-startup-error";
+import type { BackendAttempt } from "./pty-selector";
 
 /**
- * Node ships no pty. This forks one through python3, wires the child's stdio to
- * it, and tunnels window-size changes back in through an OSC 7770 escape, since
- * the bridge only has stdin to listen on.
+ * How long a bridge gets to open its terminal before the session gives up on
+ * it. Generous: the usual failure closes the process outright and is caught
+ * long before this, so the only case left is one that hangs, and a slow first
+ * interpreter start on a cold machine should not be mistaken for one.
  */
-const PTY_BRIDGE = [
-  "import pty,os,sys,fcntl,struct,termios,select,signal",
-  "R=int(os.environ.get('LINES','24'));C=int(os.environ.get('COLUMNS','80'))",
-  "m,s=pty.openpty()",
-  "fcntl.ioctl(m,termios.TIOCSWINSZ,struct.pack('HHHH',R,C,0,0))",
-  "p=os.fork()",
-  "if p==0:",
-  " os.close(m);os.setsid();fcntl.ioctl(s,termios.TIOCSCTTY,0)",
-  " os.dup2(s,0);os.dup2(s,1);os.dup2(s,2)",
-  " if s>2:os.close(s)",
-  " os.execvp(sys.argv[1],sys.argv[1:])",
-  "os.close(s);bf=b''",
-  "ES=b'\\x1b]7770;';ST=b'\\x07'",
-  "def rz(r,c):",
-  " try:fcntl.ioctl(m,termios.TIOCSWINSZ,struct.pack('HHHH',r,c,0,0));os.kill(p,signal.SIGWINCH)",
-  " except:pass",
-  "try:",
-  " while 1:",
-  "  try:rl,_,_=select.select([0,m],[],[])",
-  "  except InterruptedError:continue",
-  "  except:break",
-  "  if 0 in rl:",
-  "   d=os.read(0,4096)",
-  "   if not d:break",
-  "   bf+=d",
-  "   while ES in bf:",
-  "    i=bf.index(ES)",
-  "    if i>0:os.write(m,bf[:i])",
-  "    bf=bf[i+7:];e=bf.find(ST)",
-  "    if e<0:break",
-  "    ps=bf[:e].decode().split(';');bf=bf[e+1:]",
-  "    if len(ps)==2:rz(int(ps[0]),int(ps[1]))",
-  "   if bf and ES not in bf:os.write(m,bf);bf=b''",
-  "  if m in rl:",
-  "   try:d=os.read(m,4096)",
-  "   except OSError:break",
-  "   if not d:break",
-  "   os.write(1,d)",
-  "finally:",
-  " os.close(m)",
-  " try:os.kill(p,signal.SIGHUP);os.waitpid(p,0)",
-  " except:pass",
-].join("\n");
+const HANDSHAKE_TIMEOUT = 15000;
+
+/** Everything needed to start one shell, resolved fresh on every attempt. */
+export interface SessionLaunch {
+  spec: PtyBackendSpec;
+  file: string;
+  args: string[];
+  /** The backends considered on the way here, for the failure panel. */
+  attempts: readonly BackendAttempt[];
+}
 
 export interface SessionOptions {
-  /** Shell binary, already resolved. */
-  shell: string;
-  /**
-   * Python that runs the PTY bridge, already resolved and already proved to
-   * import `pty`. Unused on Windows, which has no bridge to run.
-   */
-  python: string;
   cwd: string;
-  isWindows: boolean;
   theme: Record<string, string>;
   /** Environment for the shell, carrying the login shell's PATH. */
   env: Record<string, string | undefined>;
+  /**
+   * Resolved on every start rather than passed in once, so pressing "Try again"
+   * after correcting a setting actually picks up the correction.
+   */
+  launch: () => Promise<SessionLaunch>;
+  onOpenSettings: () => void;
+  onCheckSetup: () => void;
 }
 
 /**
@@ -82,8 +54,12 @@ export class TerminalSession {
   private terminal: Terminal;
   private fitAddon: FitAddon;
   private shellProcess: SpawnedProcess | null = null;
-  private exitHandlers: (() => void)[] = [];
+  private stateHandlers: (() => void)[] = [];
   private hasExited = false;
+  private launch: SessionLaunch | null = null;
+  private handshake: HandshakeBuffer | null = null;
+  private handshakeTimer: number | null = null;
+  private errorEl: HTMLElement | null = null;
 
   constructor(
     id: string,
@@ -111,16 +87,25 @@ export class TerminalSession {
     this.terminal.onResize(({ cols, rows }) => this.sendResize(rows, cols));
     this.terminal.onData((data: string) => this.shellProcess?.stdin?.write(data));
 
-    this.spawnShell();
+    void this.start();
   }
 
   get exited(): boolean {
     return this.hasExited;
   }
 
-  /** Runs when the shell behind this session ends on its own. */
-  onExit(handler: () => void): void {
-    this.exitHandlers.push(handler);
+  /** Which backend is behind this session, once one has been chosen. */
+  get backend(): PtyBackendSpec | null {
+    return this.launch?.spec ?? null;
+  }
+
+  /**
+   * Runs whenever the session stops or starts being alive: a shell that ended,
+   * a bridge that never started, a retry that brought one back. The strip reads
+   * `exited` from it, so every one of those has to reach the listener.
+   */
+  onStateChange(handler: () => void): void {
+    this.stateHandlers.push(handler);
   }
 
   /** Moves the session into another container, keeping the process running. */
@@ -159,23 +144,36 @@ export class TerminalSession {
   }
 
   dispose(): void {
-    if (this.shellProcess) {
-      try {
-        this.shellProcess.kill("SIGHUP");
-      } catch {
-        // already gone
-      }
-      this.shellProcess = null;
-    }
+    this.stopProcess();
+    this.clearHandshakeTimer();
     this.terminal.dispose();
     this.hostEl.remove();
   }
 
   private sendResize(rows: number, cols: number): void {
+    if (this.launch && !this.launch.spec.capabilities.resize) return;
     this.shellProcess?.stdin?.write(`\x1b]7770;${rows};${cols}\x07`);
   }
 
-  private spawnShell(): void {
+  /**
+   * Starts, or starts over.
+   *
+   * Everything is resolved again on the way through, so a retry after pointing
+   * the settings at a working interpreter runs with the new answer rather than
+   * repeating the one that failed.
+   */
+  private async start(): Promise<void> {
+    this.clearFailure();
+
+    let launch: SessionLaunch;
+    try {
+      launch = await this.opts.launch();
+    } catch (e: unknown) {
+      this.showFailure(message(e), false);
+      return;
+    }
+    this.launch = launch;
+
     const env = {
       ...this.opts.env,
       TERM: "xterm-256color",
@@ -183,37 +181,128 @@ export class TerminalSession {
       LINES: String(this.terminal.rows),
       POWERLEVEL9K_INSTANT_PROMPT: "off",
     };
-    const cwd = this.opts.cwd;
 
     try {
-      if (this.opts.isWindows) {
-        this.shellProcess = spawn(this.opts.shell, ["-i"], { cwd, env });
-      } else {
-        this.shellProcess = spawn(this.opts.python, ["-c", PTY_BRIDGE, this.opts.shell, "-il"], {
-          cwd,
-          env,
-        });
-      }
+      this.shellProcess = spawn(launch.file, launch.args, { cwd: this.opts.cwd, env });
     } catch (e: unknown) {
-      this.writeError(`Failed to start shell: ${e instanceof Error ? e.message : String(e)}`);
-      this.markExited();
+      this.showFailure(message(e), false);
       return;
     }
 
+    this.handshake = launch.spec.handshake ? new HandshakeBuffer(HANDSHAKE) : null;
+    if (this.handshake) this.startHandshakeTimer();
+    else this.announceLimitations(launch.spec);
+
     for (const stream of [this.shellProcess.stdout, this.shellProcess.stderr]) {
-      stream?.on("data", (data: Uint8Array | string) => {
-        this.terminal.write(typeof data === "string" ? data : new Uint8Array(data));
-      });
+      stream?.on("data", (data: Uint8Array | string) => this.receive(data));
     }
 
-    this.shellProcess.on("close", (code: number | null) => {
-      this.terminal.writeln(`\r\n\x1b[90m[Process exited with code ${code ?? "unknown"}]\x1b[0m`);
-      this.markExited();
-    });
-
+    this.shellProcess.on("close", (code: number | null) => this.onProcessClosed(code));
     this.shellProcess.on("error", (err: Error) => {
-      this.writeError(`[Shell error: ${err.message}]`);
+      if (this.awaitingHandshake()) this.showFailure(err.message, false);
+      else this.writeError(`[Shell error: ${err.message}]`);
     });
+  }
+
+  /**
+   * Output on its way to the terminal, held back while the bridge has not
+   * announced itself.
+   */
+  private receive(data: Uint8Array | string): void {
+    const bytes = typeof data === "string" ? encode(data) : new Uint8Array(data);
+
+    if (this.handshake && !this.handshake.ready) {
+      const released = this.handshake.push(bytes);
+      if (released === null) return;
+      this.clearHandshakeTimer();
+      if (released.length > 0) this.terminal.write(released);
+      return;
+    }
+
+    this.terminal.write(bytes);
+  }
+
+  /**
+   * A process that closes while output is still held back never opened a
+   * terminal, so what it wrote is the reason rather than the session's last
+   * words. That is the difference the handshake exists to make.
+   */
+  private onProcessClosed(code: number | null): void {
+    if (this.awaitingHandshake()) {
+      this.showFailure(this.handshake?.text() ?? "", false);
+      return;
+    }
+    this.terminal.writeln(`\r\n\x1b[90m[Process exited with code ${code ?? "unknown"}]\x1b[0m`);
+    this.markExited();
+  }
+
+  private awaitingHandshake(): boolean {
+    return this.handshake !== null && !this.handshake.ready;
+  }
+
+  private startHandshakeTimer(): void {
+    this.clearHandshakeTimer();
+    this.handshakeTimer = window.setTimeout(() => {
+      if (!this.awaitingHandshake()) return;
+      this.showFailure(this.handshake?.text() ?? "", true);
+    }, HANDSHAKE_TIMEOUT);
+  }
+
+  private clearHandshakeTimer(): void {
+    if (this.handshakeTimer === null) return;
+    window.clearTimeout(this.handshakeTimer);
+    this.handshakeTimer = null;
+  }
+
+  /** A backend that cannot give a real terminal says so, once, up front. */
+  private announceLimitations(spec: PtyBackendSpec): void {
+    const notice = limitationNotice(spec);
+    if (notice) this.terminal.writeln(`\x1b[33m${notice}\x1b[0m\r\n`);
+  }
+
+  private showFailure(output: string, timedOut: boolean): void {
+    this.stopProcess();
+    this.clearHandshakeTimer();
+    this.handshake = null;
+
+    this.hostEl.addClass("gs-terminal-instance-failed");
+    this.errorEl = renderStartupError(
+      this.hostEl,
+      {
+        backend: this.launch?.spec.label ?? "the shell",
+        interpreter: this.launch?.file ?? "",
+        output,
+        attempts: this.launch?.attempts ?? [],
+        timedOut,
+      },
+      {
+        onRetry: () => void this.start(),
+        onOpenSettings: this.opts.onOpenSettings,
+        onCheckSetup: this.opts.onCheckSetup,
+      },
+    );
+    this.markExited();
+  }
+
+  private clearFailure(): void {
+    this.errorEl?.remove();
+    this.errorEl = null;
+    this.hostEl.removeClass("gs-terminal-instance-failed");
+    this.terminal.reset();
+
+    if (!this.hasExited) return;
+    this.hasExited = false;
+    this.notify();
+  }
+
+  private stopProcess(): void {
+    if (!this.shellProcess) return;
+    try {
+      this.shellProcess.kill("SIGHUP");
+    } catch {
+      // already gone
+    }
+    this.shellProcess = null;
   }
 
   private writeError(message: string): void {
@@ -227,6 +316,18 @@ export class TerminalSession {
   private markExited(): void {
     if (this.hasExited) return;
     this.hasExited = true;
-    for (const handler of this.exitHandlers) handler();
+    this.notify();
   }
+
+  private notify(): void {
+    for (const handler of this.stateHandlers) handler();
+  }
+}
+
+function encode(text: string): Uint8Array {
+  return new TextEncoder().encode(text);
+}
+
+function message(e: unknown): string {
+  return e instanceof Error ? e.message : String(e);
 }

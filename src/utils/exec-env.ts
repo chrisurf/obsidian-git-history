@@ -41,6 +41,13 @@ const KNOWN_PYTHON = [
 const FALLBACK_GIT = ["/usr/bin/git"];
 const FALLBACK_PYTHON = ["/usr/bin/python3"];
 
+/**
+ * Perl is not one of the stubs — `/usr/bin/perl` is a real interpreter from
+ * `/System/Library/Perl` — so its own location needs no demoting. Homebrew's is
+ * listed first all the same, since a user who installed one meant it.
+ */
+const KNOWN_PERL = ["/opt/homebrew/bin/perl", "/usr/local/bin/perl", "/usr/bin/perl"];
+
 const PROBE_TIMEOUT = 5000;
 const LOGIN_SHELL_TIMEOUT = 5000;
 
@@ -54,6 +61,12 @@ const PTY_PROBE_TOKEN = "gh-pty-ok";
 const PTY_PROBE_ARGS = [
   "-c",
   `import pty,sys;print('${PTY_PROBE_TOKEN}' if sys.version_info[0] >= 3 else '')`,
+];
+
+const PERL_PROBE_TOKEN = "gh-perl-ok";
+const PERL_PROBE_ARGS = [
+  "-e",
+  `use POSIX ();use IO::Select;open(my $m,'+<','/dev/ptmx') or exit 1;print '${PERL_PROBE_TOKEN}';`,
 ];
 
 export interface ExecEnvironmentOptions {
@@ -138,6 +151,20 @@ export class ExecEnvironment implements GitCommandEnvironment {
       known: KNOWN_PYTHON,
       fallback: FALLBACK_PYTHON,
       probe: (path) => this.answers(path, PTY_PROBE_ARGS, (out) => out.includes(PTY_PROBE_TOKEN)),
+    });
+  }
+
+  /**
+   * Perl for the fallback bridge, asked whether it can open `/dev/ptmx` and
+   * knows `POSIX` — the two things the bridge needs and the two a stripped
+   * environment might not have.
+   */
+  async perl(): Promise<Resolution> {
+    return this.resolver.resolve({
+      name: "perl",
+      pathDirs: await this.pathDirs(),
+      known: KNOWN_PERL,
+      probe: (path) => this.answers(path, PERL_PROBE_ARGS, (out) => out.includes(PERL_PROBE_TOKEN)),
     });
   }
 

@@ -1,10 +1,24 @@
-import { Events, Notice, Platform } from "obsidian";
+import { Events, Platform } from "obsidian";
 import { SessionList } from "./session-list";
 import type { SessionEntry } from "./session-list";
 import { TerminalSession } from "./terminal-session";
+import type { SessionLaunch } from "./terminal-session";
 import { nextColor } from "./session-appearance";
+import { selectBackend } from "./pty-selector";
+import type { SelectedBackend } from "./pty-selector";
+import type { PlatformName } from "./pty-backend";
 import { processEnv } from "../utils/node-api";
+import type { Resolution } from "../utils/binary-resolver";
 import type GitHistoryPlugin from "../main";
+
+/** Everything the "check terminal setup" report is built from. */
+export interface TerminalSetupReport {
+  shell: string;
+  /** Directories read from the login shell, empty when that did not work. */
+  loginPathDirs: readonly string[];
+  git: Resolution;
+  backend: SelectedBackend;
+}
 
 /**
  * Every terminal session the plugin is running.
@@ -50,24 +64,24 @@ export class TerminalSessionManager extends Events {
   /**
    * Starts a session in the given container and makes it the active one.
    *
-   * Asynchronous because of what has to happen first: the shell, the python
-   * behind the PTY bridge and the PATH they run with are resolved by asking the
-   * machine, not by assuming. That costs one round of probing on the first
-   * session and nothing on every session after it.
+   * Asynchronous because of what has to happen first: the environment the shell
+   * runs in is read from the login shell rather than assumed. Which backend
+   * opens the pty is decided later, inside the session, so that pressing "Try
+   * again" after a failure decides it again.
    */
   async create(parent: HTMLElement): Promise<TerminalSession | null> {
     const shell = this.detectShell();
-    const [python, env] = await Promise.all([this.detectPython(), this.plugin.execEnv.env()]);
+    const env = await this.plugin.execEnv.env();
     const entry = this.list.add(shellName(shell), this.autoColor());
     const session = new TerminalSession(entry.id, parent, {
-      shell,
-      python,
       cwd: this.vaultPath(),
-      isWindows: Platform.isWin,
       theme: themeColors(),
       env,
+      launch: () => this.launchFor(shell),
+      onOpenSettings: () => this.plugin.openPluginSettings(),
+      onCheckSetup: () => void this.plugin.showTerminalSetup(),
     });
-    session.onExit(() => this.changed());
+    session.onStateChange(() => this.changed());
     this.sessions.set(entry.id, session);
     this.changed();
     return session;
@@ -105,6 +119,16 @@ export class TerminalSessionManager extends Events {
     if (this.list.setColor(id, color)) this.changed();
   }
 
+  /** Everything the setup report shows, gathered the way a session would. */
+  async setupReport(): Promise<TerminalSetupReport> {
+    const [loginPathDirs, git, backend] = await Promise.all([
+      this.plugin.execEnv.pathDirs(),
+      this.plugin.execEnv.git(),
+      this.chooseBackend(),
+    ]);
+    return { shell: this.detectShell(), loginPathDirs, git, backend };
+  }
+
   /**
    * The colour a session opened right now would get, or none while the setting
    * is off — VS Code leaves every tab neutral by default, and so does this.
@@ -137,6 +161,26 @@ export class TerminalSessionManager extends Events {
     this.trigger("sessions-changed");
   }
 
+  private async launchFor(shell: string): Promise<SessionLaunch> {
+    const selected = await this.chooseBackend();
+    const { file, args } = selected.spec.command(selected.interpreter, shell, this.platform());
+    return { spec: selected.spec, file, args, attempts: selected.attempts };
+  }
+
+  private chooseBackend(): Promise<SelectedBackend> {
+    return selectBackend({
+      platform: this.platform(),
+      preference: this.plugin.settings.terminalPtyBackend,
+      resolve: (interpreter) =>
+        interpreter === "perl" ? this.plugin.execEnv.perl() : this.plugin.execEnv.python(),
+    });
+  }
+
+  private platform(): PlatformName {
+    if (Platform.isWin) return "win";
+    return Platform.isMacOS ? "mac" : "linux";
+  }
+
   private detectShell(): string {
     const configured = this.plugin.settings.terminalShell;
     if (configured) return configured;
@@ -144,30 +188,6 @@ export class TerminalSessionManager extends Events {
     const env = processEnv();
     if (Platform.isWin) return env.COMSPEC ?? "powershell.exe";
     return env.SHELL ?? "/bin/sh";
-  }
-
-  /**
-   * The python that will run the PTY bridge.
-   *
-   * When nothing answered, the session is still started with the bare name: the
-   * plugin has nothing better to offer, and the shell's own failure inside the
-   * terminal is more use than a panel that refuses to open. The notice is what
-   * makes it actionable — this failing silently, with a stack of developer-tool
-   * output in the terminal and no hint of where to look, is what this whole
-   * resolution exists to prevent.
-   */
-  private async detectPython(): Promise<string> {
-    if (Platform.isWin) return "";
-    const resolved = await this.plugin.execEnv.python();
-    if (!resolved.binary) {
-      new Notice(
-        `Git history: no working Python 3 found for the terminal (tried ${resolved.tried.length} ` +
-          "locations). Set one under Settings, Terminal, Python.",
-        10000,
-      );
-      return "python3";
-    }
-    return resolved.binary.path;
   }
 
   private vaultPath(): string {
