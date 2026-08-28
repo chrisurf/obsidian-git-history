@@ -1,4 +1,4 @@
-import { Plugin, WorkspaceLeaf, Notice } from "obsidian";
+import { Plugin, WorkspaceLeaf, Notice, Platform } from "obsidian";
 import {
   SOURCE_CONTROL_VIEW_TYPE,
   GRAPH_VIEW_TYPE,
@@ -20,6 +20,7 @@ import { StatusBarController } from "./components/status-bar";
 import { WhatsNewModal } from "./components/whats-new-modal";
 import { GitHistorySettingTab } from "./settings";
 import { asVoid } from "./utils/async";
+import { ExecEnvironment } from "./utils/exec-env";
 import { resolveTemplate } from "./utils/template";
 import { shouldShowWhatsNew } from "./utils/whats-new";
 
@@ -29,6 +30,7 @@ const LEGACY_HISTORY_VIEW_TYPE = "git-history-history";
 export default class GitHistoryPlugin extends Plugin {
   settings: GitHistorySettings = DEFAULT_SETTINGS;
   git!: GitService;
+  execEnv!: ExecEnvironment;
   store!: RepoStore;
   terminals!: TerminalSessionManager;
   private statusBar: StatusBarController | null = null;
@@ -38,7 +40,14 @@ export default class GitHistoryPlugin extends Plugin {
   async onload(): Promise<void> {
     await this.loadSettings();
 
-    this.git = new GitService(this.vaultPath());
+    // Built before anything can spawn a process: git and the terminal both
+    // resolve what they run through it, and both used to trust a bare name.
+    this.execEnv = new ExecEnvironment({
+      isWindows: Platform.isWin,
+      configuredGit: () => this.settings.gitPath || undefined,
+      configuredPython: () => this.settings.terminalPython || undefined,
+    });
+    this.git = new GitService(this.vaultPath(), this.execEnv);
     this.store = new RepoStore(this.git);
     this.terminals = new TerminalSessionManager(this);
     this.store.showNestedRepos = this.settings.showNestedRepos;
@@ -338,7 +347,7 @@ export default class GitHistoryPlugin extends Plugin {
     const hadPanel = this.app.workspace.getLeavesOfType(TERMINAL_VIEW_TYPE).length > 0;
     const view = await this.openTerminalView();
     // A panel that was just opened already started a session of its own.
-    if (hadPanel) view?.newSession();
+    if (hadPanel) await view?.newSession();
   }
 
   private setupAutoRefresh(): void {
@@ -395,6 +404,10 @@ export default class GitHistoryPlugin extends Plugin {
 
   async saveSettings(): Promise<void> {
     await this.saveData(this.settings);
+    // A changed git or python path has to take effect now, not after a reload:
+    // the resolver caches what it found, and this is the moment that answer
+    // stopped being the current one.
+    this.execEnv.invalidate();
   }
 
   /**

@@ -1,4 +1,4 @@
-import { Events, Platform } from "obsidian";
+import { Events, Notice, Platform } from "obsidian";
 import { SessionList } from "./session-list";
 import type { SessionEntry } from "./session-list";
 import { TerminalSession } from "./terminal-session";
@@ -47,15 +47,25 @@ export class TerminalSessionManager extends Events {
     return this.session(id)?.exited ?? false;
   }
 
-  /** Starts a session in the given container and makes it the active one. */
-  create(parent: HTMLElement): TerminalSession | null {
+  /**
+   * Starts a session in the given container and makes it the active one.
+   *
+   * Asynchronous because of what has to happen first: the shell, the python
+   * behind the PTY bridge and the PATH they run with are resolved by asking the
+   * machine, not by assuming. That costs one round of probing on the first
+   * session and nothing on every session after it.
+   */
+  async create(parent: HTMLElement): Promise<TerminalSession | null> {
     const shell = this.detectShell();
+    const [python, env] = await Promise.all([this.detectPython(), this.plugin.execEnv.env()]);
     const entry = this.list.add(shellName(shell), this.autoColor());
     const session = new TerminalSession(entry.id, parent, {
       shell,
+      python,
       cwd: this.vaultPath(),
       isWindows: Platform.isWin,
       theme: themeColors(),
+      env,
     });
     session.onExit(() => this.changed());
     this.sessions.set(entry.id, session);
@@ -134,6 +144,30 @@ export class TerminalSessionManager extends Events {
     const env = processEnv();
     if (Platform.isWin) return env.COMSPEC ?? "powershell.exe";
     return env.SHELL ?? "/bin/sh";
+  }
+
+  /**
+   * The python that will run the PTY bridge.
+   *
+   * When nothing answered, the session is still started with the bare name: the
+   * plugin has nothing better to offer, and the shell's own failure inside the
+   * terminal is more use than a panel that refuses to open. The notice is what
+   * makes it actionable — this failing silently, with a stack of developer-tool
+   * output in the terminal and no hint of where to look, is what this whole
+   * resolution exists to prevent.
+   */
+  private async detectPython(): Promise<string> {
+    if (Platform.isWin) return "";
+    const resolved = await this.plugin.execEnv.python();
+    if (!resolved.binary) {
+      new Notice(
+        `Git history: no working Python 3 found for the terminal (tried ${resolved.tried.length} ` +
+          "locations). Set one under Settings, Terminal, Python.",
+        10000,
+      );
+      return "python3";
+    }
+    return resolved.binary.path;
   }
 
   private vaultPath(): string {

@@ -161,12 +161,14 @@ The settings are split in two, matching the two halves of the plugin.
 | Only list files Obsidian can open | on | Leave files no Obsidian view can render out of a commit's file list |
 | Show nested repositories | off | List folders that are repositories of their own. They cannot be committed together with the rest of the vault |
 | File watcher debounce | 1000ms | How long to wait after an edit before refreshing |
+| Git binary | _(auto-detect)_ | Path to the git the plugin runs. Empty searches the PATH your own shell uses |
 
 ### Terminal
 
 | Setting | Default | What it does |
 | --- | --- | --- |
 | Shell | _(auto-detect)_ | Path to the shell the Alpha terminal starts. Empty uses your system default |
+| Python | _(auto-detect)_ | Path to the Python 3 behind the terminal's pseudo-terminal. Empty searches for one |
 | Colour new sessions | off | Hand every session you open the next free colour from the palette |
 
 ---

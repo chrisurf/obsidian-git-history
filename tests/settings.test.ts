@@ -27,7 +27,11 @@ describe("the settings list", () => {
   it("puts every terminal setting under the terminal heading and nowhere else", () => {
     const terminal = SETTING_GROUPS.find((g) => g.heading === "Terminal");
     const sourceControl = SETTING_GROUPS.find((g) => g.heading === "Source control");
-    expect(terminal?.rows.map((r) => r.key)).toEqual(["terminalShell", "terminalAutoColor"]);
+    expect(terminal?.rows.map((r) => r.key)).toEqual([
+      "terminalShell",
+      "terminalPython",
+      "terminalAutoColor",
+    ]);
     expect(sourceControl?.rows.some((r) => r.key.startsWith("terminal"))).toBe(false);
   });
 

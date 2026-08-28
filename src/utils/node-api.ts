@@ -18,7 +18,8 @@ export interface ExecFileError extends Error {
 }
 
 export interface ExecFileOptions {
-  cwd: string;
+  /** Optional: a probe that only asks a binary for its version needs no directory. */
+  cwd?: string;
   maxBuffer?: number;
   timeout?: number;
   env?: Record<string, string | undefined>;

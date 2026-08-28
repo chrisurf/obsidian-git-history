@@ -1,7 +1,7 @@
 import { Terminal } from "@xterm/xterm";
 import { FitAddon } from "@xterm/addon-fit";
 import { Unicode11Addon } from "@xterm/addon-unicode11";
-import { spawn, processEnv } from "../utils/node-api";
+import { spawn } from "../utils/node-api";
 import type { SpawnedProcess } from "../utils/node-api";
 
 /**
@@ -56,9 +56,16 @@ const PTY_BRIDGE = [
 export interface SessionOptions {
   /** Shell binary, already resolved. */
   shell: string;
+  /**
+   * Python that runs the PTY bridge, already resolved and already proved to
+   * import `pty`. Unused on Windows, which has no bridge to run.
+   */
+  python: string;
   cwd: string;
   isWindows: boolean;
   theme: Record<string, string>;
+  /** Environment for the shell, carrying the login shell's PATH. */
+  env: Record<string, string | undefined>;
 }
 
 /**
@@ -170,7 +177,7 @@ export class TerminalSession {
 
   private spawnShell(): void {
     const env = {
-      ...processEnv(),
+      ...this.opts.env,
       TERM: "xterm-256color",
       COLUMNS: String(this.terminal.cols),
       LINES: String(this.terminal.rows),
@@ -182,7 +189,7 @@ export class TerminalSession {
       if (this.opts.isWindows) {
         this.shellProcess = spawn(this.opts.shell, ["-i"], { cwd, env });
       } else {
-        this.shellProcess = spawn("python3", ["-c", PTY_BRIDGE, this.opts.shell, "-il"], {
+        this.shellProcess = spawn(this.opts.python, ["-c", PTY_BRIDGE, this.opts.shell, "-il"], {
           cwd,
           env,
         });
