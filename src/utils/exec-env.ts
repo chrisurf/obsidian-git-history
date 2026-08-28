@@ -18,6 +18,24 @@ import { readLoginPath } from "./login-env";
 import type { CommandRunner } from "./login-env";
 
 /**
+ * What the stubs in `/usr/bin` forward to, addressed directly.
+ *
+ * `/usr/bin/git` does not contain git; it asks `xcode-select` where the real
+ * one is and runs that. Naming the destination skips the errand: on a healthy
+ * machine it answers exactly as the stub would have, and on a broken one it is
+ * a missing file — which fails in microseconds and silently, instead of failing
+ * slowly and putting a system dialog on the user's screen.
+ */
+const TOOLCHAIN_GIT = [
+  "/Library/Developer/CommandLineTools/usr/bin/git",
+  "/Applications/Xcode.app/Contents/Developer/usr/bin/git",
+];
+const TOOLCHAIN_PYTHON = [
+  "/Library/Developer/CommandLineTools/usr/bin/python3",
+  "/Applications/Xcode.app/Contents/Developer/usr/bin/python3",
+];
+
+/**
  * Where a package manager puts these, tried after the user's own PATH.
  *
  * A safety net for the case where reading the login PATH failed — a shell that
@@ -25,18 +43,33 @@ import type { CommandRunner } from "./login-env";
  * a pyenv or asdf install lives in neither of these places and is only ever
  * found through PATH.
  */
-const KNOWN_GIT = ["/opt/homebrew/bin/git", "/usr/local/bin/git", "/opt/local/bin/git"];
+const KNOWN_GIT = [
+  "/opt/homebrew/bin/git",
+  "/usr/local/bin/git",
+  "/opt/local/bin/git",
+  ...TOOLCHAIN_GIT,
+];
 const KNOWN_PYTHON = [
   "/opt/homebrew/bin/python3",
   "/usr/local/bin/python3",
   "/opt/local/bin/python3",
   "/Library/Frameworks/Python.framework/Versions/Current/bin/python3",
+  ...TOOLCHAIN_PYTHON,
 ];
 
 /**
  * Apple's developer-tool stubs. Real binaries on a healthy machine, and a
  * `xcode-select` error message on a machine whose Xcode is broken or
  * half-updated, which is why they are tried only once nothing else answered.
+ *
+ * Running one of these on a machine with no developer tools does more than
+ * fail: `libxcselect` asks macOS to put up its "The git command requires the
+ * command line developer tools" dialog. That prompt belongs to whoever went
+ * looking for git, and a note-taking app is not who the user expects it from —
+ * hence the toolchain paths above, which are the same binaries reached without
+ * going through the stub, and hence this list being genuinely last. Reaching it
+ * means nothing anywhere answered, and at that point the system offering to
+ * install the tools is the most useful thing that can happen.
  */
 const FALLBACK_GIT = ["/usr/bin/git"];
 const FALLBACK_PYTHON = ["/usr/bin/python3"];
