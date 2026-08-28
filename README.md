@@ -113,8 +113,11 @@ vault's folder.
 - Drag the icons to reorder the sessions
 - Desktop only, like the rest of the plugin
 
-Everything the plugin does through its buttons still works without it — the
-terminal is there for the occasional command that has no button yet.
+If a shell does not start, the panel says which program it tried to use and
+what that program printed, with a **Try again** button next to it. The
+**Check terminal setup** command reports the same thing at any time: which
+search path is in use, which git and which interpreter were found, and what
+the terminal can do with them.
 
 ---
 
@@ -142,6 +145,7 @@ Available from Obsidian's command palette (`Ctrl/Cmd + P`).
 | Show file history | Shows the history of the note you have open |
 | Initialize Git repository | Sets up version control for a vault that has none |
 | Open terminal | Opens the shell panel in your vault's folder (Alpha) |
+| Check terminal setup | Reports which programs the terminal found and what it can do with them |
 
 ## ⚙️ Settings
 
@@ -161,12 +165,15 @@ The settings are split in two, matching the two halves of the plugin.
 | Only list files Obsidian can open | on | Leave files no Obsidian view can render out of a commit's file list |
 | Show nested repositories | off | List folders that are repositories of their own. They cannot be committed together with the rest of the vault |
 | File watcher debounce | 1000ms | How long to wait after an edit before refreshing |
+| Git binary | _(auto-detect)_ | Path to the git the plugin runs. Empty searches the PATH your own shell uses |
 
 ### Terminal
 
 | Setting | Default | What it does |
 | --- | --- | --- |
 | Shell | _(auto-detect)_ | Path to the shell the Alpha terminal starts. Empty uses your system default |
+| Python | _(auto-detect)_ | Path to the Python 3 behind the terminal's pseudo-terminal. Empty searches for one |
+| Pseudo-terminal | Automatic | Which bridge gives the shell a real terminal. Automatic takes the first that works |
 | Colour new sessions | off | Hand every session you open the next free colour from the palette |
 
 ---

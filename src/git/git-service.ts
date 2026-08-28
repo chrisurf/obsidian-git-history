@@ -1,4 +1,5 @@
 import { execFile, processEnv, readFile, writeFile } from "../utils/node-api";
+import type { GitCommandEnvironment } from "../utils/exec-env";
 import {
   FileStatus,
   FileStatusCode,
@@ -13,12 +14,28 @@ import {
   UpstreamState,
 } from "../types";
 
+/**
+ * Running `git` by bare name, the way this used to work.
+ *
+ * Kept as the default so a GitService can still be built with nothing but a
+ * path — the tests do, and they want the git on their own PATH. The plugin
+ * hands in an ExecEnvironment instead, which resolves a git that has answered
+ * for itself and gives it the login shell's PATH.
+ */
+const BARE_GIT: GitCommandEnvironment = {
+  git: () => Promise.resolve({ binary: { path: "git", source: "path" }, tried: ["git"] }),
+  env: (extra = {}) => Promise.resolve({ ...processEnv(), ...extra }),
+};
+
 export class GitService {
   private repoPath: string;
   private queue: Promise<unknown> = Promise.resolve();
   private supportsDiffMerges = true;
 
-  constructor(repoPath: string) {
+  constructor(
+    repoPath: string,
+    private environment: GitCommandEnvironment = BARE_GIT,
+  ) {
     this.repoPath = repoPath;
   }
 
@@ -26,10 +43,26 @@ export class GitService {
     this.repoPath = path;
   }
 
-  private exec(args: string[], timeout = 30000): Promise<string> {
+  /**
+   * Which git to run and what to run it with.
+   *
+   * A resolution that found nothing still falls back to the bare name: the
+   * plugin has nothing better to offer at that point, and git's own error is a
+   * more useful thing to show than a refusal to try.
+   */
+  private async command(): Promise<{ file: string; env: Record<string, string | undefined> }> {
+    const [resolved, env] = await Promise.all([
+      this.environment.git(),
+      this.environment.env({ GIT_TERMINAL_PROMPT: "0" }),
+    ]);
+    return { file: resolved.binary?.path ?? "git", env };
+  }
+
+  private async exec(args: string[], timeout = 30000): Promise<string> {
+    const { file, env } = await this.command();
     return new Promise((resolve, reject) => {
       execFile(
-        "git",
+        file,
         // Without this git renders any path outside ASCII as an octal escape
         // inside double quotes — `"Studies/00 \342\200\224 Welcome.md"` for a
         // name holding an em dash. Every path git hands back would then have
@@ -41,7 +74,7 @@ export class GitService {
           cwd: this.repoPath,
           maxBuffer: 50 * 1024 * 1024,
           timeout,
-          env: { ...processEnv(), GIT_TERMINAL_PROMPT: "0" },
+          env,
         },
         (error, stdout, stderr) => {
           if (error) {
@@ -462,15 +495,16 @@ export class GitService {
 
   async diffUntracked(path: string, fullContext = false): Promise<string> {
     const ctxArgs = fullContext ? ["-U99999"] : [];
+    const { file, env } = await this.command();
     return new Promise((resolve) => {
       execFile(
-        "git",
+        file,
         ["diff", "--no-index", ...ctxArgs, "--", "/dev/null", path],
         {
           cwd: this.repoPath,
           maxBuffer: 50 * 1024 * 1024,
           timeout: 30000,
-          env: { ...processEnv(), GIT_TERMINAL_PROMPT: "0" },
+          env,
         },
         (_error, stdout) => {
           resolve(stdout || "");

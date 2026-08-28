@@ -50,7 +50,11 @@ export class TerminalView extends ItemView {
     this.wrapperEl = container.createDiv("gs-terminal-wrapper");
     this.stripEl = container.createDiv("gs-terminal-strip");
 
-    this.addAction("plus", "New terminal session", () => this.newSession());
+    this.addAction(
+      "plus",
+      "New terminal session",
+      asVoid(() => this.newSession()),
+    );
     this.addAction("trash-2", "Close terminal session", () => this.closeActive());
     this.addAction("menu", "Session menu", (e) => this.showMenu(e));
 
@@ -59,7 +63,7 @@ export class TerminalView extends ItemView {
     // A session outlives the view it was started in, so a reopened terminal
     // picks up whatever is still running rather than starting over.
     this.sessions.attachAll(this.wrapperEl);
-    if (this.sessions.size === 0) this.newSession();
+    if (this.sessions.size === 0) await this.newSession();
     else this.render();
 
     this.resizeObserver = new ResizeObserver(() => this.syncSize());
@@ -79,9 +83,9 @@ export class TerminalView extends ItemView {
     this.stripEl = null;
   }
 
-  newSession(): void {
+  async newSession(): Promise<void> {
     if (!this.wrapperEl) return;
-    this.sessions.create(this.wrapperEl);
+    await this.sessions.create(this.wrapperEl);
     this.sessions.activeSession()?.focus();
   }
 
@@ -216,7 +220,7 @@ export class TerminalView extends ItemView {
       i
         .setTitle("New session")
         .setIcon("plus")
-        .onClick(() => this.newSession()),
+        .onClick(asVoid(() => this.newSession())),
     );
 
     if (id) {

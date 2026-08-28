@@ -160,8 +160,25 @@ export interface GitHistorySettings {
   showNestedRepos: boolean;
   /** Version whose "what's new" note the user has already seen. */
   lastWhatsNewVersion: string;
+  /**
+   * Override for the git binary. Empty means the plugin finds one itself, which
+   * is what it should normally be doing; this is the way out when it cannot.
+   */
+  gitPath: string;
   /** Override for the shell binary used by the embedded terminal. */
   terminalShell: string;
+  /**
+   * Override for the Python that runs the terminal's PTY bridge. Same purpose
+   * as gitPath: a machine whose developer tools are broken can be pointed at a
+   * working interpreter instead of waiting for a fix.
+   */
+  terminalPython: string;
+  /**
+   * Which bridge opens the pseudo-terminal. "auto" walks them in order and
+   * takes the first that works, which is right for everyone who has no reason
+   * to care; the named values are for pinning one down while diagnosing.
+   */
+  terminalPtyBackend: "auto" | "python" | "perl" | "pipe";
   /**
    * Give every new terminal session the next free colour from the palette.
    * Off by default, the way VS Code leaves its terminal tabs neutral until you
@@ -183,6 +200,9 @@ export const DEFAULT_SETTINGS: GitHistorySettings = {
   debounceMs: 1000,
   showNestedRepos: false,
   lastWhatsNewVersion: "",
+  gitPath: "",
   terminalShell: "",
+  terminalPython: "",
+  terminalPtyBackend: "auto",
   terminalAutoColor: false,
 };

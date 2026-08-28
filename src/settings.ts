@@ -122,6 +122,16 @@ export const SETTING_GROUPS: SettingGroup[] = [
         type: "number",
         min: 100,
       },
+      {
+        name: "Git binary",
+        desc:
+          "Path to the git the plugin runs. Leave empty to find one automatically, which " +
+          "also searches the PATH your own shell uses.",
+        aliases: ["git path", "git executable"],
+        key: "gitPath",
+        type: "text",
+        placeholder: "/opt/homebrew/bin/git",
+      },
     ],
   },
   {
@@ -136,6 +146,31 @@ export const SETTING_GROUPS: SettingGroup[] = [
         key: "terminalShell",
         type: "text",
         placeholder: "/bin/zsh",
+      },
+      {
+        name: "Python",
+        desc:
+          "Path to the Python 3 that runs the terminal's pseudo-terminal bridge. Leave empty " +
+          "to find one automatically. Set it if the terminal reports that none was found.",
+        aliases: ["terminal python", "python path", "pty"],
+        key: "terminalPython",
+        type: "text",
+        placeholder: "/opt/homebrew/bin/python3",
+      },
+      {
+        name: "Pseudo-terminal",
+        desc:
+          "Which bridge gives the shell a real terminal. Automatic tries them in order and " +
+          "takes the first that works. Pipes is a last resort with no prompt or colours.",
+        aliases: ["pty", "backend", "terminal bridge"],
+        key: "terminalPtyBackend",
+        type: "dropdown",
+        options: {
+          auto: "Automatic",
+          python: "Python",
+          perl: "Perl (macOS only)",
+          pipe: "Pipes (no terminal)",
+        },
       },
       {
         name: "Colour new sessions",

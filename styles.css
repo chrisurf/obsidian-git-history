@@ -3221,3 +3221,157 @@
 .gs-tooltip-visible {
   opacity: 1;
 }
+
+/* ── Terminal: a session that never started ─────────────────────────────── */
+
+/* The xterm canvas stays in the DOM so the session can be retried into it,
+   but it has nothing to show while the panel is up. */
+.gs-terminal-instance-failed .xterm {
+  display: none;
+}
+
+.gs-terminal-error {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+  max-width: 640px;
+  height: 100%;
+  padding: 20px 24px;
+  overflow-y: auto;
+}
+
+.gs-terminal-error-header {
+  display: flex;
+  gap: 10px;
+  align-items: center;
+}
+
+.gs-terminal-error-icon {
+  display: flex;
+  color: var(--text-warning);
+}
+
+.gs-terminal-error-title {
+  margin: 0;
+  font-size: var(--font-ui-medium);
+}
+
+.gs-terminal-error-lead,
+.gs-terminal-error-subhead {
+  margin: 0;
+  color: var(--text-muted);
+  font-size: var(--font-ui-small);
+}
+
+.gs-terminal-error-subhead {
+  font-weight: var(--font-medium);
+  color: var(--text-normal);
+}
+
+.gs-terminal-error-facts {
+  display: grid;
+  grid-template-columns: max-content 1fr;
+  gap: 4px 14px;
+  margin: 0;
+  font-size: var(--font-ui-small);
+}
+
+.gs-terminal-error-facts dt {
+  color: var(--text-muted);
+}
+
+.gs-terminal-error-facts dd {
+  margin: 0;
+  overflow-wrap: anywhere;
+  font-family: var(--font-monospace);
+}
+
+.gs-terminal-error-output {
+  max-height: 220px;
+  margin: 0;
+  padding: 10px 12px;
+  overflow: auto;
+  border: 1px solid var(--background-modifier-border);
+  border-radius: var(--radius-s);
+  background: var(--background-secondary);
+  color: var(--text-muted);
+  font-size: var(--font-smallest);
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+}
+
+.gs-terminal-error-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+
+.gs-terminal-error-button {
+  display: inline-flex;
+  gap: 6px;
+  align-items: center;
+}
+
+.gs-terminal-error-button-icon {
+  display: flex;
+}
+
+.gs-terminal-error-button-icon .svg-icon {
+  width: 14px;
+  height: 14px;
+}
+
+/* ── Terminal: the setup report ─────────────────────────────────────────── */
+
+.gs-setup-heading {
+  margin: 16px 0 6px;
+  font-size: var(--font-ui-small);
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+  color: var(--text-muted);
+}
+
+.gs-setup-section {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.gs-setup-row {
+  display: flex;
+  gap: 10px;
+  align-items: flex-start;
+  padding: 8px 10px;
+  border-radius: var(--radius-s);
+  background: var(--background-secondary);
+}
+
+.gs-setup-row-icon {
+  display: flex;
+  margin-top: 2px;
+}
+
+.gs-setup-row-ok .gs-setup-row-icon {
+  color: var(--text-success);
+}
+
+.gs-setup-row-warn .gs-setup-row-icon {
+  color: var(--text-warning);
+}
+
+.gs-setup-row-error .gs-setup-row-icon {
+  color: var(--text-error);
+}
+
+.gs-setup-row-title {
+  font-family: var(--font-monospace);
+  font-size: var(--font-ui-small);
+  overflow-wrap: anywhere;
+}
+
+.gs-setup-row-detail {
+  margin-top: 2px;
+  color: var(--text-muted);
+  font-size: var(--font-smallest);
+  white-space: pre-wrap;
+}

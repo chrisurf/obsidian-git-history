@@ -1,4 +1,4 @@
-import { Plugin, WorkspaceLeaf, Notice } from "obsidian";
+import { Plugin, WorkspaceLeaf, Notice, Platform } from "obsidian";
 import {
   SOURCE_CONTROL_VIEW_TYPE,
   GRAPH_VIEW_TYPE,
@@ -18,8 +18,10 @@ import { TerminalView } from "./views/terminal-view";
 import { TerminalSessionManager } from "./terminal/session-manager";
 import { StatusBarController } from "./components/status-bar";
 import { WhatsNewModal } from "./components/whats-new-modal";
+import { TerminalSetupModal } from "./components/terminal-setup-modal";
 import { GitHistorySettingTab } from "./settings";
 import { asVoid } from "./utils/async";
+import { ExecEnvironment } from "./utils/exec-env";
 import { resolveTemplate } from "./utils/template";
 import { shouldShowWhatsNew } from "./utils/whats-new";
 
@@ -29,6 +31,7 @@ const LEGACY_HISTORY_VIEW_TYPE = "git-history-history";
 export default class GitHistoryPlugin extends Plugin {
   settings: GitHistorySettings = DEFAULT_SETTINGS;
   git!: GitService;
+  execEnv!: ExecEnvironment;
   store!: RepoStore;
   terminals!: TerminalSessionManager;
   private statusBar: StatusBarController | null = null;
@@ -38,7 +41,14 @@ export default class GitHistoryPlugin extends Plugin {
   async onload(): Promise<void> {
     await this.loadSettings();
 
-    this.git = new GitService(this.vaultPath());
+    // Built before anything can spawn a process: git and the terminal both
+    // resolve what they run through it, and both used to trust a bare name.
+    this.execEnv = new ExecEnvironment({
+      isWindows: Platform.isWin,
+      configuredGit: () => this.settings.gitPath || undefined,
+      configuredPython: () => this.settings.terminalPython || undefined,
+    });
+    this.git = new GitService(this.vaultPath(), this.execEnv);
     this.store = new RepoStore(this.git);
     this.terminals = new TerminalSessionManager(this);
     this.store.showNestedRepos = this.settings.showNestedRepos;
@@ -226,6 +236,12 @@ export default class GitHistoryPlugin extends Plugin {
     });
 
     this.addCommand({
+      id: "check-terminal-setup",
+      name: "Check terminal setup",
+      callback: () => void this.showTerminalSetup(),
+    });
+
+    this.addCommand({
       id: "new-terminal-session",
       name: "New terminal session",
       callback: () => this.newTerminalSession(),
@@ -333,12 +349,38 @@ export default class GitHistoryPlugin extends Plugin {
     return newLeaf.view instanceof TerminalView ? newLeaf.view : null;
   }
 
+  /**
+   * Reports what the terminal would run and why.
+   *
+   * The same resolution a session goes through, shown rather than acted on —
+   * so working out a broken setup takes a command instead of knowing which
+   * binaries on macOS are really stubs.
+   */
+  async showTerminalSetup(): Promise<void> {
+    new TerminalSetupModal(this.app, await this.terminals.setupReport()).open();
+  }
+
+  /**
+   * Opens this plugin's own settings tab. `app.setting` is not in the public
+   * types, so the small part of it that is used is described here rather than
+   * asserted away.
+   */
+  openPluginSettings(): void {
+    const setting = (
+      this.app as unknown as {
+        setting?: { open(): void; openTabById(id: string): void };
+      }
+    ).setting;
+    setting?.open();
+    setting?.openTabById(this.manifest.id);
+  }
+
   /** Opens the panel if needed, then starts one more session in it. */
   async newTerminalSession(): Promise<void> {
     const hadPanel = this.app.workspace.getLeavesOfType(TERMINAL_VIEW_TYPE).length > 0;
     const view = await this.openTerminalView();
     // A panel that was just opened already started a session of its own.
-    if (hadPanel) view?.newSession();
+    if (hadPanel) await view?.newSession();
   }
 
   private setupAutoRefresh(): void {
@@ -395,6 +437,10 @@ export default class GitHistoryPlugin extends Plugin {
 
   async saveSettings(): Promise<void> {
     await this.saveData(this.settings);
+    // A changed git or python path has to take effect now, not after a reload:
+    // the resolver caches what it found, and this is the moment that answer
+    // stopped being the current one.
+    this.execEnv.invalidate();
   }
 
   /**
