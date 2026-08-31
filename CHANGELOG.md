@@ -1,3 +1,10 @@
+# [1.9.0](https://github.com/chrisurf/obsidian-git-history/compare/1.8.0...1.9.0) (2026-08-31)
+
+
+### Features
+
+* terminal startup script, and a Git identity you can see and set ([#21](https://github.com/chrisurf/obsidian-git-history/issues/21)) ([d85fb01](https://github.com/chrisurf/obsidian-git-history/commit/d85fb012e0868e9d3490a146526abbd5d9bf8037))
+
 # [1.8.0](https://github.com/chrisurf/obsidian-git-history/compare/1.7.0...1.8.0) (2026-08-28)
 
 
