@@ -21,7 +21,7 @@ import { WhatsNewModal } from "./components/whats-new-modal";
 import { TerminalSetupModal } from "./components/terminal-setup-modal";
 import { GitIdentityModal } from "./components/git-identity-modal";
 import type { IdentityPromptReason } from "./components/git-identity-modal";
-import { isComplete } from "./git/git-identity";
+import { isComplete, isMissingIdentityError } from "./git/git-identity";
 import { GitHistorySettingTab } from "./settings";
 import { asVoid } from "./utils/async";
 import { ExecEnvironment } from "./utils/exec-env";
@@ -145,7 +145,18 @@ export default class GitHistoryPlugin extends Plugin {
   private async maybeAskForIdentity(): Promise<void> {
     if (this.settings.identityPromptDismissed) return;
     if (!(await this.git.isRepo())) return;
+    await this.ensureIdentity();
+  }
 
+  /**
+   * Asks for an identity if git has none.
+   *
+   * Separate from the launch check because it is also what a freshly created
+   * repository needs: at that moment the user has just asked for version
+   * control and has never been told that git wants a name before it will use
+   * it — which is the state this whole feature exists for.
+   */
+  async ensureIdentity(): Promise<void> {
     try {
       if (isComplete(await this.git.identity())) return;
     } catch {
@@ -154,6 +165,23 @@ export default class GitHistoryPlugin extends Plugin {
       return;
     }
     await this.promptForIdentity("startup");
+  }
+
+  /**
+   * Reports a git command that failed, and answers the one failure that has an
+   * answer rather than only a message.
+   *
+   * Every path that writes a commit goes through here, because "please tell me
+   * who you are" is not a message a user can act on from a notice that
+   * disappears — and it is the first thing a new vault runs into.
+   */
+  async reportGitFailure(action: string, e: unknown): Promise<void> {
+    const detail = e instanceof Error ? e.message : String(e);
+    if (isMissingIdentityError(detail)) {
+      await this.promptForIdentity("commit");
+      return;
+    }
+    new Notice(`${action} failed: ${detail}`);
   }
 
   /**
@@ -270,7 +298,7 @@ export default class GitHistoryPlugin extends Plugin {
           await this.store.refresh();
           new Notice("Backup complete");
         } catch (e: unknown) {
-          new Notice(`Backup failed: ${e instanceof Error ? e.message : String(e)}`);
+          await this.reportGitFailure("Backup", e);
         }
       },
     });
@@ -335,6 +363,10 @@ export default class GitHistoryPlugin extends Plugin {
   activatePostInit(): void {
     this.setupAutoRefresh();
     this.registerRefreshTriggers();
+    // The repository exists now, so the identity question is answerable — and
+    // asking here is the difference between a working vault and a Commit
+    // button that fails on its first use.
+    void this.ensureIdentity();
   }
 
   async openSourceControlView(): Promise<void> {
