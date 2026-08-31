@@ -34,18 +34,39 @@ describe("the backend table", () => {
 });
 
 describe("the command each backend runs", () => {
-  it("runs the shell as a login shell through the python bridge", () => {
-    const { file, args } = spec("python").command("/opt/homebrew/bin/python3", "/bin/zsh", "mac");
+  const zsh = { file: "/bin/zsh", args: ["-il"] };
+
+  it("runs the shell it is handed through the python bridge", () => {
+    const { file, args } = spec("python").command("/opt/homebrew/bin/python3", zsh);
     expect(file).toBe("/opt/homebrew/bin/python3");
     expect(args[0]).toBe("-c");
     expect(args.slice(2)).toEqual(["/bin/zsh", "-il"]);
   });
 
   it("runs the same shell through the perl bridge", () => {
-    const { file, args } = spec("perl").command("/usr/bin/perl", "/bin/zsh", "mac");
+    const { file, args } = spec("perl").command("/usr/bin/perl", zsh);
     expect(file).toBe("/usr/bin/perl");
     expect(args[0]).toBe("-e");
     expect(args.slice(2)).toEqual(["/bin/zsh", "-il"]);
+  });
+
+  /**
+   * Which flags the shell gets is the startup script's business, not the
+   * bridge's — a bash session with a startup script drops -l, and a backend
+   * that rebuilt the flags itself would put it back.
+   */
+  it("passes the shell's own arguments through untouched", () => {
+    const bash = { file: "/bin/bash", args: ["-i", "--rcfile", "/tmp/x/bashrc"] };
+    expect(spec("python").command("python3", bash).args.slice(2)).toEqual([
+      "/bin/bash",
+      "-i",
+      "--rcfile",
+      "/tmp/x/bashrc",
+    ]);
+    expect(spec("pipe").command("", bash)).toEqual({
+      file: "/bin/bash",
+      args: ["-i", "--rcfile", "/tmp/x/bashrc"],
+    });
   });
 
   /**
@@ -57,13 +78,16 @@ describe("the command each backend runs", () => {
   it("has both bridges print the marker the session waits for", () => {
     // The marker without its ESC and BEL, which each bridge spells its own way.
     const token = HANDSHAKE.slice(1, -1);
-    expect(spec("python").command("python3", "/bin/zsh", "mac").args[1]).toContain(token);
-    expect(spec("perl").command("perl", "/bin/zsh", "mac").args[1]).toContain(token);
+    expect(spec("python").command("python3", zsh).args[1]).toContain(token);
+    expect(spec("perl").command("perl", zsh).args[1]).toContain(token);
   });
 
-  it("asks a posix shell to be interactive, and cmd.exe for nothing at all", () => {
-    expect(spec("pipe").command("", "/bin/zsh", "mac").args).toEqual(["-i"]);
-    expect(spec("pipe").command("", "powershell.exe", "win").args).toEqual([]);
+  it("runs the shell directly when there is no bridge in front of it", () => {
+    expect(spec("pipe").command("", { file: "/bin/zsh", args: ["-i"] })).toEqual({
+      file: "/bin/zsh",
+      args: ["-i"],
+    });
+    expect(spec("pipe").command("", { file: "powershell.exe", args: [] }).args).toEqual([]);
   });
 });
 

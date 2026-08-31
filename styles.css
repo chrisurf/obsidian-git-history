@@ -3375,3 +3375,59 @@
   font-size: var(--font-smallest);
   white-space: pre-wrap;
 }
+
+/* Settings: the startup script row.
+   A shell script does not fit the narrow control column a settings row gives
+   it, so this row stacks its label above a full-width field. */
+.gs-setting-stacked {
+  display: block;
+}
+
+.gs-setting-stacked .setting-item-control {
+  width: 100%;
+  padding-top: 8px;
+  justify-content: flex-start;
+}
+
+.gs-script-input {
+  width: 100%;
+  resize: vertical;
+  font-family: var(--font-monospace);
+  font-size: var(--font-ui-smaller);
+  line-height: 1.5;
+  white-space: pre;
+}
+
+/* Settings: the Git identity rows.
+   The origin line sits on its own row under the field, so it can be a full
+   sentence rather than something squeezed next to the input. */
+.gs-identity-origin {
+  flex-basis: 100%;
+  order: 3;
+  margin-top: 4px;
+  color: var(--text-muted);
+  font-size: var(--font-ui-smaller);
+}
+
+.gs-identity-origin-missing {
+  color: var(--text-warning);
+}
+
+.gs-identity-input {
+  min-width: 18em;
+}
+
+/* The prompt that asks for an identity when nothing has set one. */
+.gs-identity-intro {
+  margin: 0 0 1em;
+  color: var(--text-muted);
+}
+
+.gs-identity-error {
+  margin-top: 8px;
+  padding: 8px 10px;
+  border-radius: var(--radius-s);
+  background: var(--background-modifier-error);
+  color: var(--text-on-accent);
+  font-size: var(--font-ui-smaller);
+}

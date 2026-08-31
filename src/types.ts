@@ -161,6 +161,12 @@ export interface GitHistorySettings {
   /** Version whose "what's new" note the user has already seen. */
   lastWhatsNewVersion: string;
   /**
+   * Whether the user has waved away the "set your Git identity" prompt. It is
+   * asked once and then never again on its own — a failed commit still offers
+   * it, because at that point it is the answer rather than an interruption.
+   */
+  identityPromptDismissed: boolean;
+  /**
    * Override for the git binary. Empty means the plugin finds one itself, which
    * is what it should normally be doing; this is the way out when it cannot.
    */
@@ -179,6 +185,12 @@ export interface GitHistorySettings {
    * to care; the named values are for pinning one down while diagnosing.
    */
   terminalPtyBackend: "auto" | "python" | "perl" | "pipe";
+  /**
+   * Shell code run at the start of every terminal session, after the user's own
+   * rc files and before the first prompt. Stored whole rather than as a path so
+   * it travels with the vault; empty means the shell starts as it always did.
+   */
+  terminalStartupScript: string;
   /**
    * Give every new terminal session the next free colour from the palette.
    * Off by default, the way VS Code leaves its terminal tabs neutral until you
@@ -200,9 +212,11 @@ export const DEFAULT_SETTINGS: GitHistorySettings = {
   debounceMs: 1000,
   showNestedRepos: false,
   lastWhatsNewVersion: "",
+  identityPromptDismissed: false,
   gitPath: "",
   terminalShell: "",
   terminalPython: "",
   terminalPtyBackend: "auto",
+  terminalStartupScript: "",
   terminalAutoColor: false,
 };

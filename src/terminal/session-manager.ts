@@ -7,7 +7,10 @@ import { nextColor } from "./session-appearance";
 import { selectBackend } from "./pty-selector";
 import type { SelectedBackend } from "./pty-selector";
 import type { PlatformName } from "./pty-backend";
-import { processEnv } from "../utils/node-api";
+import { NO_INJECTION, injectionFor, shellCommand, startupMechanism } from "./startup-script";
+import type { InjectionMethod, StartupInjection } from "./startup-script";
+import { joinPath, mkdtemp, processEnv, rm, tmpdir, writeFile } from "../utils/node-api";
+import { asVoid } from "../utils/async";
 import type { Resolution } from "../utils/binary-resolver";
 import type GitHistoryPlugin from "../main";
 
@@ -18,6 +21,15 @@ export interface TerminalSetupReport {
   loginPathDirs: readonly string[];
   git: Resolution;
   backend: SelectedBackend;
+  startup: StartupState;
+}
+
+/** Whether a startup script is set, and how this shell would be given it. */
+export interface StartupState {
+  enabled: boolean;
+  method: InjectionMethod;
+  /** The mechanism, named: "ZDOTDIR", "--rcfile", "typed into the shell". */
+  label: string;
 }
 
 /**
@@ -31,6 +43,9 @@ export interface TerminalSetupReport {
 export class TerminalSessionManager extends Events {
   private list = new SessionList();
   private sessions = new Map<string, TerminalSession>();
+  /** Scratch directory per session, holding the startup files it was started
+      with. Removed when the session is closed. */
+  private startupDirs = new Map<string, string>();
 
   constructor(private plugin: GitHistoryPlugin) {
     super();
@@ -77,7 +92,7 @@ export class TerminalSessionManager extends Events {
       cwd: this.vaultPath(),
       theme: themeColors(),
       env,
-      launch: () => this.launchFor(shell),
+      launch: () => this.launchFor(entry.id, shell),
       onOpenSettings: () => this.plugin.openPluginSettings(),
       onCheckSetup: () => void this.plugin.showTerminalSetup(),
     });
@@ -92,6 +107,7 @@ export class TerminalSessionManager extends Events {
     if (!removed) return;
     this.sessions.get(id)?.dispose();
     this.sessions.delete(id);
+    asVoid(() => this.discardStartupDir(id))();
     this.changed();
   }
 
@@ -126,7 +142,15 @@ export class TerminalSessionManager extends Events {
       this.plugin.execEnv.git(),
       this.chooseBackend(),
     ]);
-    return { shell: this.detectShell(), loginPathDirs, git, backend };
+    const shell = this.detectShell();
+    return { shell, loginPathDirs, git, backend, startup: this.startupState(shell) };
+  }
+
+  /** What the report says about the startup script, without writing anything. */
+  private startupState(shell: string): StartupState {
+    const enabled = this.plugin.settings.terminalStartupScript.trim() !== "";
+    if (!enabled) return { enabled, method: "none", label: NO_INJECTION.label };
+    return { enabled, ...startupMechanism(shell) };
   }
 
   /**
@@ -153,6 +177,7 @@ export class TerminalSessionManager extends Events {
   /** Ends every session. Only unloading the plugin gets to do this. */
   disposeAll(): void {
     for (const session of this.sessions.values()) session.dispose();
+    for (const id of [...this.startupDirs.keys()]) asVoid(() => this.discardStartupDir(id))();
     this.sessions.clear();
     this.list.clear();
   }
@@ -161,10 +186,59 @@ export class TerminalSessionManager extends Events {
     this.trigger("sessions-changed");
   }
 
-  private async launchFor(shell: string): Promise<SessionLaunch> {
+  private async launchFor(id: string, shell: string): Promise<SessionLaunch> {
     const selected = await this.chooseBackend();
-    const { file, args } = selected.spec.command(selected.interpreter, shell, this.platform());
-    return { spec: selected.spec, file, args, attempts: selected.attempts };
+    const tty = selected.spec.capabilities.tty;
+    const injection = await this.prepareStartup(id, shell);
+    const command = shellCommand(shell, this.platform(), tty, injection);
+    const { file, args } = selected.spec.command(selected.interpreter, command);
+    return {
+      spec: selected.spec,
+      file,
+      args,
+      attempts: selected.attempts,
+      env: injection.env,
+      prelude: injection.stdin,
+    };
+  }
+
+  /**
+   * Puts the startup script on disk for one session and says how the shell will
+   * be given it.
+   *
+   * Written on every start rather than once: "Try again" after fixing a broken
+   * script has to run the fixed one, and a script cleared in the settings has
+   * to leave nothing behind — hence the directory going away again here rather
+   * than only on close.
+   */
+  private async prepareStartup(id: string, shell: string): Promise<StartupInjection> {
+    const script = this.plugin.settings.terminalStartupScript;
+    if (script.trim() === "") {
+      await this.discardStartupDir(id);
+      return NO_INJECTION;
+    }
+
+    const dir = await this.startupDir(id);
+    const injection = injectionFor({ shell, script, dir, env: processEnv() });
+    for (const file of injection.files) {
+      await writeFile(joinPath(dir, file.name), file.content, "utf-8");
+    }
+    return injection;
+  }
+
+  private async startupDir(id: string): Promise<string> {
+    const existing = this.startupDirs.get(id);
+    if (existing !== undefined) return existing;
+    const dir = await mkdtemp(joinPath(tmpdir(), "obsidian-git-history-"));
+    this.startupDirs.set(id, dir);
+    return dir;
+  }
+
+  private async discardStartupDir(id: string): Promise<void> {
+    const dir = this.startupDirs.get(id);
+    if (dir === undefined) return;
+    this.startupDirs.delete(id);
+    await rm(dir, { recursive: true, force: true });
   }
 
   private chooseBackend(): Promise<SelectedBackend> {

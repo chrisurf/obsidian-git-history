@@ -2,6 +2,7 @@ import { App, PluginSettingTab, Setting } from "obsidian";
 import type { SettingDefinitionItem } from "obsidian";
 import type { GitHistorySettings } from "./types";
 import type GitHistoryPlugin from "./main";
+import { GitIdentitySection } from "./components/git-identity-section";
 import { asVoid } from "./utils/async";
 
 type SettingKey = keyof GitHistorySettings;
@@ -24,6 +25,7 @@ export type SettingRow = {
   key: SettingKey;
 } & (
   | { type: "text"; placeholder?: string }
+  | { type: "textarea"; placeholder?: string; rows?: number }
   | { type: "toggle" }
   | { type: "dropdown"; options: Record<string, string> }
   | { type: "number"; min?: number; max?: number }
@@ -173,6 +175,18 @@ export const SETTING_GROUPS: SettingGroup[] = [
         },
       },
       {
+        name: "Startup script",
+        desc:
+          "Shell code run at the start of every session, after your own rc files and before " +
+          "the first prompt — the same place you would put it in .zshrc. Written in the " +
+          "language of the shell above. It is stored in the vault, so keep secrets out of it.",
+        aliases: ["terminal startup script", "init script", "rc", "profile", "zshrc", "bashrc"],
+        key: "terminalStartupScript",
+        type: "textarea",
+        rows: 10,
+        placeholder: "alias gs='git status'\nexport EDITOR=nvim",
+      },
+      {
         name: "Colour new sessions",
         desc:
           "Give every session you open the next free colour from the palette, so a strip of " +
@@ -210,6 +224,7 @@ export function toDefinitions(groups: readonly SettingGroup[]): SettingDefinitio
     checked by the compiler instead of asserted. */
 type ControlShape =
   | { type: "text"; key: SettingKey; placeholder?: string }
+  | { type: "textarea"; key: SettingKey; placeholder?: string; rows?: number }
   | { type: "toggle"; key: SettingKey }
   | { type: "dropdown"; key: SettingKey; options: Record<string, string> }
   | { type: "number"; key: SettingKey; min?: number; max?: number };
@@ -231,8 +246,50 @@ function control(row: SettingRow): ControlShape {
         key: row.key,
         ...(row.placeholder ? { placeholder: row.placeholder } : {}),
       };
+    case "textarea":
+      return {
+        type: "textarea",
+        key: row.key,
+        ...(row.placeholder ? { placeholder: row.placeholder } : {}),
+        ...(row.rows !== undefined ? { rows: row.rows } : {}),
+      };
     default:
       return { type: "toggle", key: row.key };
+  }
+}
+
+/**
+ * The identity rows, in the shape 1.13 renders.
+ *
+ * They are `render` items rather than controls: a control is bound to a key in
+ * the plugin's storage, and these two are bound to `git config` in the vault.
+ * Everything else about them — heading, order, search — is the same as any
+ * other row.
+ */
+export function identityDefinitions(section: GitIdentitySection): SettingDefinitionItem {
+  return {
+    type: "group" as const,
+    heading: "Identity",
+    items: GitIdentitySection.ROWS.map((row) => ({
+      name: GitIdentitySection.rowName(row),
+      desc: GitIdentitySection.rowDesc(row),
+      render: (setting: Setting) => {
+        if (row === "scope") section.scopeSelector(setting);
+        else section.field(setting, row);
+      },
+    })),
+  };
+}
+
+/** The same rows for the versions that predate the definitions API. */
+export function renderIdentityGroup(containerEl: HTMLElement, section: GitIdentitySection): void {
+  new Setting(containerEl).setName("Identity").setHeading();
+  for (const row of GitIdentitySection.ROWS) {
+    const setting = new Setting(containerEl)
+      .setName(GitIdentitySection.rowName(row))
+      .setDesc(GitIdentitySection.rowDesc(row));
+    if (row === "scope") section.scopeSelector(setting);
+    else section.field(setting, row);
   }
 }
 
@@ -246,7 +303,10 @@ export class GitHistorySettingTab extends PluginSettingTab {
 
   /** Obsidian 1.13+ renders, groups and searches settings from these. */
   getSettingDefinitions(): SettingDefinitionItem[] {
-    return toDefinitions(SETTING_GROUPS);
+    return [
+      identityDefinitions(new GitIdentitySection(this.plugin.git)),
+      ...toDefinitions(SETTING_GROUPS),
+    ];
   }
 
   getControlValue(key: string): unknown {
@@ -267,6 +327,7 @@ export class GitHistorySettingTab extends PluginSettingTab {
   /** What older Obsidian versions call, built from the same list. */
   display(): void {
     this.containerEl.empty();
+    renderIdentityGroup(this.containerEl, new GitIdentitySection(this.plugin.git));
     renderGroups(
       this.containerEl,
       SETTING_GROUPS,
@@ -330,6 +391,19 @@ function renderRow(
           if (row.max !== undefined && parsed > row.max) return;
           save(parsed);
         });
+      });
+      break;
+
+    case "textarea":
+      // The row stacks rather than squeezing a script into the narrow control
+      // column; the class is what styles.css hangs that on.
+      setting.settingEl.addClass("gs-setting-stacked");
+      setting.addTextArea((t) => {
+        t.setValue(readString(read, row.key));
+        if (row.placeholder) t.setPlaceholder(row.placeholder);
+        if (row.rows !== undefined) t.inputEl.rows = row.rows;
+        t.inputEl.addClass("gs-script-input");
+        t.onChange(save);
       });
       break;
 

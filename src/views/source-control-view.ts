@@ -706,7 +706,7 @@ export class SourceControlView extends ItemView {
           await this.store.refresh();
           new Notice("Amended");
         } catch (err: unknown) {
-          new Notice(`Amend failed: ${err instanceof Error ? err.message : String(err)}`);
+          await this.plugin.reportGitFailure("Amend", err);
         }
       });
     });
@@ -848,7 +848,7 @@ export class SourceControlView extends ItemView {
       }
       await this.store.refresh();
     } catch (e: unknown) {
-      new Notice(`Commit failed: ${e instanceof Error ? e.message : String(e)}`);
+      await this.plugin.reportGitFailure("Commit", e);
     }
   }
 

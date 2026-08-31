@@ -24,6 +24,13 @@ export interface SessionLaunch {
   args: string[];
   /** The backends considered on the way here, for the failure panel. */
   attempts: readonly BackendAttempt[];
+  /** Environment the startup script needs, such as zsh's ZDOTDIR. */
+  env?: Readonly<Record<string, string>>;
+  /**
+   * Typed into the shell once it is up, for the shells that have no way of
+   * being handed an extra rc file. Null for every other one.
+   */
+  prelude?: string | null;
 }
 
 export interface SessionOptions {
@@ -59,6 +66,7 @@ export class TerminalSession {
   private launch: SessionLaunch | null = null;
   private handshake: HandshakeBuffer | null = null;
   private handshakeTimer: number | null = null;
+  private preludeSent = false;
   private errorEl: HTMLElement | null = null;
 
   constructor(
@@ -164,6 +172,7 @@ export class TerminalSession {
    */
   private async start(): Promise<void> {
     this.clearFailure();
+    this.preludeSent = false;
 
     let launch: SessionLaunch;
     try {
@@ -180,6 +189,9 @@ export class TerminalSession {
       COLUMNS: String(this.terminal.cols),
       LINES: String(this.terminal.rows),
       POWERLEVEL9K_INSTANT_PROMPT: "off",
+      // Last, because a startup script that needs ZDOTDIR pointed somewhere
+      // else means it, and nothing above is a variable it sets.
+      ...launch.env,
     };
 
     try {
@@ -190,8 +202,12 @@ export class TerminalSession {
     }
 
     this.handshake = launch.spec.handshake ? new HandshakeBuffer(HANDSHAKE) : null;
-    if (this.handshake) this.startHandshakeTimer();
-    else this.announceLimitations(launch.spec);
+    if (this.handshake) {
+      this.startHandshakeTimer();
+    } else {
+      this.announceLimitations(launch.spec);
+      this.sendPrelude();
+    }
 
     for (const stream of [this.shellProcess.stdout, this.shellProcess.stderr]) {
       stream?.on("data", (data: Uint8Array | string) => this.receive(data));
@@ -215,6 +231,9 @@ export class TerminalSession {
       const released = this.handshake.push(bytes);
       if (released === null) return;
       this.clearHandshakeTimer();
+      // Only now: before the bridge has its pty open there is nothing on the
+      // other end to read what we would type.
+      this.sendPrelude();
       if (released.length > 0) this.terminal.write(released);
       return;
     }
@@ -238,6 +257,20 @@ export class TerminalSession {
 
   private awaitingHandshake(): boolean {
     return this.handshake !== null && !this.handshake.ready;
+  }
+
+  /**
+   * The fallback way in for a shell with no rc file of its own to be handed:
+   * the line that loads the startup script, typed in as a user would.
+   *
+   * It shows up in the terminal and in the history, which is exactly why every
+   * shell the table knows gets a real mechanism instead — see startup-script.ts.
+   */
+  private sendPrelude(): void {
+    const prelude = this.launch?.prelude;
+    if (!prelude || this.preludeSent) return;
+    this.preludeSent = true;
+    this.shellProcess?.stdin?.write(prelude);
   }
 
   private startHandshakeTimer(): void {

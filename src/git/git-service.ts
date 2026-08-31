@@ -1,5 +1,7 @@
 import { execFile, processEnv, readFile, writeFile } from "../utils/node-api";
 import type { GitCommandEnvironment } from "../utils/exec-env";
+import { parseIdentity } from "./git-identity";
+import type { GitIdentity, WritableScope } from "./git-identity";
 import {
   FileStatus,
   FileStatusCode,
@@ -31,6 +33,9 @@ export class GitService {
   private repoPath: string;
   private queue: Promise<unknown> = Promise.resolve();
   private supportsDiffMerges = true;
+  /** `git config --show-scope` needs git >= 2.26. Turned off for the session
+      the first time a git says it does not know the option. */
+  private supportsConfigScope = true;
 
   constructor(
     repoPath: string,
@@ -79,13 +84,29 @@ export class GitService {
         (error, stdout, stderr) => {
           if (error) {
             const msg = stderr?.trim() || error.message;
-            reject(new GitError(msg, args));
+            reject(new GitError(msg, args, typeof error.code === "number" ? error.code : null));
             return;
           }
           resolve(stdout);
         },
       );
     });
+  }
+
+  /**
+   * Runs a command whose failure is an answer.
+   *
+   * `git config --get` exits 1 when the key is not set and `--unset` exits 5
+   * when there was nothing to remove — neither is a problem, and treating them
+   * as one would turn "you have not set a name" into an error dialog.
+   */
+  private async execAllowing(codes: readonly number[], args: string[]): Promise<string> {
+    try {
+      return await this.exec(args);
+    } catch (e: unknown) {
+      if (e instanceof GitError && e.exitCode !== null && codes.includes(e.exitCode)) return "";
+      throw e;
+    }
   }
 
   private enqueue<T>(fn: () => Promise<T>): Promise<T> {
@@ -762,6 +783,47 @@ export class GitService {
     await writeFile(this.gitignorePath(), content, "utf-8");
   }
 
+  /**
+   * The name and email git would sign a commit with, and where each is set.
+   *
+   * One call rather than four: `--get-regexp` lists every scope's answer in
+   * precedence order, which is exactly what the settings need to say whether a
+   * value belongs to this vault or was inherited.
+   */
+  async identity(): Promise<GitIdentity> {
+    const pattern = "^user\\.(name|email)$";
+    if (this.supportsConfigScope) {
+      try {
+        return parseIdentity(
+          await this.execAllowing([1], ["config", "--show-scope", "--get-regexp", pattern]),
+        );
+      } catch {
+        // A git too old for --show-scope. The values are still readable, and
+        // everything but naming their origin still works.
+        this.supportsConfigScope = false;
+      }
+    }
+    return parseIdentity(await this.execAllowing([1], ["config", "--get-regexp", pattern]));
+  }
+
+  /**
+   * Writes one half of the identity, or removes it when the value is empty.
+   *
+   * Empty means removed rather than stored: git accepts `user.name = ""`
+   * without complaint and then fails at commit time, which is the same
+   * situation with an extra place to look for it.
+   */
+  async setIdentity(field: "name" | "email", value: string, scope: WritableScope): Promise<void> {
+    const key = `user.${field}`;
+    const where = scope === "global" ? "--global" : "--local";
+    const trimmed = value.trim();
+    if (trimmed === "") {
+      await this.execAllowing([5], ["config", where, "--unset", key]);
+      return;
+    }
+    await this.exec(["config", where, key, trimmed]);
+  }
+
   async addToGitignore(pattern: string): Promise<void> {
     const current = await this.readGitignore();
     const lines = current.split("\n");
@@ -778,6 +840,8 @@ export class GitError extends Error {
   constructor(
     message: string,
     public readonly command: string[],
+    /** git's exit code, or null when the command never ran. */
+    public readonly exitCode: number | null = null,
   ) {
     super(message);
     this.name = "GitError";
