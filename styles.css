@@ -3375,3 +3375,25 @@
   font-size: var(--font-smallest);
   white-space: pre-wrap;
 }
+
+/* Settings: the startup script row.
+   A shell script does not fit the narrow control column a settings row gives
+   it, so this row stacks its label above a full-width field. */
+.gs-setting-stacked {
+  display: block;
+}
+
+.gs-setting-stacked .setting-item-control {
+  width: 100%;
+  padding-top: 8px;
+  justify-content: flex-start;
+}
+
+.gs-script-input {
+  width: 100%;
+  resize: vertical;
+  font-family: var(--font-monospace);
+  font-size: var(--font-ui-smaller);
+  line-height: 1.5;
+  white-space: pre;
+}

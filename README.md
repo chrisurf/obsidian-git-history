@@ -111,6 +111,9 @@ vault's folder.
 - Give each session its own icon and colour from its right-click menu, so a row
   of identical shell icons stays readable
 - Drag the icons to reorder the sessions
+- A **startup script** in the settings is loaded into every session, in the
+  place your own `.zshrc` would put it — aliases, environment variables and
+  functions are there before the first prompt
 - Desktop only, like the rest of the plugin
 
 If a shell does not start, the panel says which program it tried to use and
@@ -174,6 +177,7 @@ The settings are split in two, matching the two halves of the plugin.
 | Shell | _(auto-detect)_ | Path to the shell the Alpha terminal starts. Empty uses your system default |
 | Python | _(auto-detect)_ | Path to the Python 3 behind the terminal's pseudo-terminal. Empty searches for one |
 | Pseudo-terminal | Automatic | Which bridge gives the shell a real terminal. Automatic takes the first that works |
+| Startup script | _(empty)_ | Shell code run at the start of every session, after your own rc files and before the first prompt |
 | Colour new sessions | off | Hand every session you open the next free colour from the palette |
 
 ---

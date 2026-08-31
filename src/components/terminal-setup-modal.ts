@@ -27,6 +27,7 @@ export class TerminalSetupModal extends Modal {
     this.renderPath();
     this.renderGit();
     this.renderBackend();
+    this.renderStartup();
 
     new Setting(this.contentEl).addButton((b) =>
       b
@@ -98,6 +99,36 @@ export class TerminalSetupModal extends Modal {
     }
   }
 
+  /**
+   * A startup script that is set says nothing about itself once it works, and
+   * nothing about itself when it silently does not. This is where the answer to
+   * "is it even being loaded, and how" lives.
+   */
+  private renderStartup(): void {
+    const { enabled, method, label } = this.report.startup;
+    if (!enabled) return;
+
+    const section = this.section("Startup script");
+    if (method === "stdin") {
+      this.row(
+        section,
+        "warn",
+        `Loaded by ${label}`,
+        `${shellName(this.report.shell)} has no rc file the plugin can add to, so the line ` +
+          "that loads the script is typed into the session. It is visible, and it runs after " +
+          "the first prompt rather than before it.",
+      );
+      return;
+    }
+
+    this.row(
+      section,
+      "ok",
+      `Loaded through ${label}`,
+      `Read after your own ${shellName(this.report.shell)} files and before the first prompt.`,
+    );
+  }
+
   private section(title: string): HTMLElement {
     this.contentEl.createEl("h4", { cls: "gs-setup-heading", text: title });
     return this.contentEl.createDiv("gs-setup-section");
@@ -119,6 +150,12 @@ export class TerminalSetupModal extends Modal {
     text.createDiv({ cls: "gs-setup-row-title", text: title });
     text.createDiv({ cls: "gs-setup-row-detail", text: detail });
   }
+}
+
+/** "zsh" out of "/bin/zsh", for a sentence that has to name the shell. */
+function shellName(shell: string): string {
+  const base = shell.split(/[/\\]/).pop() ?? shell;
+  return base.replace(/\.exe$/i, "") || "this shell";
 }
 
 function sourceLabel(source: string): string {

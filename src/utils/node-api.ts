@@ -9,7 +9,12 @@
  * single reviewable file.
  */
 import { execFile as nodeExecFile, spawn as nodeSpawn } from "child_process";
-import { readFile as nodeReadFile, writeFile as nodeWriteFile } from "fs/promises";
+import {
+  mkdtemp as nodeMkdtemp,
+  readFile as nodeReadFile,
+  rm as nodeRm,
+  writeFile as nodeWriteFile,
+} from "fs/promises";
 
 /** The subset of Node's ExecException the plugin reads. */
 export interface ExecFileError extends Error {
@@ -56,6 +61,38 @@ type WriteFileFn = (path: string, data: string, encoding: "utf-8") => Promise<vo
 
 export const readFile = nodeReadFile as unknown as ReadFileFn;
 export const writeFile = nodeWriteFile as unknown as WriteFileFn;
+
+/**
+ * A scratch directory of the terminal's own, for the files a session's startup
+ * script is loaded from.
+ *
+ * `mkdtemp` rather than a fixed path on purpose: it creates the directory with
+ * owner-only permissions, and a startup script is the kind of thing that holds
+ * a token.
+ */
+type MkdtempFn = (prefix: string) => Promise<string>;
+type RmFn = (path: string, options: { recursive?: boolean; force?: boolean }) => Promise<void>;
+
+export const mkdtemp = nodeMkdtemp as unknown as MkdtempFn;
+export const rm = nodeRm as unknown as RmFn;
+
+/**
+ * Where that directory goes, and how a file name is hung off it.
+ *
+ * Deliberately not `os.tmpdir` and `path.join`: they are one line each, and
+ * two more Node modules is exactly what this file exists to avoid. The
+ * environment is what `os.tmpdir` reads anyway, and the join has one shape to
+ * cover — a directory that came from `mkdtemp` and a plain file name.
+ */
+export function tmpdir(): string {
+  const env = processEnv();
+  const dir = env.TMPDIR ?? env.TMP ?? env.TEMP ?? "/tmp";
+  return dir.length > 1 && (dir.endsWith("/") || dir.endsWith("\\")) ? dir.slice(0, -1) : dir;
+}
+
+export function joinPath(dir: string, name: string): string {
+  return dir.endsWith("/") || dir.endsWith("\\") ? `${dir}${name}` : `${dir}/${name}`;
+}
 
 /** Subset of Node's Readable the terminal reads from. */
 export interface ReadableStream {

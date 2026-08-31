@@ -180,6 +180,12 @@ export interface GitHistorySettings {
    */
   terminalPtyBackend: "auto" | "python" | "perl" | "pipe";
   /**
+   * Shell code run at the start of every terminal session, after the user's own
+   * rc files and before the first prompt. Stored whole rather than as a path so
+   * it travels with the vault; empty means the shell starts as it always did.
+   */
+  terminalStartupScript: string;
+  /**
    * Give every new terminal session the next free colour from the palette.
    * Off by default, the way VS Code leaves its terminal tabs neutral until you
    * colour one yourself.
@@ -204,5 +210,6 @@ export const DEFAULT_SETTINGS: GitHistorySettings = {
   terminalShell: "",
   terminalPython: "",
   terminalPtyBackend: "auto",
+  terminalStartupScript: "",
   terminalAutoColor: false,
 };

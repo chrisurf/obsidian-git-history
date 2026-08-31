@@ -211,6 +211,16 @@ export class ValueComponent<T> {
   }
 }
 
+/** A text area, which the settings tab sizes and styles through `inputEl`. */
+export class TextAreaComponent extends ValueComponent<string> {
+  inputEl: HTMLTextAreaElement;
+
+  constructor() {
+    super("");
+    this.inputEl = document.createElement("textarea");
+  }
+}
+
 export class ButtonComponent {
   text = "";
   cta = false;
@@ -246,6 +256,9 @@ export class ButtonComponent {
 
 export class Setting {
   el: HTMLElement;
+  /** The name Obsidian gives the row element; `el` is the older alias the
+      view tests already use. */
+  settingEl: HTMLElement;
   name = "";
   desc = "";
   heading = false;
@@ -253,6 +266,7 @@ export class Setting {
 
   constructor(containerEl: HTMLElement) {
     this.el = containerEl.createDiv("setting-item");
+    this.settingEl = this.el;
     settings.push(this);
   }
   setName(name: string): this {
@@ -273,8 +287,8 @@ export class Setting {
   addText(cb?: (c: ValueComponent<string>) => unknown): this {
     return this.add(new ValueComponent(""), cb);
   }
-  addTextArea(cb?: (c: ValueComponent<string>) => unknown): this {
-    return this.add(new ValueComponent(""), cb);
+  addTextArea(cb?: (c: TextAreaComponent) => unknown): this {
+    return this.add(new TextAreaComponent(), cb);
   }
   addDropdown(cb?: (c: ValueComponent<string>) => unknown): this {
     return this.add(new ValueComponent(""), cb);
@@ -288,8 +302,8 @@ export class Setting {
     cb?.(button);
     return this;
   }
-  private add<T>(component: ValueComponent<T>, cb?: (c: ValueComponent<T>) => unknown): this {
-    this.components.push(component as ValueComponent<unknown>);
+  private add<T, C extends ValueComponent<T>>(component: C, cb?: (c: C) => unknown): this {
+    this.components.push(component as unknown as ValueComponent<unknown>);
     cb?.(component);
     return this;
   }

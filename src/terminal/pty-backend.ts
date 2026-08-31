@@ -122,6 +122,18 @@ const PERL_BRIDGE = [
   "close $m;kill 'HUP',$p;waitpid($p,0);",
 ].join("\n");
 
+/**
+ * The shell as it is to be started, flags and all.
+ *
+ * The bridges take it whole rather than building it: what the shell is asked
+ * for — login or not, an extra rc file or not — belongs to the startup script
+ * and the platform, not to whichever interpreter opens the pty.
+ */
+export interface ShellCommand {
+  file: string;
+  args: readonly string[];
+}
+
 export type PtyBackendId = "python" | "perl" | "pipe";
 export type BackendPreference = PtyBackendId | "auto";
 export type PlatformName = "mac" | "linux" | "win";
@@ -143,11 +155,7 @@ export interface PtyBackendSpec {
   capabilities: PtyCapabilities;
   /** Whether the bridge announces itself once the pty is open. */
   handshake: boolean;
-  command(
-    interpreter: string,
-    shell: string,
-    platform: PlatformName,
-  ): { file: string; args: string[] };
+  command(interpreter: string, shell: ShellCommand): { file: string; args: string[] };
 }
 
 /**
@@ -168,7 +176,7 @@ export const PTY_BACKENDS: readonly PtyBackendSpec[] = [
     handshake: true,
     command: (interpreter, shell) => ({
       file: interpreter,
-      args: ["-c", PYTHON_BRIDGE, shell, "-il"],
+      args: ["-c", PYTHON_BRIDGE, shell.file, ...shell.args],
     }),
   },
   {
@@ -180,7 +188,7 @@ export const PTY_BACKENDS: readonly PtyBackendSpec[] = [
     handshake: true,
     command: (interpreter, shell) => ({
       file: interpreter,
-      args: ["-e", PERL_BRIDGE, shell, "-il"],
+      args: ["-e", PERL_BRIDGE, shell.file, ...shell.args],
     }),
   },
   {
@@ -190,11 +198,9 @@ export const PTY_BACKENDS: readonly PtyBackendSpec[] = [
     platforms: ["mac", "linux", "win"],
     capabilities: { tty: false, resize: false },
     handshake: false,
-    // cmd.exe and PowerShell have no -i, and without a pty there is nothing
-    // interactive to ask for anyway.
-    command: (_interpreter, shell, platform) => ({
-      file: shell,
-      args: platform === "win" ? [] : ["-i"],
+    command: (_interpreter, shell) => ({
+      file: shell.file,
+      args: [...shell.args],
     }),
   },
 ];

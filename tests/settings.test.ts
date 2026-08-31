@@ -1,5 +1,6 @@
 import { describe, it, expect, beforeEach } from "vitest";
 import { settings, resetSettings } from "./mocks/obsidian";
+import type { ValueComponent } from "./mocks/obsidian";
 import { SETTING_GROUPS, toDefinitions, renderGroups } from "../src/settings";
 import { DEFAULT_SETTINGS } from "../src/types";
 import type { GitHistorySettings } from "../src/types";
@@ -31,6 +32,7 @@ describe("the settings list", () => {
       "terminalShell",
       "terminalPython",
       "terminalPtyBackend",
+      "terminalStartupScript",
       "terminalAutoColor",
     ]);
     expect(sourceControl?.rows.some((r) => r.key.startsWith("terminal"))).toBe(false);
@@ -104,6 +106,8 @@ describe("definitions for Obsidian 1.13", () => {
     });
     expect(byKey.get("autoFetchInterval")?.min).toBe(30);
     expect(byKey.get("terminalShell")?.placeholder).toBe("/bin/zsh");
+    expect(byKey.get("terminalStartupScript")?.type).toBe("textarea");
+    expect(byKey.get("terminalStartupScript")?.rows).toBe(10);
   });
 
   it("leaves out what a row does not have, rather than passing undefined", () => {
@@ -212,5 +216,28 @@ describe("rendering for older Obsidian versions", () => {
     expect(settings.find((s) => s.name === "Shell")?.control<string>().placeholder).toBe(
       "/bin/zsh",
     );
+  });
+
+  /**
+   * A shell script in a one-line text field is unusable, and the row that
+   * holds it is the one setting here that needs more than the control column.
+   */
+  it("gives the startup script a stacked row and a text area to type into", () => {
+    values.terminalStartupScript = "alias gs='git status'";
+    render();
+    const row = settings.find((s) => s.name === "Startup script");
+    expect(row?.settingEl.classList.contains("gs-setting-stacked")).toBe(true);
+
+    const control = row?.control<string>() as
+      | (ValueComponent<string> & {
+          inputEl: HTMLTextAreaElement;
+        })
+      | undefined;
+    expect(control?.value).toBe("alias gs='git status'");
+    expect(Number(control?.inputEl.rows)).toBe(10);
+    expect(control?.inputEl.classList.contains("gs-script-input")).toBe(true);
+
+    control?.emit("export EDITOR=nvim");
+    expect(written).toEqual([["terminalStartupScript", "export EDITOR=nvim"]]);
   });
 });

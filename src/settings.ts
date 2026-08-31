@@ -24,6 +24,7 @@ export type SettingRow = {
   key: SettingKey;
 } & (
   | { type: "text"; placeholder?: string }
+  | { type: "textarea"; placeholder?: string; rows?: number }
   | { type: "toggle" }
   | { type: "dropdown"; options: Record<string, string> }
   | { type: "number"; min?: number; max?: number }
@@ -173,6 +174,18 @@ export const SETTING_GROUPS: SettingGroup[] = [
         },
       },
       {
+        name: "Startup script",
+        desc:
+          "Shell code run at the start of every session, after your own rc files and before " +
+          "the first prompt — the same place you would put it in .zshrc. Written in the " +
+          "language of the shell above. It is stored in the vault, so keep secrets out of it.",
+        aliases: ["terminal startup script", "init script", "rc", "profile", "zshrc", "bashrc"],
+        key: "terminalStartupScript",
+        type: "textarea",
+        rows: 10,
+        placeholder: "alias gs='git status'\nexport EDITOR=nvim",
+      },
+      {
         name: "Colour new sessions",
         desc:
           "Give every session you open the next free colour from the palette, so a strip of " +
@@ -210,6 +223,7 @@ export function toDefinitions(groups: readonly SettingGroup[]): SettingDefinitio
     checked by the compiler instead of asserted. */
 type ControlShape =
   | { type: "text"; key: SettingKey; placeholder?: string }
+  | { type: "textarea"; key: SettingKey; placeholder?: string; rows?: number }
   | { type: "toggle"; key: SettingKey }
   | { type: "dropdown"; key: SettingKey; options: Record<string, string> }
   | { type: "number"; key: SettingKey; min?: number; max?: number };
@@ -230,6 +244,13 @@ function control(row: SettingRow): ControlShape {
         type: "text",
         key: row.key,
         ...(row.placeholder ? { placeholder: row.placeholder } : {}),
+      };
+    case "textarea":
+      return {
+        type: "textarea",
+        key: row.key,
+        ...(row.placeholder ? { placeholder: row.placeholder } : {}),
+        ...(row.rows !== undefined ? { rows: row.rows } : {}),
       };
     default:
       return { type: "toggle", key: row.key };
@@ -330,6 +351,19 @@ function renderRow(
           if (row.max !== undefined && parsed > row.max) return;
           save(parsed);
         });
+      });
+      break;
+
+    case "textarea":
+      // The row stacks rather than squeezing a script into the narrow control
+      // column; the class is what styles.css hangs that on.
+      setting.settingEl.addClass("gs-setting-stacked");
+      setting.addTextArea((t) => {
+        t.setValue(readString(read, row.key));
+        if (row.placeholder) t.setPlaceholder(row.placeholder);
+        if (row.rows !== undefined) t.inputEl.rows = row.rows;
+        t.inputEl.addClass("gs-script-input");
+        t.onChange(save);
       });
       break;
 
