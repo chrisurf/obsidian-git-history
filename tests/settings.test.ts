@@ -18,7 +18,13 @@ const keys = rows.map((r) => r.key);
  * excused so the coverage test below stays meaningful for every other setting,
  * and so the gap is something a reader trips over instead of something hidden.
  */
-const NOT_EXPOSED: (keyof GitHistorySettings)[] = ["showStatusBar", "lastWhatsNewVersion"];
+const NOT_EXPOSED: (keyof GitHistorySettings)[] = [
+  "showStatusBar",
+  "lastWhatsNewVersion",
+  // Written when the identity prompt is waved away, and asked again from the
+  // failed commit rather than from a row of its own.
+  "identityPromptDismissed",
+];
 
 describe("the settings list", () => {
   it("splits into the two things the plugin does", () => {

@@ -161,6 +161,12 @@ export interface GitHistorySettings {
   /** Version whose "what's new" note the user has already seen. */
   lastWhatsNewVersion: string;
   /**
+   * Whether the user has waved away the "set your Git identity" prompt. It is
+   * asked once and then never again on its own — a failed commit still offers
+   * it, because at that point it is the answer rather than an interruption.
+   */
+  identityPromptDismissed: boolean;
+  /**
    * Override for the git binary. Empty means the plugin finds one itself, which
    * is what it should normally be doing; this is the way out when it cannot.
    */
@@ -206,6 +212,7 @@ export const DEFAULT_SETTINGS: GitHistorySettings = {
   debounceMs: 1000,
   showNestedRepos: false,
   lastWhatsNewVersion: "",
+  identityPromptDismissed: false,
   gitPath: "",
   terminalShell: "",
   terminalPython: "",

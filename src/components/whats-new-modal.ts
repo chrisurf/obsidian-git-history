@@ -15,12 +15,22 @@ export class WhatsNewModal extends Modal {
   private readonly version: string;
   private readonly component: Component;
   private readonly onOpenSourceControl: () => void;
+  private readonly onClosed: () => void;
 
-  constructor(app: App, version: string, component: Component, onOpenSourceControl: () => void) {
+  constructor(
+    app: App,
+    version: string,
+    component: Component,
+    onOpenSourceControl: () => void,
+    // Anything else the plugin wants to say on first launch waits for this
+    // modal rather than opening behind it.
+    onClosed: () => void = () => {},
+  ) {
     super(app);
     this.version = version;
     this.component = component;
     this.onOpenSourceControl = onOpenSourceControl;
+    this.onClosed = onClosed;
   }
 
   onOpen(): void {
@@ -69,5 +79,6 @@ export class WhatsNewModal extends Modal {
 
   onClose(): void {
     this.contentEl.empty();
+    this.onClosed();
   }
 }

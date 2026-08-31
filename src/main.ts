@@ -19,6 +19,9 @@ import { TerminalSessionManager } from "./terminal/session-manager";
 import { StatusBarController } from "./components/status-bar";
 import { WhatsNewModal } from "./components/whats-new-modal";
 import { TerminalSetupModal } from "./components/terminal-setup-modal";
+import { GitIdentityModal } from "./components/git-identity-modal";
+import type { IdentityPromptReason } from "./components/git-identity-modal";
+import { isComplete } from "./git/git-identity";
 import { GitHistorySettingTab } from "./settings";
 import { asVoid } from "./utils/async";
 import { ExecEnvironment } from "./utils/exec-env";
@@ -93,29 +96,89 @@ export default class GitHistoryPlugin extends Plugin {
 
     // Once the workspace is up, surface the "what's new" note — a modal during
     // layout restore would fight with Obsidian for the screen.
-    this.app.workspace.onLayoutReady(() => this.maybeShowWhatsNew());
+    this.app.workspace.onLayoutReady(() => this.runStartupPrompts());
+  }
+
+  /**
+   * The two things the plugin may want to say on launch, one after the other.
+   *
+   * A fresh install triggers both, and two modals opening at once means one of
+   * them is behind the other with no way to know it is there.
+   */
+  private runStartupPrompts(): void {
+    const askForIdentity = (): void => void this.maybeAskForIdentity();
+    if (!this.maybeShowWhatsNew(askForIdentity)) askForIdentity();
   }
 
   /** Opens the "what's new" note for the installed version. */
-  private showWhatsNew(): void {
+  private showWhatsNew(onClosed: () => void = () => {}): void {
     new WhatsNewModal(
       this.app,
       this.manifest.version,
       this,
       () => void this.openSourceControlView(),
+      onClosed,
     ).open();
   }
 
   /**
    * Shows the note once per install or update, then records the version so the
-   * same one is never shown twice.
+   * same one is never shown twice. Answers whether it did.
    */
-  private maybeShowWhatsNew(): void {
+  private maybeShowWhatsNew(onClosed: () => void = () => {}): boolean {
     const current = this.manifest.version;
-    if (!shouldShowWhatsNew(current, this.settings.lastWhatsNewVersion)) return;
+    if (!shouldShowWhatsNew(current, this.settings.lastWhatsNewVersion)) return false;
     this.settings.lastWhatsNewVersion = current;
     void this.saveSettings();
-    this.showWhatsNew();
+    this.showWhatsNew(onClosed);
+    return true;
+  }
+
+  /**
+   * Asks for a Git identity on launch, if there is nothing to ask about.
+   *
+   * Only when git has neither half and the vault is a repository: someone with
+   * a global name and email is already set up, and a vault that is not a
+   * repository has a more basic problem the plugin already mentions. Waved
+   * away once, it stays away — the failed commit is what asks after that.
+   */
+  private async maybeAskForIdentity(): Promise<void> {
+    if (this.settings.identityPromptDismissed) return;
+    if (!(await this.git.isRepo())) return;
+
+    try {
+      if (isComplete(await this.git.identity())) return;
+    } catch {
+      // No usable git. The panel and the setup report both say so already,
+      // and an identity prompt on top of that explains nothing.
+      return;
+    }
+    await this.promptForIdentity("startup");
+  }
+
+  /**
+   * The identity prompt, wherever it is asked from: launch, the command
+   * palette, or a commit that git refused to write.
+   */
+  async promptForIdentity(reason: IdentityPromptReason): Promise<void> {
+    const [identity, canUseLocal] = await Promise.all([this.git.identity(), this.git.isRepo()]);
+    new GitIdentityModal(this.app, {
+      reason,
+      identity,
+      canUseLocal,
+      onSave: async (name, email, scope) => {
+        await this.git.setIdentity("name", name, scope);
+        await this.git.setIdentity("email", email, scope);
+        this.settings.identityPromptDismissed = false;
+        await this.saveSettings();
+        new Notice("Git identity saved");
+      },
+      onDismiss: () => {
+        if (reason !== "startup") return;
+        this.settings.identityPromptDismissed = true;
+        void this.saveSettings();
+      },
+    }).open();
   }
 
   private registerCommands(): void {
@@ -245,6 +308,12 @@ export default class GitHistoryPlugin extends Plugin {
       id: "new-terminal-session",
       name: "New terminal session",
       callback: () => this.newTerminalSession(),
+    });
+
+    this.addCommand({
+      id: "set-git-identity",
+      name: "Set Git identity",
+      callback: () => void this.promptForIdentity("manual"),
     });
 
     this.addCommand({

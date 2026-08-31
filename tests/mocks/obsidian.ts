@@ -211,6 +211,44 @@ export class ValueComponent<T> {
   }
 }
 
+/** A one-line field. Settings rows reach for `inputEl` to hang blur and key
+    handlers off it. */
+export class TextComponent extends ValueComponent<string> {
+  inputEl: HTMLInputElement;
+
+  constructor() {
+    super("");
+    this.inputEl = document.createElement("input");
+  }
+}
+
+/**
+ * A dropdown whose options really live on a `<select>`, so code that clears it
+ * with `selectEl.empty()` — the way Obsidian expects — is reflected here too.
+ */
+export class DropdownComponent extends ValueComponent<string> {
+  selectEl: HTMLSelectElement;
+
+  constructor() {
+    super("");
+    this.selectEl = document.createElement("select");
+  }
+
+  addOptions(options: Record<string, string>): this {
+    for (const [value, label] of Object.entries(options)) {
+      const option = document.createElement("option");
+      option.value = value;
+      option.textContent = label;
+      this.selectEl.appendChild(option);
+    }
+    this.options = {};
+    for (const option of Array.from(this.selectEl.querySelectorAll("option"))) {
+      this.options[option.value] = option.textContent ?? "";
+    }
+    return this;
+  }
+}
+
 /** A text area, which the settings tab sizes and styles through `inputEl`. */
 export class TextAreaComponent extends ValueComponent<string> {
   inputEl: HTMLTextAreaElement;
@@ -284,14 +322,14 @@ export class Setting {
     this.el.addClass("setting-item-heading");
     return this;
   }
-  addText(cb?: (c: ValueComponent<string>) => unknown): this {
-    return this.add(new ValueComponent(""), cb);
+  addText(cb?: (c: TextComponent) => unknown): this {
+    return this.add(new TextComponent(), cb);
   }
   addTextArea(cb?: (c: TextAreaComponent) => unknown): this {
     return this.add(new TextAreaComponent(), cb);
   }
-  addDropdown(cb?: (c: ValueComponent<string>) => unknown): this {
-    return this.add(new ValueComponent(""), cb);
+  addDropdown(cb?: (c: DropdownComponent) => unknown): this {
+    return this.add(new DropdownComponent(), cb);
   }
   addToggle(cb?: (c: ValueComponent<boolean>) => unknown): this {
     return this.add(new ValueComponent(false), cb);

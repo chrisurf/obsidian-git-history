@@ -9,6 +9,7 @@ import {
 } from "../types";
 import { RepoStore } from "../store/repo-store";
 import { GitService } from "../git/git-service";
+import { isMissingIdentityError } from "../git/git-identity";
 import { computeGraphLayout, formatRelativeDate } from "../utils/graph-layout";
 import type GitHistoryPlugin from "../main";
 import { asVoid } from "../utils/async";
@@ -706,7 +707,7 @@ export class SourceControlView extends ItemView {
           await this.store.refresh();
           new Notice("Amended");
         } catch (err: unknown) {
-          new Notice(`Amend failed: ${err instanceof Error ? err.message : String(err)}`);
+          await this.reportCommitFailure("Amend", err);
         }
       });
     });
@@ -848,8 +849,25 @@ export class SourceControlView extends ItemView {
       }
       await this.store.refresh();
     } catch (e: unknown) {
-      new Notice(`Commit failed: ${e instanceof Error ? e.message : String(e)}`);
+      await this.reportCommitFailure("Commit", e);
     }
+  }
+
+  /**
+   * Why a commit did not happen.
+   *
+   * One failure has an answer rather than a message: git refusing to write a
+   * commit because nobody told it who is making it. Showing its own advice —
+   * four lines about `git config --global` in a notice that disappears — leaves
+   * the user to do by hand what the plugin can offer to do here.
+   */
+  private async reportCommitFailure(action: string, e: unknown): Promise<void> {
+    const detail = e instanceof Error ? e.message : String(e);
+    if (isMissingIdentityError(detail)) {
+      await this.plugin.promptForIdentity("commit");
+      return;
+    }
+    new Notice(`${action} failed: ${detail}`);
   }
 
   /**

@@ -147,12 +147,30 @@ Available from Obsidian's command palette (`Ctrl/Cmd + P`).
 | Backup: stage all, commit & push | Snapshots and uploads the whole vault in one step |
 | Show file history | Shows the history of the note you have open |
 | Initialize Git repository | Sets up version control for a vault that has none |
+| Set Git identity | Sets the name and email address Git puts on your commits |
 | Open terminal | Opens the shell panel in your vault's folder (Alpha) |
 | Check terminal setup | Reports which programs the terminal found and what it can do with them |
 
 ## ⚙️ Settings
 
-The settings are split in two, matching the two halves of the plugin.
+### Identity
+
+The name and email address Git records on every commit you make. These are not
+plugin settings: they are read from `git config`, showing whichever value
+applies here — your global one, or a value set for this vault, which overrides
+it. Each row says which of the two it is showing.
+
+| Setting | What it does |
+| --- | --- |
+| Name | The name recorded as the author of your commits |
+| Email | The address recorded alongside it, and what forges match commits to accounts by |
+| Save changes to | Whether an edit is written for this vault or for every repository on the computer. It starts on the config the current value comes from |
+
+If neither is set anywhere, the plugin offers to set them when it loads, and
+again if a commit fails for the lack of them. Both are worth having: without
+them, Git either refuses to commit or invents a name and an address from your
+computer's user name and hostname — and puts those on your commits, where no
+Git host can match them to your account.
 
 ### Source control
 
