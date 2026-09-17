@@ -2034,9 +2034,11 @@
   --diff-add-bg: rgb(35, 134, 54, 0.2);
   --diff-add-gutter: rgb(35, 134, 54, 0.4);
   --diff-add-sign: #3fb950;
+  --diff-add-word-bg: rgb(46, 160, 67, 0.55);
   --diff-del-bg: rgb(248, 81, 73, 0.18);
   --diff-del-gutter: rgb(248, 81, 73, 0.35);
   --diff-del-sign: #f85149;
+  --diff-del-word-bg: rgb(248, 81, 73, 0.5);
   --diff-hunk-bg: rgb(88, 166, 255, 0.06);
   --diff-hunk-text: #569cd6;
   --diff-empty-bg: rgb(50, 50, 50, 0.5);
@@ -2260,6 +2262,14 @@
   tab-size: 4;
   background: var(--diff-bg);
   color: var(--diff-text);
+  /* One column as wide as the longest line. As plain blocks the rows were only
+     as wide as the visible pane, so a line's colour stopped where the pane
+     ended and scrolling sideways showed the text on no colour at all. The same
+     width let a hunk header wrap in one pane and not the other, which put the
+     two panes' rows out of line. */
+  display: grid;
+  grid-template-columns: minmax(max-content, 1fr);
+  align-content: start;
 }
 
 .git-diff-code::-webkit-scrollbar {
@@ -2283,27 +2293,40 @@
   display: flex;
   min-height: 22px;
   white-space: pre;
-  border-left: 3px solid transparent;
+}
+
+/* The gutter stays at the left edge while the text scrolls sideways, so a
+   line's number and sign are in view wherever the change is. Stuck cells need
+   an opaque background, or the text scrolling under them shows through: each
+   row type layers its own colour over the view background. The coloured bar
+   on the left lives here too, since the row's own left edge scrolls away. */
+.git-diff-linenum,
+.git-diff-sign {
+  position: sticky;
+  z-index: 1;
+  flex-shrink: 0;
+  user-select: none;
+  font-size: 13px;
+  background: var(--diff-bg);
 }
 
 .git-diff-linenum {
+  left: 0;
+  box-sizing: content-box;
   width: 55px;
   text-align: right;
   padding-right: 12px;
   color: var(--diff-linenum);
-  flex-shrink: 0;
-  user-select: none;
-  font-size: 13px;
   font-family: var(--diff-font);
+  box-shadow: inset 3px 0 transparent;
 }
 
 .git-diff-sign {
+  /* Directly after the number: its width plus its padding. */
+  left: 67px;
   width: 18px;
   text-align: center;
-  flex-shrink: 0;
-  user-select: none;
   font-weight: 600;
-  font-size: 13px;
 }
 
 .git-diff-content {
@@ -2314,11 +2337,16 @@
 
 .git-diff-add {
   background: var(--diff-add-bg);
-  border-left-color: var(--diff-add-sign);
+}
+.git-diff-add .git-diff-linenum,
+.git-diff-add .git-diff-sign {
+  background: linear-gradient(var(--diff-add-gutter), var(--diff-add-gutter)), var(--diff-bg);
 }
 .git-diff-add .git-diff-linenum {
-  color: var(--diff-add-sign);
-  opacity: 0.7;
+  /* Faded through the colour rather than with opacity, which would fade the
+     background as well and let the text under the stuck cell show through. */
+  color: color-mix(in srgb, var(--diff-add-sign) 70%, transparent);
+  box-shadow: inset 3px 0 var(--diff-add-sign);
 }
 .git-diff-add .git-diff-sign {
   color: var(--diff-add-sign);
@@ -2329,11 +2357,14 @@
 
 .git-diff-del {
   background: var(--diff-del-bg);
-  border-left-color: var(--diff-del-sign);
+}
+.git-diff-del .git-diff-linenum,
+.git-diff-del .git-diff-sign {
+  background: linear-gradient(var(--diff-del-gutter), var(--diff-del-gutter)), var(--diff-bg);
 }
 .git-diff-del .git-diff-linenum {
-  color: var(--diff-del-sign);
-  opacity: 0.7;
+  color: color-mix(in srgb, var(--diff-del-sign) 70%, transparent);
+  box-shadow: inset 3px 0 var(--diff-del-sign);
 }
 .git-diff-del .git-diff-sign {
   color: var(--diff-del-sign);
@@ -2344,7 +2375,6 @@
 
 .git-diff-context {
   background: transparent;
-  border-left-color: transparent;
 }
 .git-diff-context .git-diff-content {
   color: var(--diff-text);
@@ -2352,26 +2382,31 @@
 
 .git-diff-empty {
   background: var(--diff-empty-bg);
-  border-left-color: transparent;
+}
+.git-diff-empty .git-diff-linenum,
+.git-diff-empty .git-diff-sign {
+  background: linear-gradient(var(--diff-empty-bg), var(--diff-empty-bg)), var(--diff-bg);
 }
 
-/* Character-level inline diff highlights */
+/* The words that changed within a changed line, in a clearly stronger tone
+   of the line's own colour. No padding: it would shift everything after a
+   mark, and the old and new line would no longer line up character for
+   character. */
 .git-diff-char-add {
-  background: rgb(35, 134, 54, 0.45);
+  background: var(--diff-add-word-bg);
   border-radius: 2px;
-  padding: 0 1px;
 }
 .git-diff-char-del {
-  background: rgb(248, 81, 73, 0.4);
+  background: var(--diff-del-word-bg);
   border-radius: 2px;
-  padding: 0 1px;
 }
 
 .git-diff-hunk-header {
   display: flex;
   justify-content: space-between;
   align-items: center;
-  padding: 4px 12px;
+  /* No right padding: the actions carry it, so they cover the edge. */
+  padding: 4px 0 4px 12px;
   background: var(--diff-hunk-bg);
   color: var(--diff-hunk-text);
   font-size: 13px;
@@ -2384,6 +2419,12 @@
 .git-diff-hunk-actions {
   display: flex;
   gap: 6px;
+  /* The header is as wide as the longest line; the buttons stay in view,
+     over a background of their own so a long header does not show through. */
+  position: sticky;
+  right: 0;
+  padding: 0 12px 0 8px;
+  background: linear-gradient(var(--diff-hunk-bg), var(--diff-hunk-bg)), var(--diff-bg);
 }
 
 .git-diff-hunk-btn {

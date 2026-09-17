@@ -101,3 +101,24 @@ describe("styles.css — file rows read the same in both lists", () => {
     expect(commit).toBe(changes);
   });
 });
+
+/**
+ * The diff rows scroll sideways inside their pane. Both rules below break
+ * silently in a DOM test, since happy-dom does no layout: the row colour ended
+ * where the pane ended, and the gutter scrolled away with the text.
+ */
+describe("styles.css — the diff view", () => {
+  it("makes every row as wide as the longest line", () => {
+    const code = ruleBody(".git-diff-code");
+    expect(code).toMatch(/display:\s*grid/);
+    expect(code).toMatch(/grid-template-columns:\s*minmax\(max-content,\s*1fr\)/);
+  });
+
+  it("keeps the line numbers and signs at the left edge, on an opaque background", () => {
+    expect(css).toMatch(/\.git-diff-linenum,\s*\.git-diff-sign\s*\{[^}]*position:\s*sticky/);
+    // Opacity would fade the background too, and the text under it would show.
+    for (const type of ["add", "del"]) {
+      expect(ruleBody(`.git-diff-${type} .git-diff-linenum`)).not.toMatch(/opacity\s*:/);
+    }
+  });
+});
