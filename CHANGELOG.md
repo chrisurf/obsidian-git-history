@@ -1,3 +1,10 @@
+# [1.10.0](https://github.com/chrisurf/obsidian-git-history/compare/1.9.0...1.10.0) (2026-09-17)
+
+
+### Features
+
+* stage renamed files reliably, colour diff lines fully, and mark changed words ([#22](https://github.com/chrisurf/obsidian-git-history/issues/22)) ([36a2140](https://github.com/chrisurf/obsidian-git-history/commit/36a2140c4433039f62b3298b6033e0a809d32641))
+
 # [1.9.0](https://github.com/chrisurf/obsidian-git-history/compare/1.8.0...1.9.0) (2026-08-31)
 
 
