@@ -5,6 +5,8 @@ import { GitService } from "../git/git-service";
 import type GitHistoryPlugin from "../main";
 import { asVoid } from "../utils/async";
 import { openCurrentFile, vaultFile } from "../utils/vault-file";
+import { pairLines, wordDiff } from "../utils/word-diff";
+import type { LinePair, Segment } from "../utils/word-diff";
 
 type TokenType =
   | "keyword"
@@ -692,11 +694,7 @@ export class DiffView extends ItemView {
     const rightCode = rightPane.createDiv("git-diff-code");
     this.codeScrollEl = leftCode;
 
-    const allPaired: Array<{
-      type: "context" | "modify" | "add" | "del";
-      left?: DiffLine;
-      right?: DiffLine;
-    }> = [];
+    const allPaired: LinePair[] = [];
 
     for (const hunk of fileDiff.hunks) {
       const leftHunkHeader = leftCode.createDiv("git-diff-hunk-header");
@@ -728,7 +726,7 @@ export class DiffView extends ItemView {
         });
       }
 
-      allPaired.push(...this.pairLines(hunk.lines));
+      allPaired.push(...pairLines(hunk.lines));
     }
 
     const CHUNK = 500;
@@ -758,9 +756,13 @@ export class DiffView extends ItemView {
         const leftContent = leftLine.createSpan("git-diff-content");
         const rightContent = rightLine.createSpan("git-diff-content");
 
-        if (pair.type === "modify" && pair.left && pair.right) {
-          this.renderInlineHighlight(leftContent, pair.left.content, pair.right.content, "del");
-          this.renderInlineHighlight(rightContent, pair.right.content, pair.left.content, "add");
+        const words =
+          pair.type === "modify" && pair.left && pair.right
+            ? wordDiff(pair.left.content, pair.right.content)
+            : null;
+        if (words) {
+          this.renderSegments(leftContent, words.old, "git-diff-char-del");
+          this.renderSegments(rightContent, words.new, "git-diff-char-add");
         } else {
           if (pair.left) this.highlightContent(leftContent, pair.left.content);
           if (pair.right) this.highlightContent(rightContent, pair.right.content);
@@ -801,6 +803,12 @@ export class DiffView extends ItemView {
     this.codeScrollEl = code;
 
     const allLines: DiffLine[] = [];
+    // A removed line and the added line that replaced it are listed apart here,
+    // but paired the same way the side-by-side view pairs them, so the words
+    // that changed are marked in both views. Worked out when the first of the
+    // two is rendered and kept for the second.
+    const partner = new Map<DiffLine, LinePair>();
+    const wordsOf = new Map<LinePair, Segment[][] | null>();
 
     for (const hunk of fileDiff.hunks) {
       const hunkHeader = code.createDiv("git-diff-hunk-header");
@@ -820,7 +828,23 @@ export class DiffView extends ItemView {
       }
 
       allLines.push(...hunk.lines);
+      for (const pair of pairLines(hunk.lines)) {
+        if (pair.type !== "modify" || !pair.left || !pair.right) continue;
+        partner.set(pair.left, pair);
+        partner.set(pair.right, pair);
+      }
     }
+
+    const segmentsFor = (line: DiffLine): Segment[] | null => {
+      const pair = partner.get(line);
+      if (!pair?.left || !pair.right) return null;
+      if (!wordsOf.has(pair)) {
+        const words = wordDiff(pair.left.content, pair.right.content);
+        wordsOf.set(pair, words ? [words.old, words.new] : null);
+      }
+      const words = wordsOf.get(pair);
+      return words ? words[line === pair.left ? 0 : 1] : null;
+    };
 
     const CHUNK = 500;
     const renderChunk = (start: number): void => {
@@ -848,7 +872,16 @@ export class DiffView extends ItemView {
         sign.setText(line.type === "add" ? "+" : line.type === "del" ? "−" : " ");
 
         const content = lineEl.createSpan("git-diff-content");
-        this.highlightContent(content, line.content);
+        const segments = segmentsFor(line);
+        if (segments) {
+          this.renderSegments(
+            content,
+            segments,
+            line.type === "del" ? "git-diff-char-del" : "git-diff-char-add",
+          );
+        } else {
+          this.highlightContent(content, line.content);
+        }
       }
       if (end < allLines.length) {
         window.requestAnimationFrame(() => renderChunk(end));
@@ -861,208 +894,14 @@ export class DiffView extends ItemView {
     code.addEventListener("scroll", () => this.updateMinimapViewport());
   }
 
-  private pairLines(lines: DiffLine[]): Array<{
-    type: "context" | "modify" | "add" | "del";
-    left?: DiffLine;
-    right?: DiffLine;
-  }> {
-    const result: Array<{
-      type: "context" | "modify" | "add" | "del";
-      left?: DiffLine;
-      right?: DiffLine;
-    }> = [];
-    let i = 0;
-
-    while (i < lines.length) {
-      if (lines[i].type === "context") {
-        result.push({ type: "context", left: lines[i] });
-        i++;
-        continue;
-      }
-
-      const delStart = i;
-      while (i < lines.length && lines[i].type === "del") i++;
-      const dels = lines.slice(delStart, i);
-
-      const addStart = i;
-      while (i < lines.length && lines[i].type === "add") i++;
-      const adds = lines.slice(addStart, i);
-
-      const pairCount = Math.min(dels.length, adds.length);
-      for (let j = 0; j < pairCount; j++) {
-        result.push({ type: "modify", left: dels[j], right: adds[j] });
-      }
-      for (let j = pairCount; j < dels.length; j++) {
-        result.push({ type: "del", left: dels[j] });
-      }
-      for (let j = pairCount; j < adds.length; j++) {
-        result.push({ type: "add", right: adds[j] });
-      }
-    }
-
-    return result;
-  }
-
-  private renderInlineHighlight(
-    container: HTMLElement,
-    text: string,
-    other: string,
-    side: "add" | "del",
-  ): void {
-    const diffs = this.charDiff(side === "del" ? text : other, side === "del" ? other : text);
-
-    const segments = side === "del" ? diffs.old : diffs.new;
-
+  /**
+   * A changed line with the words that changed marked, each stretch still
+   * coloured as code.
+   */
+  private renderSegments(container: HTMLElement, segments: Segment[], markCls: string): void {
     for (const seg of segments) {
-      if (seg.changed) {
-        const mark = createSpan();
-        mark.className = side === "del" ? "git-diff-char-del" : "git-diff-char-add";
-        const tokens = this.tokenize(seg.value);
-        for (const token of tokens) {
-          const span = createSpan();
-          span.style.color = TOKEN_COLORS[token.type];
-          span.textContent = token.value;
-          mark.appendChild(span);
-        }
-        container.appendChild(mark);
-      } else {
-        const tokens = this.tokenize(seg.value);
-        for (const token of tokens) {
-          const span = createSpan();
-          span.style.color = TOKEN_COLORS[token.type];
-          span.textContent = token.value;
-          container.appendChild(span);
-        }
-      }
+      this.highlightContent(seg.changed ? container.createSpan(markCls) : container, seg.value);
     }
-  }
-
-  private charDiff(
-    oldStr: string,
-    newStr: string,
-  ): {
-    old: Array<{ value: string; changed: boolean }>;
-    new: Array<{ value: string; changed: boolean }>;
-  } {
-    const oldWords = this.splitWords(oldStr);
-    const newWords = this.splitWords(newStr);
-
-    const lcs = this.lcsWords(oldWords, newWords);
-
-    const oldSegs: Array<{ value: string; changed: boolean }> = [];
-    const newSegs: Array<{ value: string; changed: boolean }> = [];
-
-    let oi = 0,
-      ni = 0,
-      li = 0;
-
-    while (oi < oldWords.length || ni < newWords.length) {
-      if (
-        li < lcs.length &&
-        oi < oldWords.length &&
-        ni < newWords.length &&
-        oldWords[oi] === lcs[li] &&
-        newWords[ni] === lcs[li]
-      ) {
-        oldSegs.push({ value: oldWords[oi], changed: false });
-        newSegs.push({ value: newWords[ni], changed: false });
-        oi++;
-        ni++;
-        li++;
-      } else {
-        if (oi < oldWords.length && (li >= lcs.length || oldWords[oi] !== lcs[li])) {
-          oldSegs.push({ value: oldWords[oi], changed: true });
-          oi++;
-        }
-        if (ni < newWords.length && (li >= lcs.length || newWords[ni] !== lcs[li])) {
-          newSegs.push({ value: newWords[ni], changed: true });
-          ni++;
-        }
-      }
-    }
-
-    return {
-      old: this.mergeSegments(oldSegs),
-      new: this.mergeSegments(newSegs),
-    };
-  }
-
-  private splitWords(text: string): string[] {
-    const result: string[] = [];
-    let i = 0;
-    while (i < text.length) {
-      if (/\s/.test(text[i])) {
-        let j = i;
-        while (j < text.length && /\s/.test(text[j])) j++;
-        result.push(text.slice(i, j));
-        i = j;
-      } else if (/[a-zA-Z0-9_$]/.test(text[i])) {
-        let j = i;
-        while (j < text.length && /[a-zA-Z0-9_$]/.test(text[j])) j++;
-        result.push(text.slice(i, j));
-        i = j;
-      } else {
-        result.push(text[i]);
-        i++;
-      }
-    }
-    return result;
-  }
-
-  private lcsWords(a: string[], b: string[]): string[] {
-    const maxLen = 500;
-    if (a.length > maxLen || b.length > maxLen) {
-      return [];
-    }
-
-    const m = a.length,
-      n = b.length;
-    const dp: number[][] = Array.from({ length: m + 1 }, (): number[] =>
-      new Array<number>(n + 1).fill(0),
-    );
-
-    for (let i = 1; i <= m; i++) {
-      for (let j = 1; j <= n; j++) {
-        if (a[i - 1] === b[j - 1]) {
-          dp[i][j] = dp[i - 1][j - 1] + 1;
-        } else {
-          dp[i][j] = Math.max(dp[i - 1][j], dp[i][j - 1]);
-        }
-      }
-    }
-
-    const result: string[] = [];
-    let i = m,
-      j = n;
-    while (i > 0 && j > 0) {
-      if (a[i - 1] === b[j - 1]) {
-        result.unshift(a[i - 1]);
-        i--;
-        j--;
-      } else if (dp[i - 1][j] > dp[i][j - 1]) {
-        i--;
-      } else {
-        j--;
-      }
-    }
-
-    return result;
-  }
-
-  private mergeSegments(
-    segs: Array<{ value: string; changed: boolean }>,
-  ): Array<{ value: string; changed: boolean }> {
-    if (segs.length === 0) return segs;
-    const merged: Array<{ value: string; changed: boolean }> = [segs[0]];
-    for (let i = 1; i < segs.length; i++) {
-      const last = merged[merged.length - 1];
-      if (last.changed === segs[i].changed) {
-        last.value += segs[i].value;
-      } else {
-        merged.push({ ...segs[i] });
-      }
-    }
-    return merged;
   }
 
   private renderMinimap(): void {
