@@ -198,6 +198,7 @@ describe("DiffView — an uncommitted rename", () => {
           hunks: [],
           additions: 0,
           deletions: 0,
+          change: "modified",
         },
       ],
       getRepoRoot: async () => "/vault",
@@ -278,4 +279,58 @@ describe("DiffView — words that changed", () => {
       expect(texts).toContain("function render() { return 1; }");
     });
   }
+});
+
+/**
+ * A note created in Obsidian is empty until something is typed into it. git
+ * reports it as a new file with no lines, and the view drew two blank panes
+ * marked +0 -0 for it — which read as "no changes" for a file the panel had
+ * just listed as untracked.
+ */
+describe("DiffView — a diff without lines", () => {
+  async function mountRaw(raw: string, untracked: boolean) {
+    const parser = new GitService("/vault");
+    const git = {
+      diff: async () => (untracked ? "" : raw),
+      diffUntracked: async () => (untracked ? raw : ""),
+      parseDiff: (r: string) => parser.parseDiff(r),
+      getRepoRoot: async () => "/vault",
+    } as unknown as GitService;
+    const view = new DiffView(new WorkspaceLeaf(), {
+      git,
+      settings: { diffViewMode: "side-by-side" },
+    } as never);
+    await view.onOpen();
+    view.setFile("Untitled 5.md", undefined, false, untracked);
+    await flushAsync();
+    return view;
+  }
+
+  const message = (view: { contentEl: HTMLElement }): string | undefined =>
+    view.contentEl.querySelector(".git-diff-empty")?.textContent ?? undefined;
+
+  it("says an empty untracked note is new instead of drawing blank panes", async () => {
+    const view = await mountRaw(
+      "diff --git a/Untitled 5.md b/Untitled 5.md\nnew file mode 100644\nindex 0000000..e69de29\n",
+      true,
+    );
+    expect(message(view)).toBe("New empty file");
+    expect(view.contentEl.querySelector(".git-diff-sbs")).toBeNull();
+  });
+
+  it("says an empty note was deleted", async () => {
+    const view = await mountRaw(
+      "diff --git a/Untitled 5.md b/Untitled 5.md\ndeleted file mode 100644\nindex e69de29..0000000\n",
+      false,
+    );
+    expect(message(view)).toBe("Empty file deleted");
+  });
+
+  it("names a mode change", async () => {
+    const view = await mountRaw(
+      "diff --git a/Untitled 5.md b/Untitled 5.md\nold mode 100644\nnew mode 100755\n",
+      false,
+    );
+    expect(message(view)).toBe("File mode changed from 100644 to 100755");
+  });
 });

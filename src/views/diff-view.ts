@@ -8,6 +8,26 @@ import { openCurrentFile, vaultFile } from "../utils/vault-file";
 import { pairLines, wordDiff } from "../utils/word-diff";
 import type { LinePair, Segment } from "../utils/word-diff";
 
+/**
+ * What to say about a diff that has no lines to show. git still reports such a
+ * file — a new note that is still empty, a rename, a changed file mode — and
+ * rendering it as a diff drew two blank panes marked +0 -0, which read as
+ * "no changes" for a file the panel had just listed as new.
+ */
+export function withoutHunks(fileDiff: FileDiff): string {
+  const mode =
+    fileDiff.oldMode && fileDiff.newMode
+      ? `mode changed from ${fileDiff.oldMode} to ${fileDiff.newMode}`
+      : undefined;
+  if (fileDiff.oldPath) {
+    return `Renamed from ${fileDiff.oldPath}, content unchanged${mode ? `, ${mode}` : ""}`;
+  }
+  if (fileDiff.change === "added") return "New empty file";
+  if (fileDiff.change === "deleted") return "Empty file deleted";
+  if (mode) return `File ${mode}`;
+  return "No differences found";
+}
+
 type TokenType =
   | "keyword"
   | "string"
@@ -624,10 +644,8 @@ export class DiffView extends ItemView {
           this.diffContainer.createDiv("git-diff-binary").setText("Binary file changed");
           continue;
         }
-        if (fileDiff.oldPath && fileDiff.hunks.length === 0) {
-          this.diffContainer
-            .createDiv("git-diff-empty")
-            .setText(`Renamed from ${fileDiff.oldPath}, content unchanged`);
+        if (fileDiff.hunks.length === 0) {
+          this.diffContainer.createDiv("git-diff-empty").setText(withoutHunks(fileDiff));
           continue;
         }
 

@@ -669,8 +669,20 @@ export class GitService {
       let newLine = 0;
       let additions = 0;
       let deletions = 0;
+      // A diff without hunks still says what happened in its extended header:
+      // an empty note that was just created, or one whose mode changed. Without
+      // these the view had nothing to show and rendered two blank panes.
+      let change: FileDiff["change"] = "modified";
+      let oldMode: string | undefined;
+      let newMode: string | undefined;
 
       for (const line of lines) {
+        if (!currentHunk) {
+          if (line.startsWith("new file mode ")) change = "added";
+          else if (line.startsWith("deleted file mode ")) change = "deleted";
+          else if (line.startsWith("old mode ")) oldMode = line.slice("old mode ".length).trim();
+          else if (line.startsWith("new mode ")) newMode = line.slice("new mode ".length).trim();
+        }
         const hunkMatch = line.match(/^@@ -(\d+)(?:,(\d+))? \+(\d+)(?:,(\d+))? @@(.*)/);
         if (hunkMatch) {
           if (currentHunk) hunks.push(currentHunk);
@@ -719,6 +731,9 @@ export class GitService {
         hunks,
         additions,
         deletions,
+        change,
+        oldMode,
+        newMode,
       });
     }
     return files;
