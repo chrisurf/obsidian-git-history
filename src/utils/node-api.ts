@@ -30,11 +30,12 @@ export interface ExecFileOptions {
   env?: Record<string, string | undefined>;
 }
 
-/** Only stdin is used, for piping a patch into `git apply`. */
+/** Only stdin is used, for handing git a list of paths. */
 export interface ChildProcessHandle {
   stdin: {
     write(chunk: string): void;
     end(): void;
+    on(event: "error", listener: (err: Error) => void): void;
   } | null;
 }
 

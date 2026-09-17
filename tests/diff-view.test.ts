@@ -156,3 +156,62 @@ describe("DiffView — the breadcrumb", () => {
     expect(breadcrumb(view)).not.toContain("first.md");
   });
 });
+
+/**
+ * A rename that is not committed yet has two paths, and the diff has to be
+ * asked with both: with the new one alone, git reports the whole note as added.
+ */
+describe("DiffView — an uncommitted rename", () => {
+  it("asks git for the diff with the path the file came from", async () => {
+    const asked: string[][] = [];
+    const git = {
+      diff: async (paths: string[]) => {
+        asked.push(paths);
+        return "";
+      },
+      diffUntracked: async () => "",
+      parseDiff: async () => [],
+      getRepoRoot: async () => "/vault",
+    } as unknown as GitService;
+    const view = new DiffView(new WorkspaceLeaf(), {
+      git,
+      settings: { diffViewMode: "side-by-side" },
+    } as never);
+    await view.onOpen();
+
+    view.setFile("moved-to.md", undefined, true, false, "moved.md");
+    await flushAsync();
+
+    expect(asked).toEqual([["moved-to.md", "moved.md"]]);
+  });
+
+  it("says so when only the name changed", async () => {
+    const git = {
+      diff: async () => "diff --git a/moved.md b/moved-to.md\nsimilarity index 100%\n",
+      diffUntracked: async () => "",
+      parseDiff: async () => [
+        {
+          path: "moved-to.md",
+          oldPath: "moved.md",
+          binary: false,
+          hunks: [],
+          additions: 0,
+          deletions: 0,
+        },
+      ],
+      getRepoRoot: async () => "/vault",
+    } as unknown as GitService;
+    const view = new DiffView(new WorkspaceLeaf(), {
+      git,
+      settings: { diffViewMode: "side-by-side" },
+    } as never);
+    await view.onOpen();
+
+    view.setFile("moved-to.md", undefined, true, false, "moved.md");
+    await flushAsync();
+
+    expect(view.contentEl.querySelector(".git-diff-empty")?.textContent).toBe(
+      "Renamed from moved.md, content unchanged",
+    );
+  });
+});

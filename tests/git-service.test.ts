@@ -278,7 +278,7 @@ describe("log for a single file", () => {
 
 describe("GitService.diff full context", () => {
   it("includes the entire file when fullContext is true", async () => {
-    const raw = await git.diff("a.txt", false, true);
+    const raw = await git.diff(["a.txt"], false, true);
     if (!raw) return;
     const diffs = await git.parseDiff(raw);
     if (diffs.length === 0) return;
@@ -299,8 +299,8 @@ describe("GitService.diff full context", () => {
     );
     run("add", "ctx.txt");
 
-    const limited = await git.diff("ctx.txt", true, false);
-    const full = await git.diff("ctx.txt", true, true);
+    const limited = await git.diff(["ctx.txt"], true, false);
+    const full = await git.diff(["ctx.txt"], true, true);
     const limitedDiffs = await git.parseDiff(limited);
     const fullDiffs = await git.parseDiff(full);
     expect(fullDiffs[0].hunks[0].lines.length).toBeGreaterThan(

@@ -192,7 +192,7 @@ describe("the sidebar buckets match what git would commit", () => {
 
 describe("staging actions handle the awkward states", () => {
   it("stages the worktree half of an already staged file", async () => {
-    await git.stage(["added-then-edited"]);
+    await git.stage([file("added-then-edited")]);
     await store.refresh();
 
     expect(xy("added-then-edited")).toBe("A.");
@@ -200,9 +200,10 @@ describe("staging actions handle the awkward states", () => {
   });
 
   it("unstages a rename together with the path it came from", async () => {
-    // `git reset HEAD -- renamed-to` alone leaves the old path staged as a
-    // deletion, so the rename comes back as an unrelated delete plus untracked.
-    await git.unstage(["renamed-to", "renamed"]);
+    // Resetting `renamed-to` alone would leave the old path staged as a
+    // deletion, so the rename would come back as an unrelated delete plus
+    // untracked. The entry carries both paths, and unstaging uses both.
+    await git.unstage([file("renamed-to")]);
     await store.refresh();
 
     expect(store.stagedFiles.some((f) => f.path === "renamed")).toBe(false);
@@ -293,7 +294,7 @@ describe("merge conflicts", () => {
 
   it("stages a resolution and clears the conflict", async () => {
     writeFileSync(join(conflicted, "both.md"), "resolved\n");
-    await cGit.stage(["both.md"]);
+    await cGit.stage(cStore.mergeConflicts.filter((f) => f.path === "both.md"));
     await cStore.refresh();
 
     expect(has(cStore.mergeConflicts, "both.md")).toBe(false);

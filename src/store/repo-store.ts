@@ -151,7 +151,13 @@ export class RepoStore extends Events {
   }
 
   private computeFingerprint(status: FileStatus[]): string {
-    return status.map((f) => `${f.path}:${f.indexStatus}:${f.workingStatus}:${f.staged}`).join("|");
+    // The old path too: git can pair a rename with a different file from one
+    // refresh to the next, and the row and its actions have to follow.
+    return status
+      .map(
+        (f) => `${f.path}:${f.originalPath ?? ""}:${f.indexStatus}:${f.workingStatus}:${f.staged}`,
+      )
+      .join("|");
   }
 
   async refresh(): Promise<void> {

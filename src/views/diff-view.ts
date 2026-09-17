@@ -426,6 +426,8 @@ export class DiffView extends ItemView {
   /** Show the index against HEAD instead of the worktree against the index. */
   private staged = false;
   private untracked = false;
+  /** Old path of an uncommitted rename; the diff needs it to show a rename. */
+  private renamedFrom: string | undefined;
   private mode: "side-by-side" | "inline" = "side-by-side";
   private diffContainer: HTMLElement | null = null;
   private breadcrumbEl: HTMLElement | null = null;
@@ -454,11 +456,18 @@ export class DiffView extends ItemView {
     return "file-diff";
   }
 
-  setFile(path: string, ref?: string, staged = false, untracked = false): void {
+  setFile(
+    path: string,
+    ref?: string,
+    staged = false,
+    untracked = false,
+    renamedFrom?: string,
+  ): void {
     this.filePath = path;
     this.ref = ref ?? null;
     this.staged = staged;
     this.untracked = untracked;
+    this.renamedFrom = renamedFrom;
     this.tokenize = getTokenizer(path);
     (this.leaf as WorkspaceLeaf & { updateHeader?: () => void }).updateHeader?.();
     // The toolbar is built in onOpen(), which runs before the leaf is told
@@ -582,12 +591,13 @@ export class DiffView extends ItemView {
       let rawDiff: string;
       if (this.ref) {
         rawDiff = await this.git.diffCommitAgainstParent(this.ref, this.filePath);
-      } else if (this.staged) {
-        rawDiff = await this.git.diff(this.filePath, true);
       } else {
-        rawDiff = await this.git.diff(this.filePath);
-        if (!rawDiff) {
-          rawDiff = await this.git.diff(this.filePath, true);
+        // Giving git a path the side does not have is harmless for a diff, so
+        // both halves can be asked with the same paths.
+        const paths = this.renamedFrom ? [this.filePath, this.renamedFrom] : [this.filePath];
+        rawDiff = await this.git.diff(paths, this.staged);
+        if (!rawDiff && !this.staged) {
+          rawDiff = await this.git.diff(paths, true);
         }
         if (!rawDiff && this.untracked) {
           rawDiff = await this.git.diffUntracked(this.filePath);
@@ -610,6 +620,12 @@ export class DiffView extends ItemView {
       for (const fileDiff of diffs) {
         if (fileDiff.binary) {
           this.diffContainer.createDiv("git-diff-binary").setText("Binary file changed");
+          continue;
+        }
+        if (fileDiff.oldPath && fileDiff.hunks.length === 0) {
+          this.diffContainer
+            .createDiv("git-diff-empty")
+            .setText(`Renamed from ${fileDiff.oldPath}, content unchanged`);
           continue;
         }
 

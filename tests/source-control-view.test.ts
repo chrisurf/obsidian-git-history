@@ -56,10 +56,18 @@ interface Calls {
   stageAll: number;
   unstageAll: number;
   discardAll: number;
-  stage: string[][];
+  stage: FileStatus[][];
+  /** How often the view asked git for the status, i.e. refreshed. */
+  status: number;
   showCommitFiles: number;
   /** Every diff the view asked the plugin to open, in order. */
-  openDiff: { path: string; ref?: string; staged: boolean; untracked: boolean }[];
+  openDiff: {
+    path: string;
+    ref?: string;
+    staged: boolean;
+    untracked: boolean;
+    renamedFrom?: string;
+  }[];
 }
 
 interface Upstream {
@@ -83,6 +91,7 @@ async function mount(
     unstageAll: 0,
     discardAll: 0,
     stage: [],
+    status: 0,
     showCommitFiles: 0,
     openDiff: [],
   };
@@ -90,7 +99,10 @@ async function mount(
 
   const git = {
     log: async () => [],
-    status: async () => current,
+    status: async () => {
+      calls.status++;
+      return current;
+    },
     currentBranch: async () => "main",
     getAheadBehind: async () => upstream,
     branches: async () => [],
@@ -113,8 +125,8 @@ async function mount(
     discardAll: async () => {
       calls.discardAll++;
     },
-    stage: async (paths: string[]) => {
-      calls.stage.push(paths);
+    stage: async (files: FileStatus[]) => {
+      calls.stage.push(files);
     },
     // Toolbar commands: each one hands back a promise the test releases, so the
     // bar can be observed while the command is still running.
@@ -137,8 +149,14 @@ async function mount(
     store,
     git,
     settings,
-    openDiff: (path: string, ref?: string, staged = false, untracked = false) => {
-      calls.openDiff.push({ path, ref, staged, untracked });
+    openDiff: (
+      path: string,
+      ref?: string,
+      staged = false,
+      untracked = false,
+      renamedFrom?: string,
+    ) => {
+      calls.openDiff.push({ path, ref, staged, untracked, renamedFrom });
     },
     openGraphView: () => {},
     saveSettings: async () => {},
@@ -1489,5 +1507,132 @@ describe("SourceControlView — the file list inside an opened commit", () => {
     await flushAsync();
     const other = view.contentEl.querySelector(".gs-sg-changes-files") as HTMLElement;
     expect(other.querySelectorAll(".gs-sg-changes-file-name")).toHaveLength(files.length);
+  });
+});
+
+/**
+ * The row and folder actions hand git the status entries themselves, so the
+ * service decides which paths an action needs. A failure used to vanish: the
+ * handler threw, nothing listened, and the list was never refreshed.
+ */
+describe("SourceControlView — file actions", () => {
+  const renamed: FileStatus = {
+    path: "moved-to.md",
+    originalPath: "moved.md",
+    indexStatus: "R",
+    workingStatus: "M",
+    staged: true,
+  };
+
+  /** The row of a file in one section; a staged rename that was edited again
+      sits in both. */
+  const rowIn = (
+    view: { contentEl: HTMLElement },
+    section: "Staged Changes" | "Changes",
+    name: string,
+  ): HTMLElement | undefined => {
+    const header = Array.from(view.contentEl.querySelectorAll(".gs-sc-section")).find((el) =>
+      el.textContent?.startsWith(section),
+    );
+    return Array.from(header?.querySelectorAll(".gs-tree-file") ?? []).find(
+      (el) => el.querySelector(".gs-tree-filename")?.textContent === name,
+    ) as HTMLElement | undefined;
+  };
+
+  const click = async (el: Element | null | undefined): Promise<void> => {
+    if (!el) throw new Error("nothing to click");
+    el.dispatchEvent(new MouseEvent("click", { bubbles: true }));
+    await flushAsync();
+    flushFrames();
+  };
+
+  beforeEach(() => {
+    Notice.messages = [];
+  });
+
+  it("hands the clicked entry to stage, old path and all", async () => {
+    const { view, calls } = await mount([renamed]);
+
+    await click(
+      rowIn(view, "Changes", "moved-to.md")?.querySelector('[aria-label="Stage changes"]'),
+    );
+
+    expect(calls.stage).toEqual([[renamed]]);
+  });
+
+  it("hands every entry below a folder to stage", async () => {
+    const notes = [
+      { path: "notes/a.md", indexStatus: ".", workingStatus: "M", staged: false },
+      { path: "notes/b.md", indexStatus: ".", workingStatus: "D", staged: false },
+    ] as FileStatus[];
+    const { view, calls } = await mount(notes);
+
+    await click(view.contentEl.querySelector('[aria-label="Stage all in folder"]'));
+
+    expect(calls.stage.map((files) => files.map((f) => f.path).sort())).toEqual([
+      ["notes/a.md", "notes/b.md"],
+    ]);
+  });
+
+  it("says why staging failed, and refreshes the list anyway", async () => {
+    const { view, calls } = await mount([renamed], {}, IN_SYNC, {
+      stage: async () => {
+        throw new Error("fatal: pathspec 'moved.md' did not match any files");
+      },
+    });
+    const refreshes = calls.status;
+
+    await click(
+      rowIn(view, "Changes", "moved-to.md")?.querySelector('[aria-label="Stage changes"]'),
+    );
+
+    expect(Notice.messages.join("\n")).toContain("did not match any files");
+    expect(calls.status, "the list was not refreshed after the failure").toBeGreaterThan(refreshes);
+  });
+
+  it("says why unstaging failed", async () => {
+    const { view } = await mount([renamed], {}, IN_SYNC, {
+      unstage: async () => {
+        throw new Error("fatal: Unable to create index.lock: File exists.");
+      },
+    });
+
+    await click(
+      rowIn(view, "Staged Changes", "moved-to.md")?.querySelector('[aria-label="Unstage changes"]'),
+    );
+
+    expect(Notice.messages.join("\n")).toContain("index.lock");
+  });
+
+  it("says why discarding failed", async () => {
+    const { view } = await mount([renamed], {}, IN_SYNC, {
+      discard: async () => {
+        throw new Error("error: pathspec did not match");
+      },
+    });
+
+    await click(
+      rowIn(view, "Changes", "moved-to.md")?.querySelector('[aria-label="Discard changes"]'),
+    );
+
+    expect(Notice.messages.join("\n")).toContain("did not match");
+  });
+
+  it("opens the diff of a rename together with the path it came from", async () => {
+    const { view, calls } = await mount([renamed]);
+
+    await click(
+      rowIn(view, "Staged Changes", "moved-to.md")?.querySelector('[aria-label="Open changes"]'),
+    );
+
+    expect(calls.openDiff).toEqual([
+      {
+        path: "moved-to.md",
+        ref: undefined,
+        staged: true,
+        untracked: false,
+        renamedFrom: "moved.md",
+      },
+    ]);
   });
 });
