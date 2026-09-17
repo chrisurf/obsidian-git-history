@@ -1,5 +1,7 @@
 import { execFile, processEnv, readFile, writeFile } from "../utils/node-api";
 import type { GitCommandEnvironment } from "../utils/exec-env";
+import { pathsFor } from "./change-paths";
+import type { ChangeSide } from "./change-paths";
 import { parseIdentity } from "./git-identity";
 import type { GitIdentity, WritableScope } from "./git-identity";
 import {
@@ -36,6 +38,9 @@ export class GitService {
   /** `git config --show-scope` needs git >= 2.26. Turned off for the session
       the first time a git says it does not know the option. */
   private supportsConfigScope = true;
+  /** `--pathspec-from-file` needs git >= 2.25. Turned off for the session the
+      first time a git says it does not know the option. */
+  private supportsPathspecFile = true;
 
   constructor(
     repoPath: string,
@@ -63,10 +68,10 @@ export class GitService {
     return { file: resolved.binary?.path ?? "git", env };
   }
 
-  private async exec(args: string[], timeout = 30000): Promise<string> {
+  private async exec(args: string[], timeout = 30000, input?: string): Promise<string> {
     const { file, env } = await this.command();
     return new Promise((resolve, reject) => {
-      execFile(
+      const child = execFile(
         file,
         // Without this git renders any path outside ASCII as an octal escape
         // inside double quotes — `"Studies/00 \342\200\224 Welcome.md"` for a
@@ -90,6 +95,14 @@ export class GitService {
           resolve(stdout);
         },
       );
+      if (input !== undefined && child.stdin) {
+        // A git that exits before reading, such as one refusing an option,
+        // closes the pipe under the write. Its exit code is the error that
+        // matters; left unhandled, the broken pipe would crash the plugin.
+        child.stdin.on("error", () => {});
+        child.stdin.write(input);
+        child.stdin.end();
+      }
     });
   }
 
@@ -217,24 +230,19 @@ export class GitService {
     return entries;
   }
 
-  /** Keeps `git add` argument lists below the OS limit on large vaults. */
+  /** Keeps argument lists below the OS limit where paths cannot go over stdin. */
   private static readonly PATHS_PER_CALL = 200;
 
-  async stage(paths: string[]): Promise<void> {
-    if (paths.length === 0) return;
-    await this.enqueue(async () => {
-      for (let i = 0; i < paths.length; i += GitService.PATHS_PER_CALL) {
-        const chunk = paths.slice(i, i + GitService.PATHS_PER_CALL);
-        await this.exec(["add", "-A", "--", ...chunk]);
-      }
-    });
+  /** Stages the worktree half of each entry. */
+  async stage(files: readonly FileStatus[]): Promise<void> {
+    await this.withPaths(["add", "-A"], GitService.paths(files, "worktree"));
   }
 
   /**
    * Stages everything except nested repositories. A plain `git add -A` aborts
    * with "does not have a commit checked out" as soon as the vault contains an
    * embedded repo without commits, and then stages *nothing at all* — so the
-   * paths are collected from status and the embedded repos are left out.
+   * entries are collected from status and the embedded repos are left out.
    * Returns the paths that were skipped so the caller can say so.
    */
   async stageAll(): Promise<{ skipped: string[] }> {
@@ -244,34 +252,66 @@ export class GitService {
       await this.enqueue(() => this.exec(["add", "-A"]));
       return { skipped };
     }
-    const paths = status
-      .filter((f) => !f.embeddedRepo)
-      // Entries whose worktree half is clean are already staged, and a staged
-      // deletion matches neither the index nor the worktree — passing it as a
-      // pathspec fails the whole call with "did not match any files".
-      .filter((f) => f.workingStatus !== "." && f.workingStatus !== " ")
-      .flatMap((f) => (f.originalPath ? [f.path, f.originalPath] : [f.path]));
-    await this.stage(paths);
+    await this.stage(
+      status
+        .filter((f) => !f.embeddedRepo)
+        // Entries whose worktree half is clean are already staged, and a staged
+        // deletion matches neither the index nor the worktree — passing it as a
+        // pathspec fails the whole call with "did not match any files".
+        .filter((f) => f.workingStatus !== "." && f.workingStatus !== " "),
+    );
     return { skipped };
   }
 
-  async unstage(paths: string[]): Promise<void> {
-    if (paths.length === 0) return;
-    await this.enqueue(async () => {
-      for (let i = 0; i < paths.length; i += GitService.PATHS_PER_CALL) {
-        const chunk = paths.slice(i, i + GitService.PATHS_PER_CALL);
-        await this.exec(["reset", "HEAD", "--", ...chunk]);
-      }
-    });
+  /** Puts the index half of each entry back to what HEAD holds. */
+  async unstage(files: readonly FileStatus[]): Promise<void> {
+    await this.withPaths(["reset", "-q"], GitService.paths(files, "index"));
   }
 
   async unstageAll(): Promise<void> {
     await this.enqueue(() => this.exec(["reset", "HEAD"]));
   }
 
-  async discard(paths: string[]): Promise<void> {
+  /** Puts the worktree half of each entry back to what the index holds. */
+  async discard(files: readonly FileStatus[]): Promise<void> {
+    await this.withPaths(["checkout"], GitService.paths(files, "worktree"));
+  }
+
+  private static paths(files: readonly FileStatus[], side: ChangeSide): string[] {
+    return files.flatMap((f) => pathsFor(f, side));
+  }
+
+  /**
+   * Runs one command over exactly the given paths.
+   *
+   * `--literal-pathspecs` makes a path name that file and nothing else: read as
+   * a pattern, `k[1].md` also matches `k1.md`, and staging one note staged its
+   * neighbour. The paths go over stdin, so a whole vault is one call, and a
+   * failure leaves the index as it was rather than changed up to some chunk.
+   */
+  private async withPaths(args: string[], paths: string[]): Promise<void> {
     if (paths.length === 0) return;
-    await this.enqueue(() => this.exec(["checkout", "--", ...paths]));
+    await this.enqueue(async () => {
+      if (this.supportsPathspecFile) {
+        try {
+          const fromStdin = ["--pathspec-from-file=-", "--pathspec-file-nul"];
+          await this.exec(["--literal-pathspecs", ...args, ...fromStdin], 30000, paths.join("\0"));
+          return;
+        } catch (e: unknown) {
+          if (!GitService.refusedPathspecFile(e)) throw e;
+          this.supportsPathspecFile = false;
+        }
+      }
+      for (let i = 0; i < paths.length; i += GitService.PATHS_PER_CALL) {
+        const chunk = paths.slice(i, i + GitService.PATHS_PER_CALL);
+        await this.exec(["--literal-pathspecs", ...args, "--", ...chunk]);
+      }
+    });
+  }
+
+  /** Git answers an option it does not know with usage and exit code 129. */
+  private static refusedPathspecFile(e: unknown): boolean {
+    return e instanceof GitError && e.exitCode === 129 && e.message.includes("pathspec-from-file");
   }
 
   async discardAll(): Promise<void> {
@@ -506,11 +546,17 @@ export class GitService {
     await this.enqueue(() => this.exec(["merge", "--abort"]));
   }
 
-  async diff(path?: string, staged = false, fullContext = false): Promise<string> {
-    const args = ["diff"];
+  /**
+   * The diff of one entry, given the paths `pathsFor` names for it. A rename
+   * has to be asked for with both of its paths: with the new one alone, git
+   * compares it against nothing and reports the whole file as added. `-M`
+   * turns rename detection on even where `diff.renames` is off.
+   */
+  async diff(paths: readonly string[], staged = false, fullContext = false): Promise<string> {
+    const args = ["--literal-pathspecs", "diff", "-M"];
     if (fullContext) args.push("-U99999");
     if (staged) args.push("--cached");
-    if (path) args.push("--", path);
+    args.push("--", ...paths);
     return this.exec(args);
   }
 

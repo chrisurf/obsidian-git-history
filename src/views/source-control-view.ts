@@ -9,6 +9,7 @@ import {
 } from "../types";
 import { RepoStore } from "../store/repo-store";
 import { GitService } from "../git/git-service";
+import { pathsFor, renamedFrom } from "../git/change-paths";
 import { computeGraphLayout, formatRelativeDate } from "../utils/graph-layout";
 import type GitHistoryPlugin from "../main";
 import { asVoid } from "../utils/async";
@@ -827,16 +828,16 @@ export class SourceControlView extends ItemView {
     }
 
     const staged = this.store.stagedFiles;
-    if (staged.length === 0) {
-      if (this.store.changedFiles.length > 0 || this.store.untrackedFiles.length > 0) {
-        await this.git.stageAll();
-      } else {
-        new Notice("No changes to commit");
-        return;
-      }
+    const hasChanges = this.store.changedFiles.length > 0 || this.store.untrackedFiles.length > 0;
+    if (staged.length === 0 && !hasChanges) {
+      new Notice("No changes to commit");
+      return;
     }
 
     try {
+      // Inside the try: a failed stage has to be reported like a failed commit,
+      // not escape the click handler unseen.
+      if (staged.length === 0) await this.git.stageAll();
       await this.store.runTask("Committing", () => this.git.commit(msg));
       if (this.commitInput) this.commitInput.value = "";
       new Notice("Committed");
@@ -997,12 +998,7 @@ export class SourceControlView extends ItemView {
         "click",
         asVoid(async (e) => {
           e.stopPropagation();
-          try {
-            await this.git.unstageAll();
-          } catch (err) {
-            new Notice(`Unstage all failed: ${err instanceof Error ? err.message : String(err)}`);
-          }
-          await this.store.refresh();
+          await this.gitAction("Unstage all", () => this.git.unstageAll());
         }),
       );
     } else if (group !== "conflict") {
@@ -1013,7 +1009,7 @@ export class SourceControlView extends ItemView {
         "click",
         asVoid(async (e) => {
           e.stopPropagation();
-          try {
+          await this.gitAction("Stage all", async () => {
             const { skipped } = await this.git.stageAll();
             // Only worth a notice when the user can actually see the entries the
             // message is about; otherwise they were deliberately hidden.
@@ -1022,10 +1018,7 @@ export class SourceControlView extends ItemView {
                 `Skipped ${skipped.length} nested Git ${skipped.length === 1 ? "repository" : "repositories"}: ${skipped.join(", ")}`,
               );
             }
-          } catch (err) {
-            new Notice(`Stage all failed: ${err instanceof Error ? err.message : String(err)}`);
-          }
-          await this.store.refresh();
+          });
         }),
       );
     }
@@ -1037,12 +1030,7 @@ export class SourceControlView extends ItemView {
         "click",
         asVoid(async (e) => {
           e.stopPropagation();
-          try {
-            await this.git.discardAll();
-          } catch (err) {
-            new Notice(`Discard all failed: ${err instanceof Error ? err.message : String(err)}`);
-          }
-          await this.store.refresh();
+          await this.gitAction("Discard all", () => this.git.discardAll());
         }),
       );
     }
@@ -1087,11 +1075,26 @@ export class SourceControlView extends ItemView {
   }
 
   /**
-   * Pathspecs for a git command. A rename is one entry with two paths, and
-   * leaving the old one out would stage or unstage only half of it.
+   * Runs a change to the index or worktree. A failure is shown rather than
+   * dropped, and the list is refreshed either way: a command that failed may
+   * still have changed something, and one that failed on a stale entry is
+   * best answered with the entries as they are now.
    */
-  private pathspecs(files: FileStatus[]): string[] {
-    return files.flatMap((f) => (f.originalPath ? [f.path, f.originalPath] : [f.path]));
+  private async gitAction(label: string, action: () => Promise<unknown>): Promise<void> {
+    try {
+      await action();
+    } catch (err) {
+      new Notice(`${label} failed: ${err instanceof Error ? err.message : String(err)}`);
+    } finally {
+      await this.store.refresh();
+    }
+  }
+
+  /** Opens one section's half of an entry in the diff view. */
+  private openChanges(file: FileStatus, group: string): void {
+    const staged = group === "staged";
+    const untracked = !staged && file.workingStatus === "?";
+    void this.plugin.openDiff(file.path, undefined, staged, untracked, renamedFrom(file));
   }
 
   private renderTree(
@@ -1145,8 +1148,7 @@ export class SourceControlView extends ItemView {
               "click",
               asVoid(async (e) => {
                 e.stopPropagation();
-                await this.git.discard(this.pathspecs(collectItems(node)));
-                await this.store.refresh();
+                await this.gitAction("Discard", () => this.git.discard(collectItems(node)));
               }),
             );
           }
@@ -1157,8 +1159,7 @@ export class SourceControlView extends ItemView {
             "click",
             asVoid(async (e) => {
               e.stopPropagation();
-              await this.git.stage(this.pathspecs(collectItems(node)));
-              await this.store.refresh();
+              await this.gitAction("Stage", () => this.git.stage(collectItems(node)));
             }),
           );
         }
@@ -1171,8 +1172,7 @@ export class SourceControlView extends ItemView {
             "click",
             asVoid(async (e) => {
               e.stopPropagation();
-              await this.git.unstage(this.pathspecs(collectItems(node)));
-              await this.store.refresh();
+              await this.gitAction("Unstage", () => this.git.unstage(collectItems(node)));
             }),
           );
         }
@@ -1240,7 +1240,7 @@ export class SourceControlView extends ItemView {
       openBtn.setAttribute("aria-label", "Open changes");
       openBtn.addEventListener("click", (e) => {
         e.stopPropagation();
-        void this.plugin.openDiff(file.path, undefined, false, file.workingStatus === "?");
+        this.openChanges(file, group);
       });
       this.addOpenFileButton(actions, file);
     }
@@ -1253,8 +1253,7 @@ export class SourceControlView extends ItemView {
         "click",
         asVoid(async (e) => {
           e.stopPropagation();
-          await this.git.discard(this.pathspecs([file]));
-          await this.store.refresh();
+          await this.gitAction("Discard", () => this.git.discard([file]));
         }),
       );
     }
@@ -1267,8 +1266,7 @@ export class SourceControlView extends ItemView {
         "click",
         asVoid(async (e) => {
           e.stopPropagation();
-          await this.git.stage(this.pathspecs([file]));
-          await this.store.refresh();
+          await this.gitAction("Stage", () => this.git.stage([file]));
         }),
       );
     }
@@ -1279,7 +1277,7 @@ export class SourceControlView extends ItemView {
       openBtn.setAttribute("aria-label", "Open changes");
       openBtn.addEventListener("click", (e) => {
         e.stopPropagation();
-        void this.plugin.openDiff(file.path, undefined, true);
+        this.openChanges(file, group);
       });
       this.addOpenFileButton(actions, file);
 
@@ -1290,8 +1288,7 @@ export class SourceControlView extends ItemView {
         "click",
         asVoid(async (e) => {
           e.stopPropagation();
-          await this.git.unstage(this.pathspecs([file]));
-          await this.store.refresh();
+          await this.gitAction("Unstage", () => this.git.unstage([file]));
         }),
       );
     }
@@ -1308,10 +1305,7 @@ export class SourceControlView extends ItemView {
     // or one under `.obsidian/` that is not part of the vault index. A file
     // can appear in both sections at once; each row falls back to its half.
     row.addEventListener("click", () => {
-      const showChanges = (): void => {
-        const isUntracked = group !== "staged" && file.workingStatus === "?";
-        void this.plugin.openDiff(file.path, undefined, group === "staged", isUntracked);
-      };
+      const showChanges = (): void => this.openChanges(file, group);
       // A deleted file has no current version to open, and never will — the
       // changes are the whole of what is left of it, so go straight there.
       const deleted = file.indexStatus === "D" || file.workingStatus === "D";
@@ -1339,10 +1333,7 @@ export class SourceControlView extends ItemView {
         i
           .setTitle("Open diff")
           .setIcon("file-diff")
-          .onClick(() => {
-            const isUntracked = group !== "staged" && file.workingStatus === "?";
-            void this.plugin.openDiff(file.path, undefined, group === "staged", isUntracked);
-          }),
+          .onClick(() => this.openChanges(file, group)),
       );
       menu.addSeparator();
       menu.addItem((i) =>
@@ -1447,8 +1438,8 @@ export class SourceControlView extends ItemView {
 
   private async loadFileStats(file: FileStatus, el: HTMLElement, group: string): Promise<void> {
     try {
-      const raw =
-        group === "staged" ? await this.git.diff(file.path, true) : await this.git.diff(file.path);
+      const staged = group === "staged";
+      const raw = await this.git.diff(pathsFor(file, staged ? "index" : "worktree"), staged);
       if (!raw) return;
       let adds = 0,
         dels = 0;
