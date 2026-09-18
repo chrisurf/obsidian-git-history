@@ -76,7 +76,11 @@ function applyInfo(el: HTMLElement, info?: string | DomElementInfo): void {
   if (info.href) el.setAttribute("href", info.href);
 }
 
-function makeEl(tag: string, info?: string | DomElementInfo, parent?: Element): HTMLElement {
+function makeEl(
+  tag: string,
+  info?: string | DomElementInfo,
+  parent?: Element | DocumentFragment,
+): HTMLElement {
   const el = document.createElement(tag);
   applyInfo(el, info);
   if (parent) parent.appendChild(el);
@@ -91,8 +95,24 @@ function makeSvg(tag: string, info?: string | DomElementInfo, parent?: Element):
 }
 
 function installDomHelpers(): void {
-  // Obsidian puts these on Element so they work for SVG nodes too.
+  // Obsidian puts these on Element so they work for SVG nodes too, and the
+  // same three builders on DocumentFragment — a setting description is built
+  // into a fragment, which is not an Element.
   const proto = Element.prototype as unknown as Record<string, unknown>;
+  const fragmentProto = DocumentFragment.prototype as unknown as Record<string, unknown>;
+  for (const [name, tag] of [
+    ["createEl", null],
+    ["createDiv", "div"],
+    ["createSpan", "span"],
+  ] as const) {
+    fragmentProto[name] = function (
+      this: DocumentFragment,
+      first?: string | DomElementInfo,
+      second?: string | DomElementInfo,
+    ) {
+      return tag === null ? makeEl(first as string, second, this) : makeEl(tag, first, this);
+    };
+  }
 
   proto.createEl = function (this: Element, tag: string, info?: string | DomElementInfo) {
     return makeEl(tag, info, this);
@@ -144,6 +164,11 @@ function installDomHelpers(): void {
   globals.createDiv = (info?: string | DomElementInfo) => makeEl("div", info);
   globals.createSpan = (info?: string | DomElementInfo) => makeEl("span", info);
   globals.activeDocument = document;
+  globals.createFragment = (callback?: (el: DocumentFragment) => void) => {
+    const fragment = document.createDocumentFragment();
+    callback?.(fragment);
+    return fragment;
+  };
 }
 
 if (typeof Element !== "undefined") installDomHelpers();

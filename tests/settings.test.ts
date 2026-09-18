@@ -27,13 +27,17 @@ const NOT_EXPOSED: (keyof GitHistorySettings)[] = [
 ];
 
 describe("the settings list", () => {
-  it("splits into the two things the plugin does", () => {
-    expect(SETTING_GROUPS.map((g) => g.heading)).toEqual(["Source control", "Terminal"]);
+  it("groups the rows by the question they answer", () => {
+    expect(SETTING_GROUPS.map((g) => g.heading)).toEqual([
+      "Commits and sync",
+      "Changes and diffs",
+      "Advanced",
+      "Terminal",
+    ]);
   });
 
   it("puts every terminal setting under the terminal heading and nowhere else", () => {
     const terminal = SETTING_GROUPS.find((g) => g.heading === "Terminal");
-    const sourceControl = SETTING_GROUPS.find((g) => g.heading === "Source control");
     expect(terminal?.rows.map((r) => r.key)).toEqual([
       "terminalShell",
       "terminalPython",
@@ -41,7 +45,29 @@ describe("the settings list", () => {
       "terminalStartupScript",
       "terminalAutoColor",
     ]);
-    expect(sourceControl?.rows.some((r) => r.key.startsWith("terminal"))).toBe(false);
+    for (const group of SETTING_GROUPS) {
+      if (group.heading === "Terminal") continue;
+      expect(group.rows.some((r) => r.key.startsWith("terminal"))).toBe(false);
+    }
+  });
+
+  /**
+   * The description sits in a narrow column beside the control, so the first
+   * line has to be short enough to read there. What used to follow it is the
+   * hint, on a line of its own.
+   */
+  it("keeps the first line of a description short", () => {
+    for (const row of rows) {
+      expect(
+        row.desc?.length ?? 0,
+        `${row.name} is too long to read in the column`,
+      ).toBeLessThanOrEqual(80);
+    }
+  });
+
+  it("puts the interval behind the switch that makes it mean anything", () => {
+    const interval = rows.find((r) => r.key === "autoFetchInterval");
+    expect(interval?.enabledBy).toBe("autoFetchEnabled");
   });
 
   it("names a real setting on every row", () => {
@@ -80,14 +106,38 @@ describe("the settings list", () => {
 });
 
 describe("definitions for Obsidian 1.13", () => {
-  const definitions = toDefinitions(SETTING_GROUPS);
+  const definitions = toDefinitions(SETTING_GROUPS, (key) => DEFAULT_SETTINGS[key]);
 
   it("hands over one group per heading", () => {
-    expect(definitions).toHaveLength(2);
-    expect(definitions.map((d) => (d as { heading?: string }).heading)).toEqual([
-      "Source control",
-      "Terminal",
-    ]);
+    expect(definitions).toHaveLength(SETTING_GROUPS.length);
+    expect(definitions.map((d) => (d as { heading?: string }).heading)).toEqual(
+      SETTING_GROUPS.map((g) => g.heading),
+    );
+  });
+
+  /** Both lines reach the row, and both are searchable: 1.13 indexes the
+      text content of a description fragment. */
+  it("describes a row with its line and its hint", () => {
+    const items = definitions.flatMap(
+      (d) => (d as { items?: { name: string; desc?: DocumentFragment }[] }).items ?? [],
+    );
+    const gitBinary = items.find((i) => i.name === "Git binary");
+    expect(gitBinary?.desc?.textContent).toContain("Path to the git the plugin runs.");
+    expect(gitBinary?.desc?.textContent).toContain("Leave empty to find one automatically");
+  });
+
+  it("greys out the interval while auto-fetch is off, and not while it is on", () => {
+    const control = (
+      read: (key: keyof GitHistorySettings) => unknown,
+    ): { disabled?: () => boolean } =>
+      toDefinitions(SETTING_GROUPS, read)
+        .flatMap((d) => (d as { items?: { control: { key: string } }[] }).items ?? [])
+        .find((i) => i.control.key === "autoFetchInterval")?.control as {
+        disabled?: () => boolean;
+      };
+
+    expect(control(() => false).disabled?.()).toBe(true);
+    expect(control(() => true).disabled?.()).toBe(false);
   });
 
   it("carries every row across with its control", () => {
@@ -122,6 +172,8 @@ describe("definitions for Obsidian 1.13", () => {
     );
     const toggle = items.find((i) => i.control.key === "terminalAutoColor")?.control;
     expect(toggle).toEqual({ type: "toggle", key: "terminalAutoColor" });
+    const interval = items.find((i) => i.control.key === "autoFetchInterval")?.control;
+    expect(Object.keys(interval ?? {}).sort()).toEqual(["disabled", "key", "min", "type"]);
   });
 
   it("keeps the search aliases of the rows that were renamed under a heading", () => {
@@ -164,11 +216,29 @@ describe("rendering for older Obsidian versions", () => {
 
   it("draws a heading per group and a row per setting", () => {
     render();
-    expect(settings.filter((s) => s.heading).map((s) => s.name)).toEqual([
-      "Source control",
-      "Terminal",
-    ]);
+    expect(settings.filter((s) => s.heading).map((s) => s.name)).toEqual(
+      SETTING_GROUPS.map((g) => g.heading),
+    );
     expect(settings.filter((s) => !s.heading)).toHaveLength(rows.length);
+  });
+
+  it("greys out a row whose switch is off", () => {
+    values.autoFetchEnabled = false;
+    render();
+    expect(settings.find((s) => s.name === "Auto-fetch every")?.disabled).toBe(true);
+
+    resetSettings();
+    container = activeDocument.createElement("div");
+    values.autoFetchEnabled = true;
+    render();
+    expect(settings.find((s) => s.name === "Auto-fetch every")?.disabled).toBe(false);
+  });
+
+  it("gives a path field a monospace class, because a path is read as one string", () => {
+    render();
+    const control = settings.find((s) => s.name === "Git binary")?.control<string>() as
+      (ValueComponent<string> & { inputEl: HTMLInputElement }) | undefined;
+    expect(control?.inputEl.classList.contains("gs-path-input")).toBe(true);
   });
 
   it("puts the rows under the heading they belong to", () => {
@@ -183,7 +253,7 @@ describe("rendering for older Obsidian versions", () => {
     values.terminalAutoColor = true;
     render();
     const byName = new Map(settings.map((s) => [s.name, s]));
-    expect(byName.get("Commit message template")?.control<string>().value).toBe("vault backup");
+    expect(byName.get("Commit message")?.control<string>().value).toBe("vault backup");
     expect(byName.get("Colour new sessions")?.control<boolean>().value).toBe(true);
     expect(byName.get("Pull strategy")?.control<string>().options).toHaveProperty("rebase");
   });
@@ -201,7 +271,7 @@ describe("rendering for older Obsidian versions", () => {
 
   it("keeps a half-typed number out of the settings", () => {
     render();
-    const interval = settings.find((s) => s.name === "Auto-fetch interval")?.control<string>();
+    const interval = settings.find((s) => s.name === "Auto-fetch every")?.control<string>();
     interval?.emit("");
     interval?.emit("-");
     expect(written).toEqual([]);
@@ -211,7 +281,7 @@ describe("rendering for older Obsidian versions", () => {
 
   it("refuses a number below the minimum instead of storing it", () => {
     render();
-    const interval = settings.find((s) => s.name === "Auto-fetch interval")?.control<string>();
+    const interval = settings.find((s) => s.name === "Auto-fetch every")?.control<string>();
     // Fetching every two seconds is a typo on the way to 200, not a setting.
     interval?.emit("2");
     expect(written).toEqual([]);

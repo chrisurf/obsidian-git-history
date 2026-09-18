@@ -3,7 +3,7 @@ import type { GitCommandEnvironment } from "../utils/exec-env";
 import { pathsFor } from "./change-paths";
 import type { ChangeSide } from "./change-paths";
 import { parseIdentity } from "./git-identity";
-import type { GitIdentity, WritableScope } from "./git-identity";
+import type { GitIdentity } from "./git-identity";
 import {
   FileStatus,
   FileStatusCode,
@@ -808,6 +808,21 @@ export class GitService {
     await this.exec(["remote", "add", name, url]);
   }
 
+  /**
+   * Points an existing remote somewhere else.
+   *
+   * `set-url` without `--push` moves the fetch URL, and the push URL with it
+   * unless one was set separately — which is the behaviour the settings want:
+   * a remote with one address keeps having one address.
+   */
+  async setRemoteUrl(name: string, url: string): Promise<void> {
+    await this.enqueue(() => this.exec(["remote", "set-url", name, url]));
+  }
+
+  async removeRemote(name: string): Promise<void> {
+    await this.enqueue(() => this.exec(["remote", "remove", name]));
+  }
+
   async hasChanges(): Promise<boolean> {
     const s = await this.status();
     return s.length > 0;
@@ -853,15 +868,21 @@ export class GitService {
   }
 
   /**
-   * Writes one half of the identity, or removes it when the value is empty.
+   * Writes one half of the identity for this repository, or removes it when
+   * the value is empty.
+   *
+   * `--local` is the only place this writes. The name on the commits in this
+   * vault is a property of this vault, and a plugin that also offered to
+   * rewrite `~/.gitconfig` would be offering to change every other repository
+   * on the computer from a settings screen that says nothing about them.
    *
    * Empty means removed rather than stored: git accepts `user.name = ""`
    * without complaint and then fails at commit time, which is the same
    * situation with an extra place to look for it.
    */
-  async setIdentity(field: "name" | "email", value: string, scope: WritableScope): Promise<void> {
+  async setIdentity(field: "name" | "email", value: string): Promise<void> {
     const key = `user.${field}`;
-    const where = scope === "global" ? "--global" : "--local";
+    const where = "--local";
     const trimmed = value.trim();
     if (trimmed === "") {
       await this.execAllowing([5], ["config", where, "--unset", key]);

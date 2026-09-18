@@ -3439,23 +3439,78 @@
   white-space: pre;
 }
 
-/* Settings: the Git identity rows.
-   The origin line sits on its own row under the field, so it can be a full
-   sentence rather than something squeezed next to the input. */
-.gs-identity-origin {
-  flex-basis: 100%;
-  order: 3;
+/* Settings: a row's description, in two lines.
+   The first says what the setting is, the second carries the badge and the
+   caveat. Both live in the description column the settings framework owns, so
+   nothing here positions a field or fights a row's layout. */
+.gs-setting-text {
+  line-height: 1.4;
+}
+
+.gs-setting-status {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 6px;
   margin-top: 4px;
+}
+
+.gs-setting-detail {
+  color: var(--text-faint);
+  font-size: var(--font-ui-smaller);
+  line-height: 1.4;
+}
+
+/* Where a git-backed value comes from, short enough to read at a glance. */
+.gs-badge {
+  padding: 1px 6px;
+  border-radius: var(--radius-s);
+  background: var(--background-modifier-border);
   color: var(--text-muted);
+  font-size: var(--font-ui-smaller);
+  font-weight: var(--font-semibold);
+  letter-spacing: 0.02em;
+  white-space: nowrap;
+}
+
+.gs-badge-accent {
+  background: var(--background-modifier-active-hover);
+  color: var(--text-accent);
+}
+
+.gs-badge-warning {
+  background: var(--background-modifier-error);
+  color: var(--text-on-accent);
+}
+
+/* A field holding a path, a URL or an address: one long string that is read
+   from the start, so a row holding one gets half the width for its field
+   instead of truncating after twenty characters. Half rather than "as much as
+   it needs", so that every such row lines up with the next. */
+.setting-item-control:has(> .gs-path-input),
+.setting-item-control:has(> .gs-identity-input) {
+  flex: 0 0 min(26em, 50%);
+  min-width: 0;
+}
+
+.gs-path-input,
+.gs-identity-input {
+  flex: 1 1 auto;
+  min-width: 6em;
+  width: auto;
+}
+
+.gs-path-input {
+  font-family: var(--font-monospace);
   font-size: var(--font-ui-smaller);
 }
 
-.gs-identity-origin-missing {
-  color: var(--text-warning);
-}
-
-.gs-identity-input {
-  min-width: 18em;
+/* Settings and dialogs: a paragraph that introduces a group. */
+.gs-settings-note {
+  margin: 0 0 1em;
+  color: var(--text-muted);
+  font-size: var(--font-ui-smaller);
+  line-height: 1.5;
 }
 
 /* The prompt that asks for an identity when nothing has set one. */
@@ -3464,6 +3519,8 @@
   color: var(--text-muted);
 }
 
+/* What a dialog says when it will not save what was typed. */
+.gs-form-error,
 .gs-identity-error {
   margin-top: 8px;
   padding: 8px 10px;

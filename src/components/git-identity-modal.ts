@@ -1,7 +1,7 @@
 import { App, Modal, Setting } from "obsidian";
 import type { TextComponent } from "obsidian";
-import { defaultScope, emailProblem, nameProblem, writableScopeLabels } from "../git/git-identity";
-import type { GitIdentity, WritableScope } from "../git/git-identity";
+import { emailProblem, nameProblem } from "../git/git-identity";
+import type { GitIdentity } from "../git/git-identity";
 import { asVoid } from "../utils/async";
 
 /**
@@ -14,9 +14,10 @@ import { asVoid } from "../utils/async";
  * plugin loads into a repository nothing has configured, and again out of the
  * failure itself for anyone who waved it away.
  *
- * It writes to the vault by default. That is the narrower of the two places,
- * and the one whose consequences stop at the folder the user is looking at;
- * the wider one is one click away and says plainly what it means.
+ * It writes to this vault, and only ever to this vault. The dialog used to
+ * offer the global config as the other half of a choice; a prompt that appears
+ * on its own and can change the name every repository on the computer commits
+ * under is not a choice worth offering.
  */
 export type IdentityPromptReason = "startup" | "commit" | "manual";
 
@@ -24,9 +25,7 @@ export interface IdentityPromptOptions {
   reason: IdentityPromptReason;
   /** What git already has. Either half may be filled in already. */
   identity: GitIdentity;
-  /** False when the vault is no repository, leaving only the global config. */
-  canUseLocal: boolean;
-  onSave: (name: string, email: string, scope: WritableScope) => Promise<void>;
+  onSave: (name: string, email: string) => Promise<void>;
   /** Closed without saving — the caller decides whether to ask again. */
   onDismiss: () => void;
 }
@@ -45,8 +44,6 @@ const INTRO: Record<IdentityPromptReason, string> = {
 export class GitIdentityModal extends Modal {
   private nameInput: TextComponent | null = null;
   private emailInput: TextComponent | null = null;
-  /** Modal already owns `scope`, for keymaps. */
-  private saveScope: WritableScope;
   private errorEl: HTMLElement | null = null;
   private saved = false;
 
@@ -55,7 +52,6 @@ export class GitIdentityModal extends Modal {
     private opts: IdentityPromptOptions,
   ) {
     super(app);
-    this.saveScope = defaultScope(opts.identity, opts.canUseLocal);
   }
 
   onOpen(): void {
@@ -78,23 +74,12 @@ export class GitIdentityModal extends Modal {
       });
     });
 
-    const labels = writableScopeLabels();
-    new Setting(contentEl)
-      .setName("Save to")
-      .setDesc(
-        this.opts.canUseLocal
-          ? "This vault keeps the identity to these notes. The other applies everywhere Git runs."
-          : "This vault is not a Git repository yet, so there is only the global config to write to.",
-      )
-      .addDropdown((dropdown) => {
-        dropdown
-          .addOptions(this.opts.canUseLocal ? labels : { global: labels.global })
-          .setValue(this.saveScope)
-          .onChange((value) => {
-            this.saveScope = value === "global" ? "global" : "local";
-          });
-      });
-
+    contentEl.createEl("p", {
+      cls: "gs-settings-note",
+      text:
+        "Saved for this vault. Other repositories on this computer keep the name and address " +
+        "they already use.",
+    });
     this.errorEl = contentEl.createDiv("gs-identity-error gs-hidden");
 
     new Setting(contentEl)
@@ -130,7 +115,7 @@ export class GitIdentityModal extends Modal {
     }
 
     try {
-      await this.opts.onSave(name, email, this.saveScope);
+      await this.opts.onSave(name, email);
     } catch (e: unknown) {
       this.showError(e instanceof Error ? e.message : String(e));
       return;

@@ -51,6 +51,15 @@ afterAll(() => {
   for (const dir of repos) rmSync(dir, { recursive: true, force: true });
 });
 
+/** Writes the user's own config directly: the plugin cannot, on purpose, and
+    the inherited value is what a vault-local one has to win over. */
+const setGlobal = (key: string, value: string): void => {
+  execFileSync("git", ["config", "--global", key, value], {
+    cwd: repo,
+    env: { ...process.env, GIT_CONFIG_GLOBAL: globalConfig, GIT_CONFIG_NOSYSTEM: "1" },
+  });
+};
+
 const globalFile = (): string => {
   try {
     return readFileSync(globalConfig, "utf8");
@@ -68,8 +77,8 @@ describe("reading the identity out of a real repository", () => {
   });
 
   it("reads what the user's own config sets, and says where from", async () => {
-    await git.setIdentity("name", "Ada Lovelace", "global");
-    await git.setIdentity("email", "ada@example.com", "global");
+    setGlobal("user.name", "Ada Lovelace");
+    setGlobal("user.email", "ada@example.com");
 
     const identity = await git.identity();
     expect(identity.name).toEqual({ value: "Ada Lovelace", scope: "global", shadowed: null });
@@ -79,8 +88,8 @@ describe("reading the identity out of a real repository", () => {
 
   /** The whole reason the scope is read at all. */
   it("lets a value set for the vault override the inherited one", async () => {
-    await git.setIdentity("name", "Ada Lovelace", "global");
-    await git.setIdentity("name", "Vault Name", "local");
+    setGlobal("user.name", "Ada Lovelace");
+    await git.setIdentity("name", "Vault Name");
 
     const identity = await git.identity();
     expect(identity.name.value).toBe("Vault Name");
@@ -89,8 +98,8 @@ describe("reading the identity out of a real repository", () => {
   });
 
   it("agrees with the name git would actually put on a commit", async () => {
-    await git.setIdentity("name", "Ada Lovelace", "global");
-    await git.setIdentity("name", "Vault Name", "local");
+    setGlobal("user.name", "Ada Lovelace");
+    await git.setIdentity("name", "Vault Name");
 
     const effective = execFileSync("git", ["config", "--get", "user.name"], {
       cwd: repo,
@@ -103,15 +112,23 @@ describe("reading the identity out of a real repository", () => {
 
 describe("writing it", () => {
   it("writes to the vault without touching the user's own config", async () => {
-    await git.setIdentity("name", "Vault Name", "local");
+    await git.setIdentity("name", "Vault Name");
     expect(globalFile()).not.toContain("Vault Name");
     expect(readFileSync(join(repo, ".git", "config"), "utf8")).toContain("Vault Name");
   });
 
-  it("writes to the user's own config when that is what was chosen", async () => {
-    await git.setIdentity("email", "ada@example.com", "global");
+  /**
+   * The vault is the only place it writes. A settings screen about these notes
+   * has no business changing the name every other repository on the computer
+   * commits under, so there is no longer a way to ask it to.
+   */
+  it("leaves the user's own config alone even where it is the one in use", async () => {
+    setGlobal("user.email", "ada@example.com");
+    await git.setIdentity("email", "vault@example.com");
+
     expect(globalFile()).toContain("ada@example.com");
-    expect(readFileSync(join(repo, ".git", "config"), "utf8")).not.toContain("ada@example.com");
+    expect(globalFile()).not.toContain("vault@example.com");
+    expect(readFileSync(join(repo, ".git", "config"), "utf8")).toContain("vault@example.com");
   });
 
   /**
@@ -120,9 +137,9 @@ describe("writing it", () => {
    * with one more place to look for it.
    */
   it("removes a vault value rather than storing an empty one, uncovering the inherited one", async () => {
-    await git.setIdentity("name", "Ada Lovelace", "global");
-    await git.setIdentity("name", "Vault Name", "local");
-    await git.setIdentity("name", "", "local");
+    setGlobal("user.name", "Ada Lovelace");
+    await git.setIdentity("name", "Vault Name");
+    await git.setIdentity("name", "");
 
     const identity = await git.identity();
     expect(identity.name.value).toBe("Ada Lovelace");
@@ -131,11 +148,11 @@ describe("writing it", () => {
   });
 
   it("says nothing when asked to remove what was never there", async () => {
-    await expect(git.setIdentity("email", "", "local")).resolves.toBeUndefined();
+    await expect(git.setIdentity("email", "")).resolves.toBeUndefined();
   });
 
   it("stores a value without the whitespace around it", async () => {
-    await git.setIdentity("name", "  Ada Lovelace  ", "local");
+    await git.setIdentity("name", "  Ada Lovelace  ");
     expect((await git.identity()).name.value).toBe("Ada Lovelace");
   });
 });
