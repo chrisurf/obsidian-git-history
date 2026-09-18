@@ -4,6 +4,7 @@ import { readFileSync } from "fs";
 import { fileURLToPath } from "url";
 import {
   DEFAULT_SESSION_ICON,
+  ICONS_PER_ROW,
   SESSION_COLORS,
   SESSION_ICONS,
   availableIcons,
@@ -21,6 +22,41 @@ describe("session palette", () => {
 
   it("has no duplicate icons", () => {
     expect(new Set(SESSION_ICONS).size).toBe(SESSION_ICONS.length);
+  });
+
+  /**
+   * The pool is grouped by subject, eight to a line, and the picker's grid is
+   * eight columns wide. A pool that is not a whole number of lines — or a grid
+   * that is not eight wide — breaks the grouping into a run of glyphs again,
+   * silently, because nothing about it looks wrong.
+   */
+  it("fills whole lines of the picker's grid", () => {
+    expect(SESSION_ICONS.length % ICONS_PER_ROW).toBe(0);
+    expect(css).toContain(`grid-template-columns: repeat(${ICONS_PER_ROW}, 1fr)`);
+  });
+
+  /**
+   * A session is named after the work in it, and that work is rarely about the
+   * terminal. One icon from each area the pool is meant to cover, so a pool
+   * that quietly drifts back to one subject fails here.
+   */
+  it("covers the areas the work comes from, not just the shell", () => {
+    for (const icon of [
+      "terminal",
+      "bot",
+      "mail",
+      "calendar",
+      "file-spreadsheet",
+      "folder",
+      "presentation",
+      "headphones",
+      "briefcase",
+      "banknote",
+      "globe",
+      "plane",
+    ]) {
+      expect(SESSION_ICONS, `${icon} is missing from the pool`).toContain(icon);
+    }
   });
 
   it("names a class only for a colour the stylesheet knows", () => {
@@ -96,14 +132,14 @@ describe("icons the running Obsidian knows", () => {
   });
 
   it("drops an icon the app no longer registers", () => {
-    const known = SESSION_ICONS.filter((i) => i !== "ghost").map((i) => `lucide-${i}`);
-    expect(availableIcons(known)).not.toContain("ghost");
+    const known = SESSION_ICONS.filter((i) => i !== "palmtree").map((i) => `lucide-${i}`);
+    expect(availableIcons(known)).not.toContain("palmtree");
     expect(availableIcons(known)).toContain("terminal");
   });
 
   /**
    * A registry that matches nothing is a naming change on Obsidian's side, not
-   * two dozen deleted icons — an empty picker would be the worse guess.
+   * forty deleted icons — an empty picker would be the worse guess.
    */
   it("falls back to the pool when the registry matches nothing at all", () => {
     expect(availableIcons(["something-else-entirely"])).toEqual(SESSION_ICONS);

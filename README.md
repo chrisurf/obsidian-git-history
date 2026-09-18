@@ -109,7 +109,9 @@ vault's folder.
 - Resizes with the panel
 - Several sessions side by side, listed as icons along the edge of the panel
 - Give each session its own icon and colour from its right-click menu, so a row
-  of identical shell icons stays readable
+  of identical shell icons stays readable. The icons are grouped by what the
+  session is for — shells and pipelines, mail and meetings, documents and
+  spreadsheets, presenting and recording, the business and the trip
 - Drag the icons to reorder the sessions
 - A **startup script** in the settings is loaded into every session, in the
   place your own `.zshrc` would put it — aliases, environment variables and
