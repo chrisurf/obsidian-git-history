@@ -7,6 +7,9 @@
  * rather than the whole icon library, because a searchable grid of a thousand
  * glyphs is a lot of machinery for a decision that takes one glance.
  *
+ * What the pool is curated *for* is the work, not the tool — see the list
+ * below.
+ *
  * Pure data, no DOM — the view turns it into elements, the modal into a grid.
  */
 
@@ -14,40 +17,79 @@
 export const DEFAULT_SESSION_ICON = "terminal";
 
 /**
- * The pool the picker offers.
+ * The pool the picker offers, in the five rows the grid draws it in.
  *
- * Every entry is an icon Obsidian itself uses somewhere in its own interface,
- * so it is registered no matter which Lucide version the running app bundles.
+ * A terminal session is named after the work in it, and that work is rarely
+ * about the terminal: it is the mail run, the month-end spreadsheet, the
+ * deployment, the trip. The first pool was two dozen glyphs from one world —
+ * bug, flame, ghost — which left everything else to be marked with a bookmark
+ * and remembered. These are eight icons from each of five areas instead, so
+ * whatever a session is for, something in the grid says it.
+ *
+ * Eight per line is exactly the picker's grid, so every line of the grid is
+ * one subject and the eye can go to the right neighbourhood before it starts
+ * looking at glyphs. `SESSION_ICONS.length % 8 === 0` is therefore a rule, not
+ * a coincidence.
+ *
+ * Every name is a Lucide icon, which is the set Obsidian registers in full.
  * `availableIcons()` still filters the list at runtime for the case where a
- * future release drops one — an empty box in the strip is worse than a
+ * future release renames one — an empty box in the strip is worse than a
  * slightly shorter pool.
  */
 export const SESSION_ICONS: readonly string[] = [
+  // Shell, builds, automation — including the pipeline and the agent.
   "terminal",
-  "terminal-square",
   "code-2",
   "bug",
-  "git-fork",
-  "github",
-  "zap",
-  "flame",
-  "wrench",
-  "hard-drive",
-  "layers",
-  "globe",
-  "monitor",
-  "keyboard",
-  "clock",
-  "timer",
-  "folder",
+  "git-branch",
+  "workflow",
+  "server",
+  "database",
+  "bot",
+
+  // Mail, meetings, the people on the other end.
+  "mail",
+  "inbox",
+  "send",
+  "message-square",
+  "calendar",
+  "users",
+  "phone",
+  "video",
+
+  // Documents, and what is done with them.
   "file-text",
-  "search",
-  "bookmark",
-  "pin",
-  "tag",
-  "heart",
-  "ghost",
+  "file-spreadsheet",
+  "file-badge-2",
+  "clipboard-list",
+  "folder",
+  "archive",
+  "paperclip",
+  "printer",
+
+  // Presenting, recording, reporting.
+  "presentation",
+  "bar-chart",
+  "image",
+  "headphones",
+  "mic",
+  "music",
+  "megaphone",
+  "lightbulb",
+
+  // The business, the world it is in, and being out of the office.
+  "briefcase",
+  "building-2",
+  "landmark",
+  "banknote",
+  "globe",
+  "languages",
+  "plane",
+  "palmtree",
 ];
+
+/** How many icons the picker puts on one line; the pool is grouped in these. */
+export const ICONS_PER_ROW = 8;
 
 /** A colour a session icon can be tinted with. `id` is what gets stored. */
 export interface SessionColor {

@@ -189,14 +189,21 @@ export default class GitHistoryPlugin extends Plugin {
    * palette, or a commit that git refused to write.
    */
   async promptForIdentity(reason: IdentityPromptReason): Promise<void> {
-    const [identity, canUseLocal] = await Promise.all([this.git.identity(), this.git.isRepo()]);
+    const [identity, isRepo] = await Promise.all([this.git.identity(), this.git.isRepo()]);
+    // The identity is written for this vault, so without a repository there is
+    // nothing to write it to. Creating one is the panel's offer, not a dialog's.
+    if (!isRepo) {
+      new Notice(
+        "This vault is not a Git repository yet. Initialize it from the source control panel.",
+      );
+      return;
+    }
     new GitIdentityModal(this.app, {
       reason,
       identity,
-      canUseLocal,
-      onSave: async (name, email, scope) => {
-        await this.git.setIdentity("name", name, scope);
-        await this.git.setIdentity("email", email, scope);
+      onSave: async (name, email) => {
+        await this.git.setIdentity("name", name);
+        await this.git.setIdentity("email", email);
         this.settings.identityPromptDismissed = false;
         await this.saveSettings();
         new Notice("Git identity saved");

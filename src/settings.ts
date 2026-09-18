@@ -1,8 +1,12 @@
 import { App, PluginSettingTab, Setting } from "obsidian";
 import type { SettingDefinitionItem } from "obsidian";
-import type { GitHistorySettings } from "./types";
+import type { GitHistorySettings, RemoteInfo } from "./types";
 import type GitHistoryPlugin from "./main";
 import { GitIdentitySection } from "./components/git-identity-section";
+import { RemotesSection } from "./components/remotes-section";
+import { RemoteModal } from "./components/remote-modal";
+import { describeSetting } from "./components/setting-text";
+import { describeRemote, remoteHostLabel } from "./git/git-remote";
 import { asVoid } from "./utils/async";
 
 type SettingKey = keyof GitHistorySettings;
@@ -16,15 +20,26 @@ type SettingKey = keyof GitHistorySettings;
  * keeps the reading side free of an API it cannot rely on; `toDefinitions`
  * hands 1.13 what it asks for at the one place that knows it is talking to
  * 1.13.
+ *
+ * `desc` is one line, and `hint` is what used to be the rest of it. A row's
+ * description sits in a narrow column beside its control, so a three-sentence
+ * description pushed the control into a corner and buried the sentence that
+ * mattered. The first line now says what the setting is, and the hint — the
+ * caveat, the "leave empty to" — is a dimmer line under it.
  */
 export type SettingRow = {
   name: string;
   desc?: string;
+  /** The rest of the explanation, on a quieter line under `desc`. */
+  hint?: string;
   /** Extra terms the 1.13 settings search should match this row on. */
   aliases?: string[];
   key: SettingKey;
+  /** Greyed out while this other setting is off — an interval with nothing
+      to space out is not a decision anyone has to make. */
+  enabledBy?: SettingKey;
 } & (
-  | { type: "text"; placeholder?: string }
+  | { type: "text"; placeholder?: string; mono?: true }
   | { type: "textarea"; placeholder?: string; rows?: number }
   | { type: "toggle" }
   | { type: "dropdown"; options: Record<string, string> }
@@ -37,12 +52,14 @@ export interface SettingGroup {
 }
 
 /**
- * The plugin's settings, in two groups.
+ * The plugin's settings, grouped by the question they answer.
  *
- * The plugin does two unrelated things — version control, and a shell — and a
- * single run of a dozen rows made you read all of them to find either. Split
- * under two headings, the question "where do I set the shell" has one place to
- * look.
+ * The plugin does several unrelated things — it commits, it draws changes and
+ * diffs, it runs a shell — and one run of a dozen rows made you read all of
+ * them to find any. The groups are the index: "how do my commits get to the
+ * server" is one heading, "how does the changes list look" is another, and
+ * the rows nobody should need — paths, timings — sit under Advanced at the
+ * bottom rather than between the two.
  *
  * There is deliberately only one list. Obsidian 1.13 renders and searches
  * settings from `getSettingDefinitions`, older versions call `display()`, and
@@ -52,87 +69,101 @@ export interface SettingGroup {
  */
 export const SETTING_GROUPS: SettingGroup[] = [
   {
-    heading: "Source control",
+    heading: "Commits and sync",
     rows: [
       {
-        name: "Commit message template",
-        desc: "Default commit message. Use {{date}} for the current date.",
+        name: "Commit message",
+        desc: "What a new commit's message box starts with.",
+        hint: "Use {{date}} for today's date.",
+        aliases: ["commit message template"],
         key: "commitTemplate",
         type: "text",
         placeholder: "vault backup {{date}}",
       },
       {
         name: "Pull strategy",
-        desc: "How commits downloaded from a remote are combined with your own.",
+        desc: "How commits from the remote are combined with your own.",
         key: "pullStrategy",
         type: "dropdown",
         options: { merge: "Merge", rebase: "Rebase", "ff-only": "Fast-forward only" },
       },
       {
         name: "Auto-fetch",
-        desc: "Check remotes for new commits in the background.",
+        desc: "Check the remote for new commits in the background.",
         key: "autoFetchEnabled",
         type: "toggle",
       },
       {
-        name: "Auto-fetch interval",
-        desc: "Seconds between automatic fetches.",
+        name: "Auto-fetch every",
+        desc: "Seconds between those checks.",
+        aliases: ["auto-fetch interval"],
         key: "autoFetchInterval",
         type: "number",
         min: 30,
+        enabledBy: "autoFetchEnabled",
       },
-      {
-        name: "Default diff view",
-        desc: "Show a changed file as two columns side by side, or as one annotated text.",
-        key: "diffViewMode",
-        type: "dropdown",
-        options: { "side-by-side": "Side by side", inline: "Inline" },
-      },
+    ],
+  },
+  {
+    heading: "Changes and diffs",
+    rows: [
       {
         name: "Changes layout",
-        desc: "Show changed files nested under their folders, or one flat row per file.",
+        desc: "Changed files nested under their folders, or one flat row each.",
         key: "fileListMode",
         type: "dropdown",
         options: { tree: "Tree", list: "List" },
       },
       {
         name: "Compact folders",
-        desc: "Fold folders that hold a single subfolder into one row. Tree layout only.",
+        desc: "Fold folders that hold a single subfolder into one row.",
+        hint: "Tree layout only.",
         key: "compactFolders",
         type: "toggle",
       },
       {
+        name: "Default diff view",
+        desc: "Show a changed file as two columns, or as one annotated text.",
+        key: "diffViewMode",
+        type: "dropdown",
+        options: { "side-by-side": "Side by side", inline: "Inline" },
+      },
+      {
         name: "Only list files Obsidian can open",
-        desc:
-          "A commit's file list leaves out files no Obsidian view can render, such as .json " +
-          "or .parquet. Turn this off to list everything a commit touched.",
+        desc: "Leave files no Obsidian view can render out of a commit's file list.",
+        hint: "Such as .json or .parquet. Turn this off to list everything a commit touched.",
         key: "onlySupportedFileTypes",
         type: "toggle",
       },
+    ],
+  },
+  {
+    heading: "Advanced",
+    rows: [
       {
         name: "Show nested repositories",
-        desc:
-          "Folders inside the vault that are Git repositories of their own cannot be staged, " +
-          "so they are hidden from the changes list. Turn this on to list them anyway.",
+        desc: "List folders inside the vault that are Git repositories of their own.",
+        hint: "They cannot be staged from here, which is why they are hidden by default.",
         key: "showNestedRepos",
         type: "toggle",
       },
       {
-        name: "File watcher debounce",
-        desc: "Milliseconds to wait before refreshing status after file changes.",
+        name: "Refresh delay",
+        desc: "Milliseconds to wait after a file changes before reading status again.",
+        aliases: ["file watcher debounce"],
         key: "debounceMs",
         type: "number",
         min: 100,
       },
       {
         name: "Git binary",
-        desc:
-          "Path to the git the plugin runs. Leave empty to find one automatically, which " +
-          "also searches the PATH your own shell uses.",
+        desc: "Path to the git the plugin runs.",
+        hint: "Leave empty to find one automatically, which also searches the PATH your own shell uses.",
         aliases: ["git path", "git executable"],
         key: "gitPath",
         type: "text",
         placeholder: "/opt/homebrew/bin/git",
+        mono: true,
       },
     ],
   },
@@ -143,27 +174,30 @@ export const SETTING_GROUPS: SettingGroup[] = [
         // Under the heading the word "terminal" is already said; the alias
         // keeps the row findable by the name it used to have.
         name: "Shell",
-        desc: "Path to the shell binary the terminal starts. Leave empty for auto-detect.",
+        desc: "Path to the shell binary the terminal starts.",
+        hint: "Leave empty for auto-detect.",
         aliases: ["terminal shell"],
         key: "terminalShell",
         type: "text",
         placeholder: "/bin/zsh",
+        mono: true,
       },
       {
         name: "Python",
-        desc:
-          "Path to the Python 3 that runs the terminal's pseudo-terminal bridge. Leave empty " +
-          "to find one automatically. Set it if the terminal reports that none was found.",
+        desc: "Path to the Python 3 that runs the terminal's pseudo-terminal bridge.",
+        hint: "Leave empty to find one automatically. Set it if the terminal reports that none was found.",
         aliases: ["terminal python", "python path", "pty"],
         key: "terminalPython",
         type: "text",
         placeholder: "/opt/homebrew/bin/python3",
+        mono: true,
       },
       {
         name: "Pseudo-terminal",
-        desc:
-          "Which bridge gives the shell a real terminal. Automatic tries them in order and " +
-          "takes the first that works. Pipes is a last resort with no prompt or colours.",
+        desc: "Which bridge gives the shell a real terminal.",
+        hint:
+          "Automatic tries them in order and takes the first that works. Pipes is a last " +
+          "resort with no prompt or colours.",
         aliases: ["pty", "backend", "terminal bridge"],
         key: "terminalPtyBackend",
         type: "dropdown",
@@ -176,10 +210,10 @@ export const SETTING_GROUPS: SettingGroup[] = [
       },
       {
         name: "Startup script",
-        desc:
-          "Shell code run at the start of every session, after your own rc files and before " +
-          "the first prompt — the same place you would put it in .zshrc. Written in the " +
-          "language of the shell above. It is stored in the vault, so keep secrets out of it.",
+        desc: "Shell code run at the start of every session, before the first prompt.",
+        hint:
+          "The same place you would put it in .zshrc, in the language of the shell above. It " +
+          "is stored in the vault, so keep secrets out of it.",
         aliases: ["terminal startup script", "init script", "rc", "profile", "zshrc", "bashrc"],
         key: "terminalStartupScript",
         type: "textarea",
@@ -188,10 +222,8 @@ export const SETTING_GROUPS: SettingGroup[] = [
       },
       {
         name: "Colour new sessions",
-        desc:
-          "Give every session you open the next free colour from the palette, so a strip of " +
-          "identical shell icons stays readable. A session's colour and icon can always be " +
-          "set by hand from its right-click menu.",
+        desc: "Give every session you open the next free colour from the palette.",
+        hint: "A session's colour and icon can always be set by hand from its right-click menu.",
         aliases: ["colour new terminal sessions", "color new terminal sessions"],
         key: "terminalAutoColor",
         type: "toggle",
@@ -200,6 +232,12 @@ export const SETTING_GROUPS: SettingGroup[] = [
   },
 ];
 
+/** The description of one row, as the two lines it is made of. */
+export function rowDescription(row: SettingRow): DocumentFragment | undefined {
+  if (!row.desc) return undefined;
+  return describeSetting(row.desc, row.hint);
+}
+
 /**
  * The same list in the shape Obsidian 1.13 wants for its own renderer.
  *
@@ -207,44 +245,52 @@ export const SETTING_GROUPS: SettingGroup[] = [
  * point: everything else works off `SettingGroup` and stays usable on the
  * versions that predate the API.
  */
-export function toDefinitions(groups: readonly SettingGroup[]): SettingDefinitionItem[] {
+export function toDefinitions(
+  groups: readonly SettingGroup[],
+  read: ReadValue,
+): SettingDefinitionItem[] {
   return groups.map((group) => ({
     type: "group" as const,
     heading: group.heading,
     items: group.rows.map((row) => ({
       name: row.name,
-      ...(row.desc ? { desc: row.desc } : {}),
+      ...(row.desc ? { desc: rowDescription(row) } : {}),
       ...(row.aliases ? { aliases: row.aliases } : {}),
-      control: control(row),
+      control: control(row, read),
     })),
   }));
 }
 
 /** The control half of a 1.13 definition, spelled out so the mapping above is
     checked by the compiler instead of asserted. */
-type ControlShape =
+type ControlShape = { disabled?: () => boolean } & (
   | { type: "text"; key: SettingKey; placeholder?: string }
   | { type: "textarea"; key: SettingKey; placeholder?: string; rows?: number }
   | { type: "toggle"; key: SettingKey }
   | { type: "dropdown"; key: SettingKey; options: Record<string, string> }
-  | { type: "number"; key: SettingKey; min?: number; max?: number };
+  | { type: "number"; key: SettingKey; min?: number; max?: number }
+);
 
-function control(row: SettingRow): ControlShape {
+function control(row: SettingRow, read: ReadValue): ControlShape {
+  const gate = row.enabledBy;
+  const disabled = gate ? { disabled: (): boolean => !read(gate) } : {};
   switch (row.type) {
     case "dropdown":
-      return { type: "dropdown", key: row.key, options: row.options };
+      return { type: "dropdown", key: row.key, options: row.options, ...disabled };
     case "number":
       return {
         type: "number",
         key: row.key,
         ...(row.min !== undefined ? { min: row.min } : {}),
         ...(row.max !== undefined ? { max: row.max } : {}),
+        ...disabled,
       };
     case "text":
       return {
         type: "text",
         key: row.key,
         ...(row.placeholder ? { placeholder: row.placeholder } : {}),
+        ...disabled,
       };
     case "textarea":
       return {
@@ -252,9 +298,10 @@ function control(row: SettingRow): ControlShape {
         key: row.key,
         ...(row.placeholder ? { placeholder: row.placeholder } : {}),
         ...(row.rows !== undefined ? { rows: row.rows } : {}),
+        ...disabled,
       };
     default:
-      return { type: "toggle", key: row.key };
+      return { type: "toggle", key: row.key, ...disabled };
   }
 }
 
@@ -273,10 +320,7 @@ export function identityDefinitions(section: GitIdentitySection): SettingDefinit
     items: GitIdentitySection.ROWS.map((row) => ({
       name: GitIdentitySection.rowName(row),
       desc: GitIdentitySection.rowDesc(row),
-      render: (setting: Setting) => {
-        if (row === "scope") section.scopeSelector(setting);
-        else section.field(setting, row);
-      },
+      render: (setting: Setting) => section.field(setting, row),
     })),
   };
 }
@@ -288,13 +332,98 @@ export function renderIdentityGroup(containerEl: HTMLElement, section: GitIdenti
     const setting = new Setting(containerEl)
       .setName(GitIdentitySection.rowName(row))
       .setDesc(GitIdentitySection.rowDesc(row));
-    if (row === "scope") section.scopeSelector(setting);
-    else section.field(setting, row);
+    section.field(setting, row);
   }
+}
+
+const REMOTE_HEADING = "Remote repository";
+const REMOTE_NOTE =
+  "Where this vault is pushed to and pulled from — its copy on GitHub, GitLab or a server " +
+  "of your own.";
+
+/**
+ * The remotes, as the 1.13 list the API has for exactly this: rows the user
+ * adds and deletes rather than settings they set.
+ *
+ * The rows are built from what git said last, not from a read started here: a
+ * definition is built synchronously, and a list that waited for git would draw
+ * empty every time the tab opens. {@link RemotesSection.sync} does the reading
+ * and asks for a redraw when the answer differs from what is on screen.
+ */
+export function remoteDefinitions(section: RemotesSection): SettingDefinitionItem {
+  section.sync();
+  const remotes = section.list;
+  return {
+    type: "list" as const,
+    heading: REMOTE_HEADING,
+    emptyState: describeSetting(section.emptyState()),
+    ...(section.isRepo
+      ? {
+          addItem: {
+            name: "Add a remote",
+            action: () => section.add(),
+          },
+          onDelete: (index: number): void => {
+            const remote = remotes[index];
+            if (remote) void section.remove(remote.name);
+          },
+        }
+      : {}),
+    items: remotes.map((remote) => ({
+      name: remote.name,
+      desc: remoteDescription(remote),
+      aliases: ["remote", "origin", "push", "pull", remote.fetchUrl],
+      render: (setting: Setting) => section.field(setting, remote),
+    })),
+  };
+}
+
+/** The same rows for the versions that predate the definitions API. */
+export function renderRemoteGroup(containerEl: HTMLElement, section: RemotesSection): void {
+  section.sync();
+  new Setting(containerEl).setName(REMOTE_HEADING).setHeading().setDesc(REMOTE_NOTE);
+
+  for (const remote of section.list) {
+    const setting = new Setting(containerEl)
+      .setName(remote.name)
+      .setDesc(remoteDescription(remote));
+    section.field(setting, remote);
+    setting.addExtraButton((button) =>
+      button
+        .setIcon("trash-2")
+        .setTooltip(`Remove "${remote.name}"`)
+        .onClick(asVoid(() => section.remove(remote.name))),
+    );
+  }
+
+  if (section.list.length === 0) {
+    new Setting(containerEl).setDesc(section.emptyState());
+  }
+  if (section.isRepo) {
+    new Setting(containerEl).addButton((button) =>
+      button.setButtonText("Add a remote").onClick(() => section.add()),
+    );
+  }
+}
+
+/**
+ * A remote's row: which repository it is, which host it is on, and — for
+ * `origin` — that this is the one push and pull use without being told.
+ */
+function remoteDescription(remote: RemoteInfo): DocumentFragment {
+  const isDefault = remote.name === "origin";
+  return describeSetting(describeRemote(remote), {
+    label: remoteHostLabel(remote.fetchUrl || remote.pushUrl),
+    tone: isDefault ? "accent" : "neutral",
+    detail: isDefault ? "Push and pull use this remote." : null,
+  });
 }
 
 export class GitHistorySettingTab extends PluginSettingTab {
   plugin: GitHistoryPlugin;
+  /** Outlives a render pass, because it holds what git last said about the
+      remotes and asks for the redraw that shows it. */
+  private remotes: RemotesSection | null = null;
 
   constructor(app: App, plugin: GitHistoryPlugin) {
     super(app, plugin);
@@ -305,7 +434,8 @@ export class GitHistorySettingTab extends PluginSettingTab {
   getSettingDefinitions(): SettingDefinitionItem[] {
     return [
       identityDefinitions(new GitIdentitySection(this.plugin.git)),
-      ...toDefinitions(SETTING_GROUPS),
+      remoteDefinitions(this.remotesSection()),
+      ...toDefinitions(SETTING_GROUPS, (key) => this.getControlValue(key)),
     ];
   }
 
@@ -322,18 +452,48 @@ export class GitHistorySettingTab extends PluginSettingTab {
       this.plugin.refreshFileLists();
     }
     await this.plugin.saveSettings();
+    // A setting another row is greyed out by changes what that row may do, and
+    // nothing re-evaluates `disabled` on its own.
+    if (SETTING_GROUPS.some((g) => g.rows.some((r) => r.enabledBy === key))) this.redraw();
   }
 
   /** What older Obsidian versions call, built from the same list. */
   display(): void {
+    this.render();
+  }
+
+  private render(): void {
     this.containerEl.empty();
     renderIdentityGroup(this.containerEl, new GitIdentitySection(this.plugin.git));
+    renderRemoteGroup(this.containerEl, this.remotesSection());
     renderGroups(
       this.containerEl,
       SETTING_GROUPS,
       (key) => this.getControlValue(key),
       (key, value) => this.setControlValue(key, value),
     );
+  }
+
+  private remotesSection(): RemotesSection {
+    this.remotes ??= new RemotesSection({
+      git: this.plugin.git,
+      refresh: () => this.redraw(),
+      prompt: (taken, save) => new RemoteModal(this.app, { taken, onSave: save }).open(),
+    });
+    return this.remotes;
+  }
+
+  /**
+   * Draws the tab again.
+   *
+   * 1.13 keeps the definitions and rebuilds from them on `update()`; the
+   * versions before it have only `display()`. Which one exists is a property
+   * of the running app, so it is asked rather than assumed.
+   */
+  private redraw(): void {
+    const tab = this as unknown as { update?: () => void };
+    if (typeof tab.update === "function") tab.update();
+    else if (this.containerEl.isShown()) this.render();
   }
 }
 
@@ -363,7 +523,9 @@ function renderRow(
   write: WriteValue,
 ): void {
   const setting = new Setting(containerEl).setName(row.name);
-  if (row.desc) setting.setDesc(row.desc);
+  const desc = rowDescription(row);
+  if (desc) setting.setDesc(desc);
+  if (row.enabledBy && !read(row.enabledBy)) setting.setDisabled(true);
   const save = (value: unknown): void => asVoid(async () => write(row.key, value))();
 
   switch (row.type) {
@@ -411,6 +573,7 @@ function renderRow(
       setting.addText((t) => {
         t.setValue(readString(read, row.key));
         if (row.placeholder) t.setPlaceholder(row.placeholder);
+        if (row.mono) t.inputEl.addClass("gs-path-input");
         t.onChange(save);
       });
       break;

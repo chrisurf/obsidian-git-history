@@ -36,8 +36,10 @@ export const WHATS_NEW = `## 🎨 Tell your terminal sessions apart
 
 The terminal panel keeps several sessions side by side, and until now they were
 a row of identical \`>_\` icons. Right-click a session and pick **Change icon
-and colour** — two dozen icons, eight colours that follow your theme. Drag the
-icons to put the sessions in the order you think in.
+and colour** — forty icons and eight colours that follow your theme. The icons
+are grouped by what a session is for: shells and pipelines, mail and meetings,
+documents and spreadsheets, presenting and recording, the business and the
+trip. Drag the icons to put the sessions in the order you think in.
 
 Turn on **Colour new terminal sessions** in the settings if you would rather
 every session you open be given a colour of its own straight away.

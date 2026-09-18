@@ -3,10 +3,14 @@
  *
  * The value alone is not enough to show anyone. A name in a settings field
  * that was inherited from `~/.gitconfig` and a name that was set for this
- * vault look identical, and the difference decides what happens when it is
- * edited — one is a typo fixed everywhere, the other a deliberate exception
- * for these notes. So the scope is read alongside the value and carried
- * through to the field that displays it.
+ * vault look identical, and the difference is what an edit means: correcting
+ * an inherited name here gives this vault an exception to it, and correcting a
+ * vault-local one changes only what these notes commit with. So the scope is
+ * read alongside the value and carried through to the field that displays it.
+ *
+ * Read, never chosen. An edit from the plugin is written to this repository
+ * and nowhere else — a settings screen in a vault has no business changing the
+ * name every other repository on the computer commits under.
  *
  * `git config --show-scope --get-regexp` gives both in one call, and gives
  * them in precedence order: system, then global, then local, each overriding
@@ -15,10 +19,8 @@
  * vault-local name is standing in front of.
  */
 
-/** Every scope git reports. Only two of them can be written to from here. */
+/** Every scope git reports. The plugin writes to `local` and reads the rest. */
 export type ConfigScope = "system" | "global" | "local" | "worktree" | "command";
-
-export type WritableScope = "local" | "global";
 
 export interface IdentityField {
   /** What git would use, or "" when nothing sets it. */
@@ -82,6 +84,62 @@ export function describeField(field: IdentityField): string | null {
   return `${where}, overriding ${scopeNoun(field.shadowed.scope)} (${field.shadowed.value})`;
 }
 
+/**
+ * Where a field comes from, in the two pieces a settings row shows it in.
+ *
+ * `describeField` above says the same thing as one sentence, which is what the
+ * modal and the older prose want. A row has a narrow column and an eye that
+ * skips it, so it gets a short badge it can colour — "This vault" — and keeps
+ * the sentence for what the badge cannot hold.
+ */
+export interface FieldOrigin {
+  /** Two or three words, for a badge. */
+  label: string;
+  /** How the badge reads: a fact, a deliberate exception, or a problem. */
+  tone: "neutral" | "accent" | "warning";
+  /** The rest of the story, when there is one. */
+  detail: string | null;
+}
+
+/**
+ * What an inherited value has to say for itself.
+ *
+ * An edit is written for this vault and nowhere else, so a value that came
+ * from somewhere wider is about to be overridden here rather than corrected
+ * where it lives. That is worth knowing before typing, not after.
+ */
+const INHERITED = "An edit here is written for this vault only.";
+
+export function originOf(field: IdentityField): FieldOrigin {
+  if (field.value === "") {
+    return {
+      label: "Not set",
+      tone: "warning",
+      detail: "Git will either refuse to commit or invent one from your computer.",
+    };
+  }
+
+  const shadowed = field.shadowed
+    ? `Overrides ${scopeNoun(field.shadowed.scope)} (${field.shadowed.value}).`
+    : null;
+
+  switch (field.scope) {
+    case "local":
+      return { label: "This vault", tone: "accent", detail: shadowed };
+    case "worktree":
+      return { label: "This worktree", tone: "accent", detail: shadowed };
+    case "global":
+      return { label: "Global Git config", tone: "neutral", detail: INHERITED };
+    case "system":
+      return { label: "System Git config", tone: "neutral", detail: INHERITED };
+    case "command":
+      return { label: "Command line", tone: "neutral", detail: INHERITED };
+    default:
+      // A git older than 2.26 cannot say which config a value came from.
+      return { label: "In use", tone: "neutral", detail: null };
+  }
+}
+
 /** The config named as a thing, for the clause that says what is overridden. */
 function scopeNoun(scope: ConfigScope | null): string {
   switch (scope) {
@@ -116,37 +174,6 @@ function scopeLabel(scope: ConfigScope | null): string {
     default:
       return "Set somewhere Git did not name";
   }
-}
-
-/**
- * What a scope is called where the user picks one.
- *
- * "This vault" rather than "local": the setting sits in Obsidian, and the
- * repository the user is looking at is the vault.
- */
-export function writableScopeLabels(): Record<WritableScope, string> {
-  return {
-    local: "This vault",
-    global: "All repositories on this computer",
-  };
-}
-
-/**
- * The scope an edit should go to by default: the one the identity already
- * lives in.
- *
- * Correcting a name that came from `~/.gitconfig` corrects it there, rather
- * than quietly forking an exception for this vault that the user would carry
- * around without knowing. Something already set for the vault keeps being set
- * for the vault, and an identity that does not exist yet goes to the vault —
- * the narrower of the two, and the one that cannot surprise anyone else.
- */
-export function defaultScope(identity: GitIdentity, canUseLocal: boolean): WritableScope {
-  if (!canUseLocal) return "global";
-  const scopes = [identity.name.scope, identity.email.scope];
-  if (scopes.includes("local") || scopes.includes("worktree")) return "local";
-  if (scopes.includes("global") || scopes.includes("system")) return "global";
-  return "local";
 }
 
 /**

@@ -259,6 +259,32 @@ export class TextAreaComponent extends ValueComponent<string> {
   }
 }
 
+/** The small icon button a row hangs an extra action off. */
+export class ExtraButtonComponent {
+  icon = "";
+  tooltip = "";
+  clicked: (() => unknown) | null = null;
+
+  setIcon(icon: string): this {
+    this.icon = icon;
+    return this;
+  }
+  setTooltip(tooltip: string): this {
+    this.tooltip = tooltip;
+    return this;
+  }
+  setDisabled(): this {
+    return this;
+  }
+  onClick(cb: () => unknown): this {
+    this.clicked = cb;
+    return this;
+  }
+  click(): void {
+    this.clicked?.();
+  }
+}
+
 export class ButtonComponent {
   text = "";
   cta = false;
@@ -297,10 +323,16 @@ export class Setting {
   /** The name Obsidian gives the row element; `el` is the older alias the
       view tests already use. */
   settingEl: HTMLElement;
+  /** The description element, reused across `setDesc` calls the way Obsidian
+      reuses it — a row whose description is repainted must not end up with
+      two of them. */
+  descEl: HTMLElement | null = null;
   name = "";
   desc = "";
+  disabled = false;
   heading = false;
   components: (ValueComponent<unknown> | ButtonComponent)[] = [];
+  extraButtons: ExtraButtonComponent[] = [];
 
   constructor(containerEl: HTMLElement) {
     this.el = containerEl.createDiv("setting-item");
@@ -312,9 +344,17 @@ export class Setting {
     this.el.createDiv({ cls: "setting-item-name", text: name });
     return this;
   }
-  setDesc(desc: string): this {
-    this.desc = desc;
-    this.el.createDiv({ cls: "setting-item-description", text: desc });
+  setDesc(desc: string | DocumentFragment): this {
+    this.descEl ??= this.el.createDiv("setting-item-description");
+    this.descEl.empty();
+    if (typeof desc === "string") this.descEl.setText(desc);
+    else this.descEl.appendChild(desc);
+    this.desc = this.descEl.textContent ?? "";
+    return this;
+  }
+
+  setDisabled(disabled: boolean): this {
+    this.disabled = disabled;
     return this;
   }
   setHeading(): this {
@@ -334,6 +374,12 @@ export class Setting {
   addToggle(cb?: (c: ValueComponent<boolean>) => unknown): this {
     return this.add(new ValueComponent(false), cb);
   }
+  addExtraButton(cb?: (c: ExtraButtonComponent) => unknown): this {
+    const button = new ExtraButtonComponent();
+    this.extraButtons.push(button);
+    cb?.(button);
+    return this;
+  }
   addButton(cb?: (c: ButtonComponent) => unknown): this {
     const button = new ButtonComponent();
     this.components.push(button);
@@ -345,6 +391,11 @@ export class Setting {
     cb?.(component);
     return this;
   }
+  /** The buttons on the row, in the order they were added. */
+  buttons(): ButtonComponent[] {
+    return this.components.filter((c): c is ButtonComponent => c instanceof ButtonComponent);
+  }
+
   /** The first value component on the row, which is all any row here has. */
   control<T>(): ValueComponent<T> {
     return this.components.find((c) => c instanceof ValueComponent) as ValueComponent<T>;

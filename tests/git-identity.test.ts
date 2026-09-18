@@ -2,7 +2,7 @@
 import { describe, it, expect } from "vitest";
 import {
   NO_IDENTITY,
-  defaultScope,
+  originOf,
   describeField,
   emailProblem,
   isComplete,
@@ -103,31 +103,39 @@ describe("what a field says about itself", () => {
 });
 
 /**
- * Editing a value changes it where it lives. Anything else means a user who
- * corrects a typo in an inherited name silently gets a vault-only exception
- * they never asked for and would carry around unaware.
+ * What a row says about a value, in the two pieces it shows it in: a badge the
+ * eye finds, and the sentence behind it. An edit is written for this vault
+ * alone, so an inherited value has to say that before it is typed over.
  */
-describe("where an edit goes by default", () => {
-  const from = (...lines: string[]) => parseIdentity(scoped(...lines));
+describe("what a row says about where a value comes from", () => {
+  const field = (...lines: string[]) => parseIdentity(scoped(...lines)).name;
 
-  it("follows the config the value came from", () => {
-    expect(defaultScope(from("global\tuser.name Ada"), true)).toBe("global");
-    expect(defaultScope(from("local\tuser.name Ada"), true)).toBe("local");
+  it("marks a value set for this vault as the exception it is", () => {
+    expect(originOf(field("local\tuser.name Ada"))).toEqual({
+      label: "This vault",
+      tone: "accent",
+      detail: null,
+    });
   });
 
-  it("puts a first identity in the vault, the narrower of the two", () => {
-    expect(defaultScope(NO_IDENTITY, true)).toBe("local");
+  it("says what an edit will do to an inherited value", () => {
+    const origin = originOf(field("global\tuser.name Ada"));
+    expect(origin.label).toBe("Global Git config");
+    expect(origin.tone).toBe("neutral");
+    expect(origin.detail).toBe("An edit here is written for this vault only.");
   });
 
-  it("lets the vault win when one half is local and the other inherited", () => {
-    expect(defaultScope(from("global\tuser.email a@b.co", "local\tuser.name Ada"), true)).toBe(
-      "local",
+  it("names what a vault value is standing in front of", () => {
+    expect(originOf(field("global\tuser.name Ada", "local\tuser.name Vault")).detail).toBe(
+      "Overrides your global Git config (Ada).",
     );
   });
 
-  it("has only one answer where there is no repository to write into", () => {
-    expect(defaultScope(NO_IDENTITY, false)).toBe("global");
-    expect(defaultScope(from("local\tuser.name Ada"), false)).toBe("global");
+  it("warns where nothing is set, and says what git will do instead", () => {
+    const origin = originOf(NO_IDENTITY.name);
+    expect(origin.label).toBe("Not set");
+    expect(origin.tone).toBe("warning");
+    expect(origin.detail).toMatch(/refuse to commit or invent/i);
   });
 });
 

@@ -109,7 +109,9 @@ vault's folder.
 - Resizes with the panel
 - Several sessions side by side, listed as icons along the edge of the panel
 - Give each session its own icon and colour from its right-click menu, so a row
-  of identical shell icons stays readable
+  of identical shell icons stays readable. The icons are grouped by what the
+  session is for — shells and pipelines, mail and meetings, documents and
+  spreadsheets, presenting and recording, the business and the trip
 - Drag the icons to reorder the sessions
 - A **startup script** in the settings is loaded into every session, in the
   place your own `.zshrc` would put it — aliases, environment variables and
@@ -158,34 +160,66 @@ Available from Obsidian's command palette (`Ctrl/Cmd + P`).
 The name and email address Git records on every commit you make. These are not
 plugin settings: they are read from `git config`, showing whichever value
 applies here — your global one, or a value set for this vault, which overrides
-it. Each row says which of the two it is showing.
+it.
 
 | Setting | What it does |
 | --- | --- |
 | Name | The name recorded as the author of your commits |
 | Email | The address recorded alongside it, and what forges match commits to accounts by |
-| Save changes to | Whether an edit is written for this vault or for every repository on the computer. It starts on the config the current value comes from |
+
+An edit is written **for this vault only**. Your global config is read, never
+written: the name every other repository on your computer commits under is not
+something a vault's settings should change.
+
+Each row carries a badge saying where its value comes from — **This vault**,
+**Global Git config**, or **Not set** — so an inherited value and one set for
+these notes are never the same box with nothing to tell them apart. An
+inherited one also says what an edit will do: give this vault its own value and
+leave the original alone.
 
 If neither is set anywhere, the plugin offers to set them when it loads, and
-again if a commit fails for the lack of them. Both are worth having: without
+again if a commit fails for the lack of them. That prompt writes for this vault
+too. Both are worth having: without
 them, Git either refuses to commit or invents a name and an address from your
 computer's user name and hostname — and puts those on your commits, where no
 Git host can match them to your account.
 
-### Source control
+### Remote repository
+
+Where the vault is pushed to and pulled from: its copy on GitHub, GitLab or a
+server of your own. Like the identity, this is not a plugin setting but what
+`git remote` holds in this vault, and editing it runs git.
+
+Every remote is one row: its name, which host it is on, and its address in a
+field you can edit. Press **+** to add one — paste the address the host's clone
+button gives you, and the name is filled in as `origin` for the first. An
+address that is not one Git can use is refused with the reason, rather than
+stored and failing at the first push.
+
+### Commits and sync
 
 | Setting | Default | What it does |
 | --- | --- | --- |
-| Commit message template | _(empty)_ | Message used by the one-step backup |
+| Commit message | _(empty)_ | Message used by the one-step backup. `{{date}}` becomes today's date |
 | Pull strategy | merge | How downloaded commits are combined with yours |
-| Auto-fetch | off | Check remotes for new commits in the background |
-| Auto-fetch interval | 300s | How often to check |
-| Default diff view | side by side | Two columns side by side, or one annotated text |
+| Auto-fetch | off | Check the remote for new commits in the background |
+| Auto-fetch every | 300s | How often to check. Greyed out while auto-fetch is off |
+
+### Changes and diffs
+
+| Setting | Default | What it does |
+| --- | --- | --- |
 | Changes layout | tree | Files nested under their folders, or one flat row per file |
 | Compact folders | on | Fold folders holding a single subfolder into one row. Tree layout only |
+| Default diff view | side by side | Two columns side by side, or one annotated text |
 | Only list files Obsidian can open | on | Leave files no Obsidian view can render out of a commit's file list |
+
+### Advanced
+
+| Setting | Default | What it does |
+| --- | --- | --- |
 | Show nested repositories | off | List folders that are repositories of their own. They cannot be committed together with the rest of the vault |
-| File watcher debounce | 1000ms | How long to wait after an edit before refreshing |
+| Refresh delay | 1000ms | How long to wait after an edit before refreshing |
 | Git binary | _(auto-detect)_ | Path to the git the plugin runs. Empty searches the PATH your own shell uses |
 
 ### Terminal
