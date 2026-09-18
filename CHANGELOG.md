@@ -1,3 +1,10 @@
+# [1.11.0](https://github.com/chrisurf/obsidian-git-history/compare/1.10.0...1.11.0) (2026-09-18)
+
+
+### Features
+
+* rework the settings, manage remotes there, and mark sessions by their work ([#24](https://github.com/chrisurf/obsidian-git-history/issues/24)) ([422cac0](https://github.com/chrisurf/obsidian-git-history/commit/422cac0ed4b9f2386e18c753b5f45db52ae22d5a))
+
 # [1.10.0](https://github.com/chrisurf/obsidian-git-history/compare/1.9.0...1.10.0) (2026-09-17)
 
 
