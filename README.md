@@ -113,6 +113,10 @@ vault's folder.
   session is for — shells and pipelines, mail and meetings, documents and
   spreadsheets, presenting and recording, the business and the trip
 - Drag the icons to reorder the sessions
+- **Find in the terminal** with `Cmd/Ctrl+F`: a bar over the session with a
+  match counter, Enter and Shift+Enter to step through the matches, toggles for
+  match case and regular expressions, and Escape to get back to the shell.
+  Anything selected in the terminal is what the search starts from
 - A **startup script** in the settings is loaded into every session, in the
   place your own `.zshrc` would put it — aliases, environment variables and
   functions are there before the first prompt
@@ -150,8 +154,14 @@ Available from Obsidian's command palette (`Ctrl/Cmd + P`).
 | Show file history | Shows the history of the note you have open |
 | Initialize Git repository | Sets up version control for a vault that has none |
 | Set Git identity | Sets the name and email address Git puts on your commits |
-| Open terminal | Opens the shell panel in your vault's folder (Alpha) |
+| Open terminal | Opens the shell panel in your vault's folder (Alpha). `Cmd/Ctrl+J` |
+| Find in terminal | Opens the find bar in the terminal you are in. `Cmd/Ctrl+F` while the terminal has focus |
+| New terminal session | Starts another shell alongside the ones already running |
 | Check terminal setup | Reports which programs the terminal found and what it can do with them |
+
+Both shortcuts can be changed or cleared under **Settings → Hotkeys**. `Cmd/Ctrl+F`
+is not a global binding: it belongs to the terminal while the terminal has the
+focus, so the editor's own search is untouched everywhere else.
 
 ## ⚙️ Settings
 

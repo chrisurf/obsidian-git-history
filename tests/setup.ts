@@ -142,6 +142,12 @@ function installDomHelpers(): void {
   proto.removeClass = function (this: Element, ...classes: string[]) {
     this.classList.remove(...classes.filter(Boolean));
   };
+  proto.hasClass = function (this: Element, cls: string) {
+    return this.classList.contains(cls);
+  };
+  proto.removeClasses = function (this: Element, classes: string[]) {
+    this.classList.remove(...classes.filter(Boolean));
+  };
   proto.setCssStyles = function (this: HTMLElement, styles: Record<string, string>) {
     Object.assign(this.style, styles);
   };

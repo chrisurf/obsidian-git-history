@@ -1,6 +1,8 @@
 import { Terminal } from "@xterm/xterm";
 import { FitAddon } from "@xterm/addon-fit";
+import { SearchAddon } from "@xterm/addon-search";
 import { Unicode11Addon } from "@xterm/addon-unicode11";
+import { Platform } from "obsidian";
 import { spawn } from "../utils/node-api";
 import type { SpawnedProcess } from "../utils/node-api";
 import { HANDSHAKE, limitationNotice } from "./pty-backend";
@@ -8,6 +10,8 @@ import type { PtyBackendSpec } from "./pty-backend";
 import { HandshakeBuffer } from "./handshake";
 import { renderStartupError } from "../components/terminal-startup-error";
 import type { BackendAttempt } from "./pty-selector";
+import { searchColors } from "./terminal-search";
+import type { SearchOptions, SearchResults } from "./terminal-search";
 
 /**
  * How long a bridge gets to open its terminal before the session gives up on
@@ -60,6 +64,9 @@ export class TerminalSession {
   readonly hostEl: HTMLElement;
   private terminal: Terminal;
   private fitAddon: FitAddon;
+  private searchAddon: SearchAddon;
+  /** Set while the search bar is open, so a redraw keeps the highlighting. */
+  private lastSearch: { term: string; options: SearchOptions } | null = null;
   private shellProcess: SpawnedProcess | null = null;
   private stateHandlers: (() => void)[] = [];
   private hasExited = false;
@@ -87,7 +94,13 @@ export class TerminalSession {
 
     this.fitAddon = new FitAddon();
     this.terminal.loadAddon(this.fitAddon);
+    this.searchAddon = new SearchAddon();
+    this.terminal.loadAddon(this.searchAddon);
     this.terminal.loadAddon(new Unicode11Addon());
+    // The shell gets every key except the ones the plugin's own commands are
+    // on. Without this, xterm swallows the find shortcut and sends it to the
+    // shell, where it moves the cursor one character forward.
+    this.terminal.attachCustomKeyEventHandler((event) => !isPluginShortcut(event));
     this.terminal.open(this.hostEl);
     this.terminal.unicode.activeVersion = "11";
     this.fit();
@@ -151,8 +164,52 @@ export class TerminalSession {
     this.terminal.focus();
   }
 
+  /** What is selected in the terminal, which is what a search starts from. */
+  selection(): string {
+    return this.terminal.getSelection();
+  }
+
+  /**
+   * Searches forwards or backwards, and paints every match on the way.
+   *
+   * The highlight colours are worked out from the terminal's own background
+   * rather than taken from the theme: the addon accepts `#RRGGBB` only, so a
+   * single pair would be invisible on half the themes out there.
+   */
+  find(term: string, options: SearchOptions, direction: "next" | "previous"): boolean {
+    this.lastSearch = { term, options };
+    const search = {
+      caseSensitive: options.caseSensitive,
+      regex: options.regex,
+      decorations: searchColors(this.opts.theme.background ?? ""),
+    };
+    return direction === "next"
+      ? this.searchAddon.findNext(term, search)
+      : this.searchAddon.findPrevious(term, search);
+  }
+
+  /** Drops the highlighting, for a search bar that is being closed. */
+  clearSearch(): void {
+    this.lastSearch = null;
+    this.searchAddon.clearDecorations();
+  }
+
+  /** Whether a search is currently painted on this session. */
+  get searching(): boolean {
+    return this.lastSearch !== null;
+  }
+
+  /** How many matches the last search found, and which one is current. */
+  onSearchResults(handler: (results: SearchResults) => void): () => void {
+    const subscription = this.searchAddon.onDidChangeResults((event) =>
+      handler({ index: event.resultIndex + 1, count: event.resultCount }),
+    );
+    return () => subscription.dispose();
+  }
+
   dispose(): void {
     this.stopProcess();
+    this.searchAddon.dispose();
     this.clearHandshakeTimer();
     this.terminal.dispose();
     this.hostEl.remove();
@@ -359,6 +416,21 @@ export class TerminalSession {
 
 function encode(text: string): Uint8Array {
   return new TextEncoder().encode(text);
+}
+
+/**
+ * Keys the terminal lets through to Obsidian instead of the shell.
+ *
+ * Only the find shortcut, and only the platform's own modifier: Ctrl+F in a
+ * shell is "forward one character" to every readline binding there is, so on
+ * Linux and Windows this costs a keystroke people use. It is the same trade
+ * VS Code makes, and the shortcut is a command like any other — anyone who
+ * wants that keystroke back can rebind it in Obsidian's hotkeys.
+ */
+function isPluginShortcut(event: KeyboardEvent): boolean {
+  if (event.type !== "keydown") return false;
+  const modifier = Platform.isMacOS ? event.metaKey : event.ctrlKey;
+  return modifier && !event.altKey && event.key.toLowerCase() === "f";
 }
 
 function message(e: unknown): string {

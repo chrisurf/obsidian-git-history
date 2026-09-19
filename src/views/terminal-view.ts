@@ -1,10 +1,11 @@
-import { ItemView, WorkspaceLeaf, Platform, Menu, setIcon } from "obsidian";
+import { ItemView, WorkspaceLeaf, Platform, Menu, Scope, setIcon } from "obsidian";
 import { TERMINAL_VIEW_TYPE } from "../types";
 import type { TerminalSessionManager } from "../terminal/session-manager";
 import type GitHistoryPlugin from "../main";
 import { promptText } from "../utils/prompt";
 import { SessionAppearanceModal } from "../components/session-appearance-modal";
 import { colorClass } from "../terminal/session-appearance";
+import { TerminalSearchBar } from "../components/terminal-search-bar";
 import { asVoid } from "../utils/async";
 
 /** Below this width the session strip lies down above the terminal instead. */
@@ -14,12 +15,25 @@ export class TerminalView extends ItemView {
   private sessions: TerminalSessionManager;
   private wrapperEl: HTMLElement | null = null;
   private stripEl: HTMLElement | null = null;
+  private searchBar: TerminalSearchBar | null = null;
   private resizeObserver: ResizeObserver | null = null;
   private dragFrom: number | null = null;
 
   constructor(leaf: WorkspaceLeaf, plugin: GitHistoryPlugin) {
     super(leaf);
     this.sessions = plugin.terminals;
+
+    // Mod+F belongs to whatever is in front, and while that is a terminal it
+    // is this. A scope on the view is how Obsidian says that: it applies only
+    // while the view has the focus, so the shortcut is there out of the box
+    // without being taken away from the editor's own search. The command in
+    // main.ts is the same action, for the palette and for rebinding.
+    this.scope = new Scope(this.app.scope);
+    this.scope.register(["Mod"], "f", (event) => {
+      event.preventDefault();
+      this.openSearch();
+      return false;
+    });
   }
 
   getViewType(): string {
@@ -48,8 +62,10 @@ export class TerminalView extends ItemView {
     }
 
     this.wrapperEl = container.createDiv("gs-terminal-wrapper");
+    this.searchBar = new TerminalSearchBar(this.wrapperEl);
     this.stripEl = container.createDiv("gs-terminal-strip");
 
+    this.addAction("search", "Find in terminal", () => this.openSearch());
     this.addAction(
       "plus",
       "New terminal session",
@@ -78,9 +94,25 @@ export class TerminalView extends ItemView {
   async onClose(): Promise<void> {
     this.resizeObserver?.disconnect();
     this.resizeObserver = null;
+    this.searchBar?.destroy();
+    this.searchBar = null;
     this.sessions.detachAll();
     this.wrapperEl = null;
     this.stripEl = null;
+  }
+
+  /**
+   * Opens the find bar on the session in front, or focuses it when it is
+   * already open — which is what the shortcut does in every editor, and what
+   * makes pressing it twice select the term instead of doing nothing.
+   */
+  openSearch(): void {
+    const bar = this.searchBar;
+    const session = this.sessions.activeSession();
+    if (!bar || !session) return;
+
+    if (bar.isOpen) bar.focus();
+    else bar.show(session);
   }
 
   async newSession(): Promise<void> {
@@ -115,6 +147,9 @@ export class TerminalView extends ItemView {
       const session = this.sessions.session(entry.id);
       session?.setVisible(entry.id === activeId);
     }
+
+    // The bar searches whatever is in front, so switching sessions moves it.
+    this.searchBar?.retarget(this.sessions.activeSession());
 
     strip.empty();
     // One session needs no strip — it would only take room away from the

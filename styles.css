@@ -2668,6 +2668,96 @@
   display: none;
 }
 
+/* Find in terminal – the bar floats over the top-right of the session, the
+   way an editor's find bar does, so it never takes rows away from the shell
+   and never moves the output it is searching. */
+.gs-terminal-search {
+  position: absolute;
+  top: 6px;
+  right: 14px;
+  z-index: 10;
+  display: flex;
+  align-items: center;
+  gap: 2px;
+  padding: 4px 6px;
+  border: 1px solid var(--background-modifier-border);
+  border-radius: var(--radius-m);
+  background: var(--background-secondary);
+  box-shadow: var(--shadow-s);
+}
+
+.gs-terminal-search-field {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  padding-right: 4px;
+  border-right: 1px solid var(--background-modifier-border);
+}
+
+.gs-terminal-search-input {
+  width: 14em;
+  height: 26px;
+  padding: 0 6px;
+  border: 1px solid transparent;
+  border-radius: var(--radius-s);
+  background: var(--background-primary);
+  color: var(--text-normal);
+  font-size: var(--font-ui-smaller);
+}
+
+.gs-terminal-search-input:focus {
+  border-color: var(--interactive-accent);
+  box-shadow: none;
+}
+
+/* A term that is in the buffer nowhere, and a regular expression that is not
+   one yet, are different answers: the first found nothing, the second was
+   never asked. Both mark the field, only the first is a result. */
+.gs-terminal-search-empty .gs-terminal-search-input,
+.gs-terminal-search-bad .gs-terminal-search-input {
+  border-color: var(--text-error);
+}
+
+.gs-terminal-search-count {
+  min-width: 6em;
+  color: var(--text-muted);
+  font-size: var(--font-ui-smaller);
+  text-align: right;
+  white-space: nowrap;
+}
+
+.gs-terminal-search-btn {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 26px;
+  height: 26px;
+  padding: 0;
+  border: none;
+  border-radius: var(--radius-s);
+  background: transparent;
+  box-shadow: none;
+  color: var(--text-muted);
+  cursor: pointer;
+}
+
+.gs-terminal-search-btn:hover {
+  background: var(--background-modifier-hover);
+  color: var(--text-normal);
+}
+
+.gs-terminal-search-btn .svg-icon {
+  width: 15px;
+  height: 15px;
+}
+
+/* A toggle that is on keeps the accent colour, so the state of the search is
+   readable without opening anything. */
+.gs-terminal-search-toggle.gs-terminal-search-on {
+  background: var(--background-modifier-active-hover);
+  color: var(--text-accent);
+}
+
 /* Session strip – VS Code's terminal list, on the right edge */
 .gs-terminal-strip {
   display: flex;
