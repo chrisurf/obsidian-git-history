@@ -330,6 +330,11 @@ export default class GitHistoryPlugin extends Plugin {
     this.addCommand({
       id: "open-terminal",
       name: "Open terminal",
+      // The one command in the plugin that ships with a key on it. Mod+J is
+      // free in Obsidian — Mod+T is "New tab", Mod+S saves, Mod+F searches the
+      // file — and it is where VS Code keeps the panel the terminal lives in.
+      // eslint.config.mjs carries the reasoning and the exception.
+      hotkeys: [{ modifiers: ["Mod"], key: "j" }],
       callback: () => this.openTerminalView(),
     });
 
@@ -343,6 +348,29 @@ export default class GitHistoryPlugin extends Plugin {
       id: "new-terminal-session",
       name: "New terminal session",
       callback: () => this.newTerminalSession(),
+    });
+
+    /**
+     * Find in the terminal.
+     *
+     * No default hotkey on the command: the terminal view carries Mod+F in a
+     * scope of its own, which only applies while that view has the focus, so
+     * the shortcut is there without being claimed from every other context.
+     * The command is what makes it rebindable, and what puts it in the palette.
+     *
+     * `checkCallback` keeps it honest in both places: with no terminal in
+     * front it reports itself unavailable, and Obsidian passes the keystroke
+     * on to whatever else is bound to it.
+     */
+    this.addCommand({
+      id: "search-terminal",
+      name: "Find in terminal",
+      checkCallback: (checking: boolean) => {
+        const view = this.activeTerminalView();
+        if (!view) return false;
+        if (!checking) view.openSearch();
+        return true;
+      },
     });
 
     this.addCommand({
@@ -442,6 +470,17 @@ export default class GitHistoryPlugin extends Plugin {
       view.setFile(path, ref, staged, untracked, renamedFrom);
       void this.app.workspace.revealLeaf(leaf);
     }
+  }
+
+  /**
+   * The terminal the user is in, or null when they are somewhere else.
+   *
+   * What "in" means is Obsidian's own answer: the active view. Clicking into a
+   * terminal makes its leaf the active one, so the find shortcut belongs to
+   * the terminal exactly while someone is typing in it.
+   */
+  private activeTerminalView(): TerminalView | null {
+    return this.app.workspace.getActiveViewOfType(TerminalView);
   }
 
   /**

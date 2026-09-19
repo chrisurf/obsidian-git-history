@@ -32,7 +32,18 @@ export const BUY_ME_A_COFFEE_IMAGE_URL =
  * what the plugin does, so a first-time reader and someone upgrading from an
  * early version both come away knowing where to click.
  */
-export const WHATS_NEW = `## 🎨 Tell your terminal sessions apart
+export const WHATS_NEW = `## 🔍 Find things in the terminal
+
+The terminal has a find bar now. Press \`Cmd/Ctrl+F\` while you are in it — or
+run **Find in terminal** — and search the session you are looking at: a match
+counter, Enter and Shift+Enter to walk through the matches, toggles for match
+case and regular expressions, Escape to go back to the shell. Whatever is
+selected in the terminal is what the search starts with.
+
+The terminal itself is on \`Cmd/Ctrl+J\` now. Both shortcuts are ordinary
+Obsidian hotkeys, so **Settings → Hotkeys** can change or clear them.
+
+## 🎨 Tell your terminal sessions apart
 
 The terminal panel keeps several sessions side by side, and until now they were
 a row of identical \`>_\` icons. Right-click a session and pick **Change icon
