@@ -107,6 +107,11 @@ export interface FileDiff {
   hunks: DiffHunk[];
   additions: number;
   deletions: number;
+  /** From git's extended header: whether the file came or went with this diff. */
+  change: "added" | "deleted" | "modified";
+  /** Set when the file mode changed, e.g. `100644` → `100755`. */
+  oldMode?: string;
+  newMode?: string;
 }
 
 export interface GraphNode {
