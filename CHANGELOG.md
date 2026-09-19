@@ -1,3 +1,10 @@
+# [1.12.0](https://github.com/chrisurf/obsidian-git-history/compare/1.11.0...1.12.0) (2026-09-19)
+
+
+### Features
+
+* find in the terminal, and a key to open it with ([#25](https://github.com/chrisurf/obsidian-git-history/issues/25)) ([7b264a3](https://github.com/chrisurf/obsidian-git-history/commit/7b264a3a832b7cffbd692fa5dbd2deb1ac7114ba))
+
 # [1.11.0](https://github.com/chrisurf/obsidian-git-history/compare/1.10.0...1.11.0) (2026-09-18)
 
 
