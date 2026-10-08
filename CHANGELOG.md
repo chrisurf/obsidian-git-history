@@ -1,3 +1,10 @@
+# [1.13.0](https://github.com/chrisurf/obsidian-git-history/compare/1.12.1...1.13.0) (2026-10-08)
+
+
+### Features
+
+* auto-pull after auto-fetch, terminal search fixes, and the docs brought up to date ([#27](https://github.com/chrisurf/obsidian-git-history/issues/27)) ([76bc826](https://github.com/chrisurf/obsidian-git-history/commit/76bc826be32f937f47c088d2b0a8d0199cd0e12b))
+
 ## [1.12.1](https://github.com/chrisurf/obsidian-git-history/compare/1.12.0...1.12.1) (2026-10-08)
 
 
