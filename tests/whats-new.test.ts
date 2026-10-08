@@ -27,17 +27,21 @@ describe("shouldShowWhatsNew", () => {
 });
 
 describe("what's new content", () => {
-  it("leads with the terminal, the newest feature", () => {
+  it("leads with auto-pull and the terminal, the newest features", () => {
+    expect(WHATS_NEW.indexOf("Auto-pull")).toBeLessThan(WHATS_NEW.indexOf("Open terminal"));
     expect(WHATS_NEW.indexOf("Open terminal")).toBeLessThan(
       WHATS_NEW.indexOf("Initialize repository"),
     );
   });
 
-  it("labels the terminal Alpha wherever it is mentioned, so nobody relies on it yet", () => {
-    const mentions = WHATS_NEW.match(/[Tt]erminal/g) ?? [];
-    expect(mentions.length).toBeGreaterThan(0);
-    expect(WHATS_NEW).toMatch(/Alpha/);
-    expect(WHATS_NEW).not.toMatch(/[Bb]eta/);
+  it("no longer labels the terminal as an early release", () => {
+    expect(WHATS_NEW).toMatch(/[Tt]erminal/);
+    expect(WHATS_NEW).not.toMatch(/Alpha|[Bb]eta/);
+  });
+
+  it("asks for a star on the plugin's own repository", () => {
+    expect(WHATS_NEW).toContain("https://github.com/chrisurf/obsidian-git-history");
+    expect(WHATS_NEW).toMatch(/star/);
   });
 
   it("still covers the repository setup screen, the entry point for a new vault", () => {

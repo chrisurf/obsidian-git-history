@@ -21,6 +21,10 @@ a change you regret, and keep a backup copy somewhere safe. The plugin shows all
 of it as a visual timeline inside [Obsidian](https://obsidian.md) — point,
 click, done.
 
+> ⭐ **Like it?** If this plugin keeps your notes safe, please
+> [give it a star on GitHub](https://github.com/chrisurf/obsidian-git-history)
+> and tell a friend who writes in Obsidian. Stars are how other people find it.
+
 ---
 
 ## 🌱 New to Git? Start here
@@ -54,10 +58,17 @@ command from Obsidian's command palette and the plugin sets one up for you.
 Your changed notes, grouped and ready to commit.
 
 - See at a glance which notes changed, and by how much
+- Click a changed note to open it; its diff is one button or right-click away
 - Stage individual notes, whole folders, or everything at once
 - Open or close a folder and everything under it in one click, at any depth
 - Commit with a message, amend the last one, or commit and push in one step
+- One main button that does what the vault needs next: **Commit** while notes
+  are changed, then **Push**, **Publish branch** for a new one, or **Sync** when
+  the remote has moved on as well
 - Pull, push, fetch and stash from the toolbar, with progress while they run
+- Keep up with other computers on its own: **Auto-fetch** checks the remote in
+  the background, and **Auto-pull** takes in what it finds — only as a
+  fast-forward, and only while nothing of yours is uncommitted or unpushed
 - Switch or create branches
 - Refreshes itself when you edit notes or come back to the window
 
@@ -87,32 +98,33 @@ See exactly what changed in a note: old and new side by side, or as one
 annotated text. You can stage or undo a single block of changes instead of the
 whole file.
 
-### 💻 Terminal — Alpha
+- The words that changed inside a line are marked, so a fixed typo does not
+  look like a rewritten paragraph
+- Renamed notes show up as a rename, not as one note deleted and another added
+- **Open current file** next to the path takes you from the diff to the note
 
-> **Alpha.** This one is early and I am still working on it. I am shipping it
-> so you can try it — please
-> [tell me what breaks](https://github.com/chrisurf/obsidian-git-history/issues).
-> Expect rough edges, and do not rely on it for anything you cannot redo by
-> hand.
+### 💻 Terminal
 
 A shell inside Obsidian, opened in a panel below your note, starting in your
-vault's folder.
+vault's folder — for the occasional command that has no button.
 
 <p align="center">
   <img src="docs/screenshots/terminal.png" alt="Terminal panel inside Obsidian" width="100%" />
 </p>
 
-- Opens from the terminal ribbon icon, the commit graph toolbar, or the **Open
-  terminal** command
+- Opens with `Cmd/Ctrl+J`, from the terminal ribbon icon, the commit graph
+  toolbar, or the **Open terminal** command
 - Starts in your vault's folder, so `git` and everything else act on your notes
 - Uses your own login shell, with your prompt, colours, and aliases
-- Resizes with the panel
-- Several sessions side by side, listed as icons along the edge of the panel
+- Several sessions side by side, listed as icons along the edge of the panel.
+  Drag the icons to reorder them
+- Sessions outlive the panel: close the terminal tab in the middle of a build
+  and the shell keeps running, with its scrollback, until you open it again. A
+  shell that exits stays in the list, greyed, with its last output readable
 - Give each session its own icon and colour from its right-click menu, so a row
   of identical shell icons stays readable. The icons are grouped by what the
   session is for — shells and pipelines, mail and meetings, documents and
   spreadsheets, presenting and recording, the business and the trip
-- Drag the icons to reorder the sessions
 - **Find in the terminal** with `Cmd/Ctrl+F`: a bar over the session with a
   match counter, Enter and Shift+Enter to step through the matches, toggles for
   match case and regular expressions, and Escape to get back to the shell.
@@ -120,13 +132,17 @@ vault's folder.
 - A **startup script** in the settings is loaded into every session, in the
   place your own `.zshrc` would put it — aliases, environment variables and
   functions are there before the first prompt
+- Finds the programs it needs the way your own shell would — Homebrew, pyenv
+  and the like — instead of the stand-ins macOS hands to apps, and falls back
+  to a second way of opening the shell if the first one does not work
 - Desktop only, like the rest of the plugin
 
 If a shell does not start, the panel says which program it tried to use and
 what that program printed, with a **Try again** button next to it. The
 **Check terminal setup** command reports the same thing at any time: which
 search path is in use, which git and which interpreter were found, and what
-the terminal can do with them.
+the terminal can do with them. Something still off?
+[Tell me about it](https://github.com/chrisurf/obsidian-git-history/issues).
 
 ---
 
@@ -154,7 +170,7 @@ Available from Obsidian's command palette (`Ctrl/Cmd + P`).
 | Show file history | Shows the history of the note you have open |
 | Initialize Git repository | Sets up version control for a vault that has none |
 | Set Git identity | Sets the name and email address Git puts on your commits |
-| Open terminal | Opens the shell panel in your vault's folder (Alpha). `Cmd/Ctrl+J` |
+| Open terminal | Opens the shell panel in your vault's folder. `Cmd/Ctrl+J` |
 | Find in terminal | Opens the find bar in the terminal you are in. `Cmd/Ctrl+F` while the terminal has focus |
 | New terminal session | Starts another shell alongside the ones already running |
 | Check terminal setup | Reports which programs the terminal found and what it can do with them |
@@ -214,6 +230,7 @@ stored and failing at the first push.
 | Pull strategy | merge | How downloaded commits are combined with yours |
 | Auto-fetch | off | Check the remote for new commits in the background |
 | Auto-fetch every | 300s | How often to check. Greyed out while auto-fetch is off |
+| Auto-pull | off | Take in what the auto-fetch finds — fast-forward only, and only while there are no local changes or commits. Greyed out while auto-fetch is off |
 
 ### Changes and diffs
 
@@ -236,7 +253,7 @@ stored and failing at the first push.
 
 | Setting | Default | What it does |
 | --- | --- | --- |
-| Shell | _(auto-detect)_ | Path to the shell the Alpha terminal starts. Empty uses your system default |
+| Shell | _(auto-detect)_ | Path to the shell the terminal starts. Empty uses your system default |
 | Python | _(auto-detect)_ | Path to the Python 3 behind the terminal's pseudo-terminal. Empty searches for one |
 | Pseudo-terminal | Automatic | Which bridge gives the shell a real terminal. Automatic takes the first that works |
 | Startup script | _(empty)_ | Shell code run at the start of every session, after your own rc files and before the first prompt |
@@ -252,13 +269,26 @@ are used for:
 - **Runs the `git` command.** That is how every action works — it is the same
   program you would use in a terminal, run inside your vault's folder only.
 - **Writes to the clipboard.** Only when you use "Copy SHA" or "Copy path".
-- **Starts a shell, if you open the Alpha terminal.** Only then, and only the
+- **Starts a shell, if you open the terminal.** Only then, and only the
   shell you already use, started in your vault's folder. Whatever you type into
   that panel runs with your own user account, exactly as it would in Terminal
   or iTerm. Nothing runs there on its own.
 
 Nothing leaves your machine unless you press push, and then only to the backup
 location you set up yourself.
+
+---
+
+## ⭐ Support the project
+
+Git History is free and runs entirely on your own computer. If it is useful to
+you:
+
+- **[Star it on GitHub](https://github.com/chrisurf/obsidian-git-history)** —
+  it takes a second and helps other Obsidian users find it
+- **Recommend it** to someone whose notes deserve a history
+- **[Report a bug or ask for a feature](https://github.com/chrisurf/obsidian-git-history/issues)**
+- **[Buy me a coffee](https://www.buymeacoffee.com/chrisurf)** ☕
 
 ---
 

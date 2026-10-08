@@ -24,6 +24,7 @@ import type { IdentityPromptReason } from "./components/git-identity-modal";
 import { isComplete, isMissingIdentityError } from "./git/git-identity";
 import { GitHistorySettingTab } from "./settings";
 import { asVoid } from "./utils/async";
+import { canAutoPull } from "./store/auto-pull";
 import { ExecEnvironment } from "./utils/exec-env";
 import { resolveTemplate } from "./utils/template";
 import { shouldShowWhatsNew } from "./utils/whats-new";
@@ -39,6 +40,8 @@ export default class GitHistoryPlugin extends Plugin {
   terminals!: TerminalSessionManager;
   private statusBar: StatusBarController | null = null;
   private refreshTimer: number | null = null;
+  /** Last auto-pull failure shown, so a persistent one is not repeated every tick. */
+  private lastAutoPullError: string | null = null;
   private debounceTimer: number | null = null;
 
   async onload(): Promise<void> {
@@ -546,11 +549,47 @@ export default class GitHistoryPlugin extends Plugin {
             await this.store.refresh();
           } catch {
             // silent fail for auto-fetch
+            return;
           }
+          await this.autoPull();
         }),
         this.settings.autoFetchInterval * 1000,
       );
     }
+  }
+
+  /**
+   * Fast-forwards the branch after an auto-fetch, when that cannot touch
+   * anything of the user's. Always `--ff-only`, whatever the pull strategy
+   * says: a merge or rebase nobody watched is how a background job leaves a
+   * vault half-merged.
+   *
+   * A failure is reported, unlike a failed fetch — but only once per message,
+   * or a remote that keeps refusing would raise the same notice every tick.
+   */
+  private async autoPull(): Promise<void> {
+    const store = this.store;
+    if (!this.settings.autoPullEnabled) return;
+    const repo = {
+      // A nested repository shows up in every status and a fast-forward never
+      // touches it, so counting it would switch auto-pull off for good.
+      changeCount: store.rawStatus.filter((f) => !f.embeddedRepo).length,
+      ahead: store.ahead,
+      behind: store.behind,
+      hasUpstream: store.hasUpstream,
+      merging: store.merging,
+    };
+    if (!canAutoPull(repo)) return;
+    try {
+      await store.runTask("Auto-pulling", () => this.git.pull({ strategy: "ff-only" }));
+      this.lastAutoPullError = null;
+      new Notice(`Pulled ${repo.behind} new commit${repo.behind === 1 ? "" : "s"}`);
+    } catch (e: unknown) {
+      const message = e instanceof Error ? e.message : String(e);
+      if (message !== this.lastAutoPullError) new Notice(`Auto-pull failed: ${message}`);
+      this.lastAutoPullError = message;
+    }
+    await store.refresh();
   }
 
   /** Absolute path of the vault, which git needs as its working directory. */

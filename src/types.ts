@@ -143,6 +143,12 @@ export interface GitHistorySettings {
   pullStrategy: "merge" | "rebase" | "ff-only";
   autoFetchEnabled: boolean;
   autoFetchInterval: number;
+  /**
+   * After each auto-fetch, fast-forward the branch when the remote is ahead
+   * and nothing local stands in the way. Off by default: it changes notes in
+   * the vault without being asked.
+   */
+  autoPullEnabled: boolean;
   diffViewMode: "side-by-side" | "inline";
   /**
    * Hide files Obsidian has no viewer for from a commit's file list. On by
@@ -209,6 +215,7 @@ export const DEFAULT_SETTINGS: GitHistorySettings = {
   pullStrategy: "merge",
   autoFetchEnabled: false,
   autoFetchInterval: 300,
+  autoPullEnabled: false,
   diffViewMode: "side-by-side",
   onlySupportedFileTypes: true,
   showStatusBar: true,
