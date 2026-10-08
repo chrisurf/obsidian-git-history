@@ -323,6 +323,57 @@ describe("GitService.diffUntracked", () => {
     const raw = await git.diffUntracked("does-not-exist.txt");
     expect(raw).toBe("");
   });
+
+  // A note created in Obsidian starts out empty. git reports it with a header
+  // and no hunk, which the view used to render as two blank panes.
+  it("marks an empty new file as added although it has no lines", async () => {
+    writeFileSync(join(repo, "Untitled 5.md"), "");
+    const diffs = await git.parseDiff(await git.diffUntracked("Untitled 5.md"));
+    expect(diffs).toHaveLength(1);
+    expect(diffs[0]).toMatchObject({ path: "Untitled 5.md", change: "added", hunks: [] });
+  });
+});
+
+describe("GitService.parseDiff — diffs without hunks", () => {
+  it("marks an empty file that is staged as new", async () => {
+    writeFileSync(join(repo, "empty-staged.md"), "");
+    run("add", "empty-staged.md");
+    const [file] = await git.parseDiff(await git.diff(["empty-staged.md"], true));
+    expect(file).toMatchObject({ change: "added", hunks: [] });
+    run("reset", "-q", "--", "empty-staged.md");
+  });
+
+  it("marks a deleted empty file as deleted", async () => {
+    writeFileSync(join(repo, "empty-gone.md"), "");
+    run("add", "empty-gone.md");
+    run("commit", "-qm", "add empty file");
+    rmSync(join(repo, "empty-gone.md"));
+    const [file] = await git.parseDiff(await git.diff(["empty-gone.md"]));
+    expect(file).toMatchObject({ change: "deleted", hunks: [] });
+    run("checkout", "--", "empty-gone.md");
+  });
+
+  it("reads a mode change", async () => {
+    const raw = ["diff --git a/run.sh b/run.sh", "old mode 100644", "new mode 100755", ""].join(
+      "\n",
+    );
+    const [file] = await git.parseDiff(raw);
+    expect(file).toMatchObject({ change: "modified", oldMode: "100644", newMode: "100755" });
+  });
+
+  it("does not take a content line for a header", async () => {
+    const raw = [
+      "diff --git a/notes.md b/notes.md",
+      "--- a/notes.md",
+      "+++ b/notes.md",
+      "@@ -1 +1,2 @@",
+      " keep",
+      "+new file mode 100644",
+      "",
+    ].join("\n");
+    const [file] = await git.parseDiff(raw);
+    expect(file.change).toBe("modified");
+  });
 });
 
 describe("GitService.gitignore", () => {
