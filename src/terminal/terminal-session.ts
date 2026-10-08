@@ -10,7 +10,7 @@ import type { PtyBackendSpec } from "./pty-backend";
 import { HandshakeBuffer } from "./handshake";
 import { renderStartupError } from "../components/terminal-startup-error";
 import type { BackendAttempt } from "./pty-selector";
-import { searchColors } from "./terminal-search";
+import { TERMINAL_SCROLLBACK, TerminalFind } from "./terminal-find";
 import type { SearchOptions, SearchResults } from "./terminal-search";
 
 /**
@@ -65,8 +65,7 @@ export class TerminalSession {
   private terminal: Terminal;
   private fitAddon: FitAddon;
   private searchAddon: SearchAddon;
-  /** Set while the search bar is open, so a redraw keeps the highlighting. */
-  private lastSearch: { term: string; options: SearchOptions } | null = null;
+  private search: TerminalFind;
   private shellProcess: SpawnedProcess | null = null;
   private stateHandlers: (() => void)[] = [];
   private hasExited = false;
@@ -89,6 +88,7 @@ export class TerminalSession {
       fontSize: 14,
       fontFamily: "'MesloLGS NF', Menlo, Monaco, 'Courier New', monospace",
       theme: opts.theme,
+      scrollback: TERMINAL_SCROLLBACK,
       allowProposedApi: true,
     });
 
@@ -96,6 +96,7 @@ export class TerminalSession {
     this.terminal.loadAddon(this.fitAddon);
     this.searchAddon = new SearchAddon();
     this.terminal.loadAddon(this.searchAddon);
+    this.search = new TerminalFind(this.searchAddon, () => this.opts.theme.background ?? "");
     this.terminal.loadAddon(new Unicode11Addon());
     // The shell gets every key except the ones the plugin's own commands are
     // on. Without this, xterm swallows the find shortcut and sends it to the
@@ -177,34 +178,22 @@ export class TerminalSession {
    * single pair would be invisible on half the themes out there.
    */
   find(term: string, options: SearchOptions, direction: "next" | "previous"): boolean {
-    this.lastSearch = { term, options };
-    const search = {
-      caseSensitive: options.caseSensitive,
-      regex: options.regex,
-      decorations: searchColors(this.opts.theme.background ?? ""),
-    };
-    return direction === "next"
-      ? this.searchAddon.findNext(term, search)
-      : this.searchAddon.findPrevious(term, search);
+    return this.search.find(term, options, direction);
   }
 
   /** Drops the highlighting, for a search bar that is being closed. */
   clearSearch(): void {
-    this.lastSearch = null;
-    this.searchAddon.clearDecorations();
+    this.search.clear();
   }
 
   /** Whether a search is currently painted on this session. */
   get searching(): boolean {
-    return this.lastSearch !== null;
+    return this.search.active;
   }
 
   /** How many matches the last search found, and which one is current. */
   onSearchResults(handler: (results: SearchResults) => void): () => void {
-    const subscription = this.searchAddon.onDidChangeResults((event) =>
-      handler({ index: event.resultIndex + 1, count: event.resultCount }),
-    );
-    return () => subscription.dispose();
+    return this.search.onResults(handler);
   }
 
   dispose(): void {
