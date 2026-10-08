@@ -214,6 +214,7 @@ stored and failing at the first push.
 | Pull strategy | merge | How downloaded commits are combined with yours |
 | Auto-fetch | off | Check the remote for new commits in the background |
 | Auto-fetch every | 300s | How often to check. Greyed out while auto-fetch is off |
+| Auto-pull | off | Take in what the auto-fetch finds — fast-forward only, and only while there are no local changes or commits. Greyed out while auto-fetch is off |
 
 ### Changes and diffs
 

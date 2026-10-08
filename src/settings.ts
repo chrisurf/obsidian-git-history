@@ -102,6 +102,15 @@ export const SETTING_GROUPS: SettingGroup[] = [
         min: 30,
         enabledBy: "autoFetchEnabled",
       },
+      {
+        name: "Auto-pull",
+        desc: "Take in new commits the auto-fetch finds.",
+        hint: "Fast-forward only, and only while you have no local changes or commits.",
+        aliases: ["auto pull", "fast-forward"],
+        key: "autoPullEnabled",
+        type: "toggle",
+        enabledBy: "autoFetchEnabled",
+      },
     ],
   },
   {

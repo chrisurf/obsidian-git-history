@@ -32,7 +32,14 @@ export const BUY_ME_A_COFFEE_IMAGE_URL =
  * what the plugin does, so a first-time reader and someone upgrading from an
  * early version both come away knowing where to click.
  */
-export const WHATS_NEW = `## 🔍 Find things in the terminal
+export const WHATS_NEW = `## ⬇️ Pull on its own
+
+Turn on **Auto-pull** next to Auto-fetch, and the vault takes in new commits
+from the remote as soon as the background check finds them. It only ever
+fast-forwards, and only while you have nothing uncommitted and nothing
+unpushed — anything that would need a merge is left to the Sync button.
+
+## 🔍 Find things in the terminal
 
 The terminal has a find bar now. Press \`Cmd/Ctrl+F\` while you are in it — or
 run **Find in terminal** — and search the session you are looking at: a match

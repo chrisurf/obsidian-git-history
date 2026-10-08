@@ -70,6 +70,11 @@ describe("the settings list", () => {
     expect(interval?.enabledBy).toBe("autoFetchEnabled");
   });
 
+  it("puts auto-pull behind auto-fetch, which it runs after", () => {
+    const pull = rows.find((r) => r.key === "autoPullEnabled");
+    expect(pull?.enabledBy).toBe("autoFetchEnabled");
+  });
+
   it("names a real setting on every row", () => {
     for (const key of keys) expect(DEFAULT_SETTINGS).toHaveProperty(key);
   });
