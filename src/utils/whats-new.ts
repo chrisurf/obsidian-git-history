@@ -27,10 +27,10 @@ export const BUY_ME_A_COFFEE_IMAGE_URL =
   "https://raw.githubusercontent.com/chrisurf/obsidian-git-history/main/docs/screenshots/buymeacoffee.png";
 
 /**
- * Markdown rendered inside the modal. It leads with the newest work — the
- * repository setup screen and the restore/branch controls — and then sums up
- * what the plugin does, so a first-time reader and someone upgrading from an
- * early version both come away knowing where to click.
+ * Markdown rendered inside the modal. It leads with the newest work — auto-pull
+ * and the terminal — and then sums up what the plugin does, so a first-time
+ * reader and someone upgrading from an early version both come away knowing
+ * where to click.
  */
 export const WHATS_NEW = `## ⬇️ Pull on its own
 
@@ -39,43 +39,42 @@ from the remote as soon as the background check finds them. It only ever
 fast-forwards, and only while you have nothing uncommitted and nothing
 unpushed — anything that would need a merge is left to the Sync button.
 
-## 🔍 Find things in the terminal
+## 💻 The terminal, grown up
 
-The terminal has a find bar now. Press \`Cmd/Ctrl+F\` while you are in it — or
-run **Find in terminal** — and search the session you are looking at: a match
-counter, Enter and Shift+Enter to walk through the matches, toggles for match
-case and regular expressions, Escape to go back to the shell. Whatever is
-selected in the terminal is what the search starts with.
+The shell panel is no longer an experiment. Open it with \`Cmd/Ctrl+J\`, the
+terminal ribbon icon, or the **Open terminal** command — it starts in your
+vault's folder with your own login shell, prompt and aliases.
 
-The terminal itself is on \`Cmd/Ctrl+J\` now. Both shortcuts are ordinary
-Obsidian hotkeys, so **Settings → Hotkeys** can change or clear them.
+- **Several sessions**, side by side. Closing the panel no longer ends them: a
+  build keeps running, and its scrollback is there when you come back.
+- **Tell them apart.** Right-click a session and pick **Change icon and
+  colour** — forty icons grouped by what a session is for, eight colours that
+  follow your theme. Drag the icons to reorder them.
+- **Find** with \`Cmd/Ctrl+F\` while you are in it: a match counter, Enter and
+  Shift+Enter to walk through the matches, match case and regular expressions,
+  Escape to go back to the shell.
+- **A startup script** in the settings, loaded into every session before the
+  first prompt — aliases, variables and functions of your own.
+- **It finds its programs** the way your shell does, so a Homebrew git or a
+  pyenv Python is the one it uses. If a shell still does not start, the panel
+  says why, and **Check terminal setup** reports what was found.
 
-## 🎨 Tell your terminal sessions apart
+Both shortcuts are ordinary Obsidian hotkeys, so **Settings → Hotkeys** can
+change or clear them.
 
-The terminal panel keeps several sessions side by side, and until now they were
-a row of identical \`>_\` icons. Right-click a session and pick **Change icon
-and colour** — forty icons and eight colours that follow your theme. The icons
-are grouped by what a session is for: shells and pipelines, mail and meetings,
-documents and spreadsheets, presenting and recording, the business and the
-trip. Drag the icons to put the sessions in the order you think in.
+## 🔍 Diffs that show what changed
 
-Turn on **Colour new terminal sessions** in the settings if you would rather
-every session you open be given a colour of its own straight away.
+- The words that changed inside a line are marked, not just the line.
+- Line colours run across the whole width, however far you scroll.
+- Renamed notes show as a rename, and stage, unstage and discard reliably.
+- Click a note in the changes list to open it, or press **Open current file**
+  in the diff view.
 
-## 💻 A terminal inside Obsidian — Alpha
+## ⚙️ Settings, sorted
 
-There is now a shell panel in Obsidian, opened from the terminal ribbon icon,
-the commit graph toolbar, or the **Open terminal** command. It starts in your
-vault's folder and uses your own login shell, so your prompt, colours, and
-aliases are there.
-
-**This one is Alpha.** It is early and I am still working on it. I am shipping
-it now so you can try it and tell me what breaks. Expect rough edges, and keep
-anything you cannot redo by hand out of it for the moment.
-
-You do not need it for anything else in the plugin — every button still does
-its own work. Pick the shell yourself under **Terminal shell** in the settings
-if the automatic one is not the one you want.
+The settings are grouped now, one short line per row. Your **Git identity** —
+the name and email on your commits — and the vault's **remotes** can be seen
+and edited right there, without a terminal.
 
 ## 🗂️ Open a whole branch of the tree at once
 
@@ -142,11 +141,15 @@ in history.
 **Backup in one step** — stage everything, commit with your template, and push,
 from a single command.
 
-**Terminal (Alpha)** — a shell in your vault's folder, for the occasional
-command that has no button yet.
+**Terminal** — a shell in your vault's folder, for the occasional command that
+has no button yet.
 
 Open it from the 🌿 ribbon icon on the left, or from the **Git history: Open
-source control** command.`;
+source control** command.
+
+⭐ If the plugin is useful to you, please
+[give it a star on GitHub](https://github.com/chrisurf/obsidian-git-history)
+and recommend it to a friend — that is how other people find it.`;
 
 /**
  * Whether the note is due for the running version. It is shown whenever the
