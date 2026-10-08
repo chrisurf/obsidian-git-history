@@ -1,3 +1,10 @@
+## [1.12.1](https://github.com/chrisurf/obsidian-git-history/compare/1.12.0...1.12.1) (2026-10-08)
+
+
+### Bug Fixes
+
+* say what a diff without lines is instead of showing empty panes ([#23](https://github.com/chrisurf/obsidian-git-history/issues/23)) ([dbd9a97](https://github.com/chrisurf/obsidian-git-history/commit/dbd9a978baec0c3f317956fc4c8e9e3a4da772b3))
+
 # [1.12.0](https://github.com/chrisurf/obsidian-git-history/compare/1.11.0...1.12.0) (2026-09-19)
 
 
